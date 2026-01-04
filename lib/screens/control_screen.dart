@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:camera/camera.dart';
 import '../services/app_state.dart';
+import '../services/localization_service.dart';
 import '../models/connection_state.dart';
 import '../widgets/sensor_dashboard.dart';
 
@@ -38,10 +39,7 @@ class _ControlScreenState extends State<ControlScreen>
   Future<void> _disconnect() async {
     final appState = context.read<AppState>();
     await appState.disconnect();
-
-    if (mounted) {
-      Navigator.of(context).pop();
-    }
+    // Don't use Navigator.pop() - let AppNavigator handle the transition
   }
 
   @override
@@ -50,7 +48,24 @@ class _ControlScreenState extends State<ControlScreen>
     super.dispose();
   }
 
-  Widget _buildStatusIndicator(ConnectionStatus status, String statusText) {
+  String _getStatusText(BuildContext context, ConnectionStatus status) {
+    final localization = context.read<LocalizationService>();
+    switch (status) {
+      case ConnectionStatus.connected:
+        return localization.get('connected');
+      case ConnectionStatus.connecting:
+        return localization.get('connecting_status');
+      case ConnectionStatus.reconnecting:
+        return localization.get('reconnecting');
+      case ConnectionStatus.error:
+        return localization.get('error');
+      case ConnectionStatus.disconnected:
+        return localization.get('disconnected');
+    }
+  }
+
+  Widget _buildStatusIndicator(BuildContext context, ConnectionStatus status) {
+    final statusText = _getStatusText(context, status);
     Color statusColor;
     IconData statusIcon;
     bool shouldPulse = false;
@@ -120,11 +135,13 @@ class _ControlScreenState extends State<ControlScreen>
 
   @override
   Widget build(BuildContext context) {
+    final localization = context.read<LocalizationService>();
+
     return Scaffold(
       appBar: AppBar(
-        title: const Text(
-          'Robot Control',
-          style: TextStyle(fontWeight: FontWeight.bold),
+        title: Text(
+          localization.get('camera_preview'),
+          style: const TextStyle(fontWeight: FontWeight.bold),
         ),
         backgroundColor: Colors.blue.shade700,
         foregroundColor: Colors.white,
@@ -135,8 +152,8 @@ class _ControlScreenState extends State<ControlScreen>
               return Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 8.0),
                 child: _buildStatusIndicator(
+                  context,
                   appState.connectionState.status,
-                  appState.connectionState.statusText,
                 ),
               );
             },
@@ -150,7 +167,7 @@ class _ControlScreenState extends State<ControlScreen>
             child: IconButton(
               icon: const Icon(Icons.logout_rounded),
               onPressed: _disconnect,
-              tooltip: 'Disconnect',
+              tooltip: localization.get('disconnect'),
               color: Colors.white,
             ),
           ),
@@ -194,7 +211,7 @@ class _ControlScreenState extends State<ControlScreen>
                               ),
                               const SizedBox(height: 16),
                               Text(
-                                'Initializing camera...',
+                                localization.get('connecting_status'),
                                 style: TextStyle(
                                   color: Colors.grey.shade400,
                                   fontSize: 14,
@@ -245,9 +262,9 @@ class _ControlScreenState extends State<ControlScreen>
                                   },
                                 ),
                                 const SizedBox(width: 8),
-                                const Text(
-                                  'STREAMING',
-                                  style: TextStyle(
+                                Text(
+                                  localization.get('streaming'),
+                                  style: const TextStyle(
                                     color: Colors.white,
                                     fontSize: 12,
                                     fontWeight: FontWeight.bold,
