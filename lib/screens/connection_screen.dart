@@ -41,8 +41,8 @@ class _ConnectionScreenState extends State<ConnectionScreen>
     final permissions = await appState.requestPermissions();
 
     setState(() {
-      _permissionsGranted =
-          permissions['camera'] == true && permissions['storage'] == true;
+      // Only camera permission is required
+      _permissionsGranted = permissions['camera'] == true;
     });
 
     if (_permissionsGranted) {
@@ -234,7 +234,7 @@ class _ConnectionScreenState extends State<ConnectionScreen>
                 fillColor: Colors.grey.shade50,
               ),
               keyboardType: TextInputType.url,
-              enabled: _permissionsGranted && !_isConnecting,
+              enabled: !_isConnecting,
             ),
             const SizedBox(height: 16),
             TextField(
@@ -258,7 +258,7 @@ class _ConnectionScreenState extends State<ConnectionScreen>
                 fillColor: Colors.grey.shade50,
               ),
               keyboardType: TextInputType.number,
-              enabled: _permissionsGranted && !_isConnecting,
+              enabled: !_isConnecting,
             ),
             const SizedBox(height: 24),
             ElevatedButton.icon(

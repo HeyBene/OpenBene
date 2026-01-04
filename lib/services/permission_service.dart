@@ -21,14 +21,12 @@ class PermissionService {
   }
 
   Future<Map<String, bool>> requestAllPermissions() async {
-    final results = await [
-      Permission.camera,
-      Permission.storage,
-    ].request();
+    // Only request camera permission (storage is deprecated on Android 13+)
+    final cameraStatus = await Permission.camera.request();
 
     return {
-      'camera': results[Permission.camera]?.isGranted ?? false,
-      'storage': results[Permission.storage]?.isGranted ?? false,
+      'camera': cameraStatus.isGranted,
+      'storage': true, // No longer needed, always return true
     };
   }
 
