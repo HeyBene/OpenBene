@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../models/sensor_data.dart';
+import '../models/app_language.dart';
 import '../services/localization_service.dart';
 
 class SensorDashboard extends StatefulWidget {
@@ -19,54 +20,77 @@ class SensorDashboard extends StatefulWidget {
   State<SensorDashboard> createState() => _SensorDashboardState();
 }
 
-class _SensorDashboardState extends State<SensorDashboard> {
+class _SensorDashboardState extends State<SensorDashboard> with AutomaticKeepAliveClientMixin {
+  @override
+  bool get wantKeepAlive => true; // Keep state alive for better scrolling performance
+
   @override
   Widget build(BuildContext context) {
-    final localization = context.watch<LocalizationService>();
+    super.build(context); // Required for AutomaticKeepAliveClientMixin
 
-    return Container(
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            Colors.blue.shade50.withValues(alpha: 0.3),
-            Colors.purple.shade50.withValues(alpha: 0.3),
-          ],
-        ),
-      ),
-      child: SafeArea(
-        child: ListView(
-          padding: const EdgeInsets.all(20),
-          physics: const BouncingScrollPhysics(),
-          children: [
-            _buildHeader(localization),
-            const SizedBox(height: 24),
-            _buildStatsRow(localization),
-            const SizedBox(height: 20),
-            if (widget.sensorData != null) ...[
-              _buildSensorSection(
-                localization.get('accelerometer'),
-                widget.sensorData!.accelerometer,
-                Icons.speed_rounded,
-                Colors.blue,
-                'm/s²',
+    // Use Selector to only rebuild when language changes, not on every sensor update
+    return Selector<LocalizationService, AppLanguage>(
+      selector: (_, service) => service.currentLanguage,
+      builder: (context, currentLanguage, _) {
+        final localization = context.read<LocalizationService>();
+
+        return Container(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [
+                Colors.blue.shade50.withValues(alpha: 0.3),
+                Colors.purple.shade50.withValues(alpha: 0.3),
+              ],
+            ),
+          ),
+          child: SafeArea(
+            child: ListView(
+              padding: const EdgeInsets.all(20),
+              physics: const BouncingScrollPhysics(
+                parent: AlwaysScrollableScrollPhysics(),
               ),
-              const SizedBox(height: 16),
-              _buildSensorSection(
-                localization.get('gyroscope'),
-                widget.sensorData!.gyroscope,
-                Icons.sync_rounded,
-                Colors.purple,
-                'rad/s',
-              ),
-              const SizedBox(height: 16),
-              _buildBatterySection(widget.sensorData!.batteryLevel, localization),
-            ] else
-              _buildNoDataCard(localization),
-          ],
-        ),
-      ),
+              cacheExtent: 1000, // Increase cache for smoother scrolling
+              children: [
+                RepaintBoundary(child: _buildHeader(localization)),
+                const SizedBox(height: 24),
+                RepaintBoundary(child: _buildStatsRow(localization)),
+                const SizedBox(height: 20),
+                if (widget.sensorData != null) ...[
+                  RepaintBoundary(
+                    child: _buildSensorSection(
+                      localization.get('accelerometer'),
+                      widget.sensorData!.accelerometer,
+                      Icons.speed_rounded,
+                      Colors.blue,
+                      'm/s²',
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  RepaintBoundary(
+                    child: _buildSensorSection(
+                      localization.get('gyroscope'),
+                      widget.sensorData!.gyroscope,
+                      Icons.sync_rounded,
+                      Colors.purple,
+                      'rad/s',
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  RepaintBoundary(
+                    child: _buildBatterySection(
+                      widget.sensorData!.batteryLevel,
+                      localization,
+                    ),
+                  ),
+                ] else
+                  _buildNoDataCard(localization),
+              ],
+            ),
+          ),
+        );
+      },
     );
   }
 

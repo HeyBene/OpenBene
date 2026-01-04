@@ -78,21 +78,29 @@ class AppState extends ChangeNotifier {
           _latestFrame = frame;
           _networkService.sendVideoFrame(frame);
           _framesSent++;
-          notifyListeners();
+          // Don't notify listeners for every frame - too expensive
         },
         quality: 75,
         targetWidth: 640,
       );
 
-      // Start sensor listening
+      // Start sensor listening with reduced update rate for UI
+      // Send to network at 100ms, but only update UI every 300ms
       _sensorService.startListening(intervalMs: 100);
 
+      int uiUpdateCounter = 0;
       _sensorDataSubscription =
           _sensorService.sensorDataStream?.listen((sensorData) {
         _latestSensorData = sensorData;
         _networkService.sendSensorData(sensorData);
         _sensorUpdatesSent++;
-        notifyListeners();
+
+        // Only notify listeners every 3rd update (300ms instead of 100ms)
+        uiUpdateCounter++;
+        if (uiUpdateCounter >= 3) {
+          uiUpdateCounter = 0;
+          notifyListeners();
+        }
       });
 
       _isStreaming = true;

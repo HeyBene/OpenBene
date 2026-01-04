@@ -1,3 +1,22 @@
 {
-    "java.configuration.updateBuildConfiguration": "automatic"
+  "files.exclude": {
+    "**/.dart_tool": true,
+    "**/.flutter-plugins": true,
+    "**/.flutter-plugins-dependencies": true,
+    "**/.metadata": true,
+    "**/build": true,
+    "**/.claude": true,
+    "**/pubspec.lock": true
+  },
+  "explorer.fileNesting.enabled": true,
+  "explorer.fileNesting.patterns": {
+    "pubspec.yaml": "pubspec.lock, .flutter-plugins, .flutter-plugins-dependencies, .metadata",
+    "README.md": "PROJECT_STRUCTURE.md",
+    ".gitignore": ".gitattributes"
+  },
+  "files.watcherExclude": {
+    "**/.dart_tool/**": true,
+    "**/build/**": true,
+    "**/.flutter-plugins-dependencies": true
+  }
 }
