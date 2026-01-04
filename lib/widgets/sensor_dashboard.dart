@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import '../models/sensor_data.dart';
+import '../services/localization_service.dart';
 
-class SensorDashboard extends StatelessWidget {
+class SensorDashboard extends StatefulWidget {
   final SensorData? sensorData;
   final int framesSent;
   final int sensorUpdatesSent;
@@ -14,7 +16,14 @@ class SensorDashboard extends StatelessWidget {
   });
 
   @override
+  State<SensorDashboard> createState() => _SensorDashboardState();
+}
+
+class _SensorDashboardState extends State<SensorDashboard> {
+  @override
   Widget build(BuildContext context) {
+    final localization = context.watch<LocalizationService>();
+
     return Container(
       decoration: BoxDecoration(
         gradient: LinearGradient(
@@ -27,43 +36,41 @@ class SensorDashboard extends StatelessWidget {
         ),
       ),
       child: SafeArea(
-        child: SingleChildScrollView(
+        child: ListView(
           padding: const EdgeInsets.all(20),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              _buildHeader(),
-              const SizedBox(height: 24),
-              _buildStatsRow(),
-              const SizedBox(height: 20),
-              if (sensorData != null) ...[
-                _buildSensorSection(
-                  'Accelerometer',
-                  sensorData!.accelerometer,
-                  Icons.speed_rounded,
-                  Colors.blue,
-                  'm/s²',
-                ),
-                const SizedBox(height: 16),
-                _buildSensorSection(
-                  'Gyroscope',
-                  sensorData!.gyroscope,
-                  Icons.sync_rounded,
-                  Colors.purple,
-                  'rad/s',
-                ),
-                const SizedBox(height: 16),
-                _buildBatterySection(sensorData!.batteryLevel),
-              ] else
-                _buildNoDataCard(),
-            ],
-          ),
+          physics: const BouncingScrollPhysics(),
+          children: [
+            _buildHeader(localization),
+            const SizedBox(height: 24),
+            _buildStatsRow(localization),
+            const SizedBox(height: 20),
+            if (widget.sensorData != null) ...[
+              _buildSensorSection(
+                localization.get('accelerometer'),
+                widget.sensorData!.accelerometer,
+                Icons.speed_rounded,
+                Colors.blue,
+                'm/s²',
+              ),
+              const SizedBox(height: 16),
+              _buildSensorSection(
+                localization.get('gyroscope'),
+                widget.sensorData!.gyroscope,
+                Icons.sync_rounded,
+                Colors.purple,
+                'rad/s',
+              ),
+              const SizedBox(height: 16),
+              _buildBatterySection(widget.sensorData!.batteryLevel, localization),
+            ] else
+              _buildNoDataCard(localization),
+          ],
         ),
       ),
     );
   }
 
-  Widget _buildHeader() {
+  Widget _buildHeader(LocalizationService localization) {
     return Row(
       children: [
         Container(
@@ -88,23 +95,23 @@ class SensorDashboard extends StatelessWidget {
           ),
         ),
         const SizedBox(width: 16),
-        const Column(
+        Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              'Sensor Dashboard',
-              style: TextStyle(
+              localization.get('sensor_data'),
+              style: const TextStyle(
                 fontSize: 24,
                 fontWeight: FontWeight.bold,
                 letterSpacing: 0.5,
               ),
             ),
-            SizedBox(height: 4),
+            const SizedBox(height: 4),
             Text(
-              'Real-time data monitoring',
+              'Real-time monitoring',
               style: TextStyle(
                 fontSize: 14,
-                color: Colors.grey,
+                color: Colors.grey.shade600,
                 fontWeight: FontWeight.w400,
               ),
             ),
@@ -114,13 +121,13 @@ class SensorDashboard extends StatelessWidget {
     );
   }
 
-  Widget _buildStatsRow() {
+  Widget _buildStatsRow(LocalizationService localization) {
     return Row(
       children: [
         Expanded(
           child: _buildStatCard(
-            'Frames Sent',
-            framesSent.toString(),
+            localization.get('frames_sent'),
+            widget.framesSent.toString(),
             Icons.videocam_rounded,
             Colors.blue,
           ),
@@ -128,8 +135,8 @@ class SensorDashboard extends StatelessWidget {
         const SizedBox(width: 16),
         Expanded(
           child: _buildStatCard(
-            'Sensor Updates',
-            sensorUpdatesSent.toString(),
+            localization.get('sensor_updates'),
+            widget.sensorUpdatesSent.toString(),
             Icons.sensors_rounded,
             Colors.green,
           ),
@@ -344,7 +351,7 @@ class SensorDashboard extends StatelessWidget {
     );
   }
 
-  Widget _buildBatterySection(double? batteryLevel) {
+  Widget _buildBatterySection(double? batteryLevel, LocalizationService localization) {
     if (batteryLevel == null) return const SizedBox.shrink();
 
     final batteryPercent = (batteryLevel * 100).toInt();
@@ -401,12 +408,12 @@ class SensorDashboard extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(width: 12),
-                const Column(
+                Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      'Battery Level',
-                      style: TextStyle(
+                      localization.get('battery_level'),
+                      style: const TextStyle(
                         fontSize: 18,
                         fontWeight: FontWeight.bold,
                       ),
@@ -415,7 +422,7 @@ class SensorDashboard extends StatelessWidget {
                       'Device power status',
                       style: TextStyle(
                         fontSize: 12,
-                        color: Colors.grey,
+                        color: Colors.grey.shade600,
                       ),
                     ),
                   ],
@@ -449,7 +456,7 @@ class SensorDashboard extends StatelessWidget {
     );
   }
 
-  Widget _buildNoDataCard() {
+  Widget _buildNoDataCard(LocalizationService localization) {
     return Card(
       elevation: 0,
       shape: RoundedRectangleBorder(
@@ -475,7 +482,7 @@ class SensorDashboard extends StatelessWidget {
             ),
             const SizedBox(height: 20),
             Text(
-              'Waiting for sensor data...',
+              localization.get('connecting_status'),
               style: TextStyle(
                 fontSize: 16,
                 color: Colors.grey.shade600,
@@ -484,7 +491,7 @@ class SensorDashboard extends StatelessWidget {
             ),
             const SizedBox(height: 8),
             Text(
-              'Connect to PC to start streaming',
+              localization.get('app_subtitle'),
               style: TextStyle(
                 fontSize: 13,
                 color: Colors.grey.shade500,

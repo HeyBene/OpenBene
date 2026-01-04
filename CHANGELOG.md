@@ -1,6 +1,35 @@
 # OpenBot Mobile Control - 更新日志 / Changelog
 
-## v1.0.2 (2026-01-04 14:23) ⭐ 最新版本 / Latest Version
+## v1.0.3 (2026-01-04 14:44) ⭐ 最新版本 / Latest Version
+
+### 修复 / Bug Fixes
+- ✅ **修复控制界面语言问题** - 控制界面现在会跟随应用语言设置
+- ✅ **Fixed control screen language issue** - Control screen now follows app language setting
+- ✅ **修复返回按钮黑屏问题** - 点击断开连接后正常返回连接界面
+- ✅ **Fixed black screen on back button** - Properly returns to connection screen after disconnect
+- ✅ 所有控制界面文字支持中英文切换
+- ✅ All control screen text supports language switching
+
+### 本地化元素 / Localized Elements
+- 相机预览标题 / Camera Preview title
+- 连接状态 (已连接、连接中、重新连接等) / Connection status
+- 断开连接按钮提示 / Disconnect button tooltip
+- 传输指示器 / Streaming indicator
+- 相机初始化消息 / Camera initialization message
+
+### 技术改进 / Technical Improvements
+- 移除了不正确的Navigator.pop()调用 / Removed incorrect Navigator.pop() call
+- 让AppNavigator自动处理界面切换 / Let AppNavigator handle screen transitions
+- 添加状态文本本地化函数 / Added status text localization function
+
+### 下载 / Download
+- **文件名 / Filename**: `openbot-mobile-control-v1.0.3.apk`
+- **大小 / Size**: 47 MB
+- **版本代码 / Version Code**: 4
+
+---
+
+## v1.0.2 (2026-01-04 14:23)
 
 ### 新功能 / New Features
 - ✅ **中英文语言切换** - 点击右上角语言按钮切换界面语言
