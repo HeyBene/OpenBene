@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../services/app_state.dart';
+import '../services/localization_service.dart';
+import '../models/app_language.dart';
 
 class ConnectionScreen extends StatefulWidget {
   const ConnectionScreen({super.key});
@@ -51,16 +53,17 @@ class _ConnectionScreenState extends State<ConnectionScreen>
   }
 
   Future<void> _connect() async {
+    final localization = context.read<LocalizationService>();
     final host = _hostController.text.trim();
     final port = int.tryParse(_portController.text.trim());
 
     if (host.isEmpty || port == null) {
-      _showError('Please enter valid host and port');
+      _showError(localization.get('invalid_host_port'));
       return;
     }
 
     if (!_permissionsGranted) {
-      _showError('Camera permission is required');
+      _showError(localization.get('camera_permission_denied'));
       return;
     }
 
@@ -91,6 +94,7 @@ class _ConnectionScreenState extends State<ConnectionScreen>
   }
 
   Widget _buildHeader() {
+    final localization = context.read<LocalizationService>();
     return Column(
       children: [
         Container(
@@ -118,9 +122,9 @@ class _ConnectionScreenState extends State<ConnectionScreen>
           ),
         ),
         const SizedBox(height: 24),
-        const Text(
-          'OpenBot Mobile Control',
-          style: TextStyle(
+        Text(
+          localization.get('app_name'),
+          style: const TextStyle(
             fontSize: 28,
             fontWeight: FontWeight.bold,
             letterSpacing: 0.5,
@@ -129,7 +133,7 @@ class _ConnectionScreenState extends State<ConnectionScreen>
         ),
         const SizedBox(height: 8),
         Text(
-          'Connect to your PC to start streaming',
+          localization.get('app_subtitle'),
           style: TextStyle(
             fontSize: 15,
             color: Colors.grey.shade600,
@@ -142,6 +146,7 @@ class _ConnectionScreenState extends State<ConnectionScreen>
   }
 
   Widget _buildPermissionWarning() {
+    final localization = context.read<LocalizationService>();
     return Card(
       elevation: 0,
       color: Colors.orange.shade50,
@@ -160,7 +165,7 @@ class _ConnectionScreenState extends State<ConnectionScreen>
                 const SizedBox(width: 12),
                 Expanded(
                   child: Text(
-                    'Camera permission required',
+                    localization.get('camera_permission_required'),
                     style: TextStyle(
                       color: Colors.orange.shade900,
                       fontWeight: FontWeight.w600,
@@ -176,7 +181,7 @@ class _ConnectionScreenState extends State<ConnectionScreen>
               child: ElevatedButton.icon(
                 onPressed: _checkPermissions,
                 icon: const Icon(Icons.refresh_rounded),
-                label: const Text('Grant Permissions'),
+                label: Text(localization.get('grant_permissions')),
                 style: ElevatedButton.styleFrom(
                   padding: const EdgeInsets.all(14),
                   backgroundColor: Colors.orange.shade600,
@@ -195,6 +200,7 @@ class _ConnectionScreenState extends State<ConnectionScreen>
   }
 
   Widget _buildConnectionForm() {
+    final localization = context.read<LocalizationService>();
     return Card(
       elevation: 2,
       shape: RoundedRectangleBorder(
@@ -205,9 +211,9 @@ class _ConnectionScreenState extends State<ConnectionScreen>
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            const Text(
-              'Connection Settings',
-              style: TextStyle(
+            Text(
+              localization.get('connection_settings'),
+              style: const TextStyle(
                 fontSize: 18,
                 fontWeight: FontWeight.bold,
               ),
@@ -216,7 +222,7 @@ class _ConnectionScreenState extends State<ConnectionScreen>
             TextField(
               controller: _hostController,
               decoration: InputDecoration(
-                labelText: 'PC IP Address',
+                labelText: localization.get('pc_ip_address'),
                 hintText: '192.168.1.100',
                 prefixIcon: const Icon(Icons.computer_rounded),
                 border: OutlineInputBorder(
@@ -240,7 +246,7 @@ class _ConnectionScreenState extends State<ConnectionScreen>
             TextField(
               controller: _portController,
               decoration: InputDecoration(
-                labelText: 'Port',
+                labelText: localization.get('port'),
                 hintText: '8765',
                 prefixIcon: const Icon(Icons.settings_ethernet_rounded),
                 border: OutlineInputBorder(
@@ -275,7 +281,7 @@ class _ConnectionScreenState extends State<ConnectionScreen>
                     )
                   : const Icon(Icons.wifi_rounded, size: 24),
               label: Text(
-                _isConnecting ? 'Connecting...' : 'Connect to PC',
+                _isConnecting ? localization.get('connecting') : localization.get('connect_to_pc'),
                 style: const TextStyle(
                   fontSize: 16,
                   fontWeight: FontWeight.w600,
@@ -300,6 +306,7 @@ class _ConnectionScreenState extends State<ConnectionScreen>
   }
 
   Widget _buildConnectionGuide() {
+    final localization = context.read<LocalizationService>();
     return Card(
       elevation: 0,
       color: Colors.blue.shade50,
@@ -318,7 +325,7 @@ class _ConnectionScreenState extends State<ConnectionScreen>
                     size: 24, color: Colors.blue.shade700),
                 const SizedBox(width: 10),
                 Text(
-                  'Quick Setup Guide',
+                  localization.get('quick_setup_guide'),
                   style: TextStyle(
                     fontWeight: FontWeight.bold,
                     fontSize: 17,
@@ -328,10 +335,10 @@ class _ConnectionScreenState extends State<ConnectionScreen>
               ],
             ),
             const SizedBox(height: 16),
-            _buildGuideStep('1', 'Ensure PC and phone are on the same Wi-Fi'),
-            _buildGuideStep('2', 'Run the Python server on your PC'),
-            _buildGuideStep('3', 'Enter your PC\'s IP address above'),
-            _buildGuideStep('4', 'Tap Connect to start streaming'),
+            _buildGuideStep('1', localization.get('step_1')),
+            _buildGuideStep('2', localization.get('step_2')),
+            _buildGuideStep('3', localization.get('step_3')),
+            _buildGuideStep('4', localization.get('step_4')),
           ],
         ),
       ),
@@ -383,8 +390,47 @@ class _ConnectionScreenState extends State<ConnectionScreen>
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final localization = context.watch<LocalizationService>();
 
     return Scaffold(
+      appBar: AppBar(
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        actions: [
+          PopupMenuButton<AppLanguage>(
+            icon: const Icon(Icons.language),
+            onSelected: (AppLanguage language) {
+              localization.setLanguage(language);
+            },
+            itemBuilder: (BuildContext context) => [
+              PopupMenuItem<AppLanguage>(
+                value: AppLanguage.english,
+                child: Row(
+                  children: [
+                    if (localization.currentLanguage == AppLanguage.english)
+                      const Icon(Icons.check, size: 20),
+                    if (localization.currentLanguage == AppLanguage.english)
+                      const SizedBox(width: 8),
+                    const Text('English'),
+                  ],
+                ),
+              ),
+              PopupMenuItem<AppLanguage>(
+                value: AppLanguage.chinese,
+                child: Row(
+                  children: [
+                    if (localization.currentLanguage == AppLanguage.chinese)
+                      const Icon(Icons.check, size: 20),
+                    if (localization.currentLanguage == AppLanguage.chinese)
+                      const SizedBox(width: 8),
+                    const Text('中文'),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
       body: Container(
         decoration: BoxDecoration(
           gradient: LinearGradient(

@@ -9,7 +9,7 @@ from datetime import datetime
 
 connected_clients = set()
 
-async def handle_client(websocket, path):
+async def handle_client(websocket):
     """处理客户端连接"""
     client_id = f"{websocket.remote_address[0]}:{websocket.remote_address[1]}"
     print(f"\n✅ 新客户端连接: {client_id}")

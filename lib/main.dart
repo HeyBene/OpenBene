@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'services/app_state.dart';
+import 'services/localization_service.dart';
 import 'screens/connection_screen.dart';
 import 'screens/control_screen.dart';
 import 'models/connection_state.dart';
@@ -15,8 +16,11 @@ class OpenBotApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ChangeNotifierProvider(
-      create: (_) => AppState()..initialize(),
+    return MultiProvider(
+      providers: [
+        ChangeNotifierProvider(create: (_) => AppState()..initialize()),
+        ChangeNotifierProvider(create: (_) => LocalizationService()),
+      ],
       child: MaterialApp(
         title: 'OpenBot Control',
         theme: ThemeData(
