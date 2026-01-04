@@ -1,114 +1,34 @@
-# OpenBot Mobile Control
+# OpenBene
 
-[![Version](https://img.shields.io/badge/version-1.0.5-blue.svg)](releases/)
-[![Flutter](https://img.shields.io/badge/Flutter-3.0+-02569B.svg)](https://flutter.dev/)
-[![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
+OpenBene项目集合 / OpenBene Project Collection
 
-OpenBot Mobile Control is a Flutter-based mobile application that transforms your smartphone into a robot control hub with real-time video streaming and sensor data transmission.
+## 📁 项目列表 / Projects
 
-## Features
+### [openbot-mobile-control/](openbot-mobile-control/)
+OpenBot移动控制应用 - 基于Flutter的机器人控制应用，支持实时视频传输和传感器数据传输。
 
-- Real-time video streaming from smartphone camera
-- Sensor data transmission (accelerometer, gyroscope, battery)
-- WebSocket-based communication with automatic reconnection
-- Multi-language support (English/Chinese)
-- Modern, polished UI with Material Design 3
+**OpenBot Mobile Control** - Flutter-based robot control app with real-time video streaming and sensor data transmission.
 
-## Quick Links
+- **语言 / Language**: Flutter (Dart), Python
+- **版本 / Version**: v1.0.5
+- **平台 / Platform**: Android, iOS (支持多平台)
+- **功能 / Features**: 
+  - 实时视频流 / Real-time video streaming
+  - 传感器数据传输 / Sensor data transmission
+  - 中英文双语 / Chinese/English bilingual
+  - WebSocket通信 / WebSocket communication
 
-- **[Full Documentation](docs/README.md)** - Complete user guide and technical details
-- **[Quick Start Guide](docs/QUICK_START.md)** - Get started in 5 minutes
-- **[Changelog](docs/CHANGELOG.md)** - Version history and updates
-- **[Latest Release](releases/)** - Download APK files
-
-## Project Structure
-
-```
-my_app/
-├── lib/                    # Flutter application source code
-│   ├── models/            # Data models
-│   ├── screens/           # UI screens
-│   ├── services/          # Business logic services
-│   └── widgets/           # Reusable UI components
-├── server/                # Server-side components
-│   ├── test_server.py    # WebSocket test server
-│   └── python_sdk/       # Python SDK for PC integration
-├── docs/                  # Documentation
-├── releases/              # APK release files
-├── android/               # Android platform code
-├── ios/                   # iOS platform code
-└── test/                  # Unit tests
-```
-
-## Requirements
-
-### Mobile Device
-- Android 5.0 (Lollipop) or higher
-- Camera support
-- WiFi capability
-
-### PC (Server)
-- Python 3.7+
-- Network connectivity
-- Any OS (Windows, macOS, Linux)
-
-## Quick Start
-
-### 1. Install the App
-
-Download the latest APK from [releases/](releases/) and install on your Android device.
-
-### 2. Start the Server
-
-```bash
-cd server
-pip3 install -r python_sdk/requirements.txt
-python3 test_server.py
-```
-
-The server will display your PC's IP address.
-
-### 3. Connect
-
-1. Open the app on your phone
-2. Enter your PC's IP address and port (default: 8765)
-3. Tap "Connect to PC"
-4. Start streaming!
-
-For detailed instructions, see [Quick Start Guide](docs/QUICK_START.md).
-
-## Development
-
-### Setup
-
-```bash
-# Install Flutter dependencies
-flutter pub get
-
-# Run on connected device
-flutter run
-
-# Build release APK
-flutter build apk --release
-```
-
-### Architecture
-
-- **State Management**: Provider pattern
-- **Networking**: WebSocket (web_socket_channel)
-- **Camera**: camera plugin
-- **Sensors**: sensors_plus plugin
-- **Localization**: Custom LocalizationService
-
-## License
-
-MIT License - see LICENSE file for details
-
-## Support
-
-- Report issues: [GitHub Issues](https://github.com/yourusername/openbot-mobile-control/issues)
-- Documentation: [docs/README.md](docs/README.md)
+[查看详细文档 / View Documentation →](openbot-mobile-control/README.md)
 
 ---
 
-Made with Flutter 💙
+## 📚 更多项目即将推出 / More Projects Coming Soon
+
+此仓库将包含OpenBene系列的多个项目。
+
+This repository will contain multiple projects in the OpenBene series.
+
+---
+
+**维护者 / Maintainer**: @HeyBene  
+**开始时间 / Started**: 2026-01-04
