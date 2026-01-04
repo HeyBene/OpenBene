@@ -1,0 +1,21 @@
+name: openbene_app
+description: OpenBene Robot Control App - Flutter client for robot control
+publish_to: 'none'
+version: 0.1.0
+
+environment:
+  sdk: '>=3.0.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  network_info_plus: ^5.0.0
+  usb_serial: ^0.5.2
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^2.0.0
+
+flutter:
+  uses-material-design: true
