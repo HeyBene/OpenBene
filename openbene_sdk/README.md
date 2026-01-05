@@ -2,32 +2,25 @@
 
 ![Python Version](https://img.shields.io/badge/python-3.8%2B-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
-![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen)
 
-**Phone as Body, PC as Brain** - Transform your Android phone into a powerful robot controller.
+**Phone as Body, PC as Brain** - 用手机控制机器人，用PC运行AI算法。
 
-OpenBene SDK is a Python library that enables PC-based control of mobile robots using the OpenBot hardware platform. Offload complex AI computations, computer vision, and control algorithms to your powerful PC while your phone handles sensor data collection and motor control.
-
----
-
-## ✨ Features
-
-- 🔌 **Automatic Discovery**: Zero-config connection via UDP broadcast
-- 🎮 **Intuitive API**: Control your robot with simple Python commands
-- 🚀 **High Performance**: TCP socket communication for real-time control
-- 📱 **Phone as Body**: Phone handles hardware I/O and sensor data
-- 🧠 **PC as Brain**: Run AI models and complex algorithms on your PC
-- 🛠️ **Extensible**: Built for future vision and sensor integration
+OpenBene SDK 是一个 Python 库，让你可以：
+- 通过 WebSocket 连接到手机 App
+- 发送控制命令（前进、后退、转向）
+- 接收实时视频流
+- 获取传感器数据
+- 采集训练数据
 
 ---
 
-## 📦 Installation
+## 安装
 
 ```bash
 pip install openbene
 ```
 
-**Note:** Package will be published to PyPI soon. For now, install from source:
+或从源码安装：
 
 ```bash
 git clone https://github.com/yourusername/openbene.git
@@ -35,182 +28,207 @@ cd openbene/openbene_sdk
 pip install -e .
 ```
 
----
-
-## 🚀 Quick Start
-
-Control your robot in just 3 lines of code:
-
-```python
-from openbene import OpenBene
-
-bot = OpenBene.connect_auto()  # Auto-discover and connect
-bot.move_forward(0.5)           # Move forward at 50% speed
-bot.stop()                      # Stop the robot
+**依赖：**
+```bash
+pip install websockets opencv-python numpy
 ```
 
 ---
 
-## 🔧 Hardware Requirements
+## 快速开始
 
-### Required Components
-
-1. **Android Phone** (Android 6.0+)
-   - WiFi connectivity
-   - USB OTG support
-
-2. **OpenBot Robot Chassis**
-   - Arduino-based motor controller
-   - USB Type-C connection to phone
-   - Compatible with [OpenBot DIY kit](https://www.openbot.org/)
-
-3. **PC/Laptop**
-   - Python 3.8 or higher
-   - Same WiFi network as the phone
-
-### Setup
-
-1. Install the OpenBene App on your Android phone (APK available in `openbene_app/`)
-2. Connect the phone to the robot chassis via USB Type-C
-3. Connect both phone and PC to the same WiFi network
-4. Launch the app and click "Start Robot"
-5. Run your Python script on the PC
-
----
-
-## 📖 Usage Examples
-
-### Basic Movement
+### 基础控制
 
 ```python
 from openbene import OpenBene
 import time
 
-# Connect to robot
-bot = OpenBene.connect_auto()
+# 连接到手机（替换为你手机的IP）
+bot = OpenBene("192.168.1.100")
+bot.connect()
 
-# Move forward
-bot.move_forward(0.7)
+# 控制机器人
+bot.forward(0.5)    # 前进
 time.sleep(2)
-
-# Turn right
-bot.turn_right(0.5)
+bot.turn_left(0.3)  # 左转
 time.sleep(1)
+bot.stop()          # 停止
 
-# Move backward
-bot.move_backward(0.5)
-time.sleep(2)
-
-# Stop
-bot.stop()
-
-# Disconnect
 bot.disconnect()
 ```
 
-### Manual Discovery
+### 使用上下文管理器
 
 ```python
-from openbene import Discovery, OpenBene
-
-def on_robot_found(robot_info):
-    print(f"Found: {robot_info['name']} at {robot_info['ip']}")
-
-# Listen for robots
-discovery = Discovery(port=12345)
-discovery.start(on_discovery=on_robot_found)
-
-# Connect manually
-bot = OpenBene("192.168.1.100")
-bot.connect()
-bot.move_forward(0.5)
+with OpenBene("192.168.1.100") as bot:
+    bot.forward(0.5)
+    time.sleep(2)
+    bot.stop()
 ```
 
-### Context Manager
+### 视频显示
 
 ```python
-from openbene import OpenBene
+with OpenBene("192.168.1.100") as bot:
+    # 启动OpenCV窗口显示视频
+    bot.start_video(display=True)
 
-with OpenBene.connect_auto() as bot:
-    bot.move_forward(0.8)
-    # Auto-disconnect on exit
+    # 按 'q' 退出
+    while bot.connected:
+        time.sleep(1)
+```
+
+### 获取传感器数据
+
+```python
+with OpenBene("192.168.1.100") as bot:
+    sensors = bot.get_sensors()
+    print(f"加速度: {sensors['accelerometer']}")
+    print(f"陀螺仪: {sensors['gyroscope']}")
+    print(f"电池: {sensors['battery_level']}")
+```
+
+### 数据采集（用于训练模型）
+
+```python
+with OpenBene("192.168.1.100") as bot:
+    # 开始采集
+    bot.start_recording(output_dir="./training_data")
+
+    # 控制机器人，数据会自动记录
+    bot.forward(0.5)
+    time.sleep(5)
+    bot.turn_left(0.3)
+    time.sleep(2)
+
+    # 停止采集
+    bot.stop_recording()
+```
+
+**输出格式：**
+```
+training_data/
+├── images/
+│   ├── 000001.jpg
+│   ├── 000002.jpg
+│   └── ...
+└── labels.csv
+```
+
+**labels.csv 内容：**
+```csv
+image,timestamp,accel_x,accel_y,accel_z,gyro_x,gyro_y,gyro_z,command,speed_left,speed_right
+000001.jpg,2024-01-05T10:30:00,0.1,0.2,9.8,0.0,0.0,0.0,forward,0.5,0.5
+000002.jpg,2024-01-05T10:30:01,0.1,0.3,9.8,0.0,0.1,0.0,turn_left,0.3,-0.3
 ```
 
 ---
 
-## 🎮 Advanced Examples
+## API 参考
 
-Check out the `examples/` directory for more:
+### 连接
 
-- **[connect_demo.py](examples/connect_demo.py)** - Discovery and connection
-- **[control_demo.py](examples/control_demo.py)** - Movement sequences
-- **[keyboard_drive.py](examples/keyboard_drive.py)** - WASD keyboard control
+| 方法 | 说明 |
+|------|------|
+| `OpenBene(ip, port=8765)` | 创建控制器实例 |
+| `connect(timeout=5.0)` | 连接到手机 |
+| `disconnect()` | 断开连接 |
+
+### 控制
+
+| 方法 | 说明 |
+|------|------|
+| `drive(left, right)` | 设置左右轮速度 (-1.0 到 1.0) |
+| `forward(speed=0.5)` | 前进 |
+| `backward(speed=0.5)` | 后退 |
+| `turn_left(speed=0.5)` | 左转 |
+| `turn_right(speed=0.5)` | 右转 |
+| `stop()` | 停止 |
+
+### 视频
+
+| 方法 | 说明 |
+|------|------|
+| `start_video(display=True)` | 开始视频（可选OpenCV窗口） |
+| `stop_video()` | 停止视频 |
+| `get_frame()` | 获取最新帧 (numpy BGR) |
+
+### 传感器
+
+| 方法 | 说明 |
+|------|------|
+| `get_sensors()` | 获取所有传感器数据 |
+| `get_accelerometer()` | 获取加速度计 (m/s²) |
+| `get_gyroscope()` | 获取陀螺仪 (rad/s) |
+
+### 数据采集
+
+| 方法 | 说明 |
+|------|------|
+| `start_recording(output_dir)` | 开始采集数据 |
+| `stop_recording()` | 停止采集 |
 
 ---
 
-## 📡 Communication Protocol
+## 通信协议
 
-### Discovery (UDP Broadcast)
-- **Port:** 12345
-- **Format:** `{"type": "discovery", "name": "OpenBene_Bot", "ip": "<PHONE_IP>"}`
+### 连接方式
 
-### Control Commands (TCP)
-- **Port:** 8888
-- **Format:** JSON over TCP, UTF-8 encoded, newline-terminated
+- **协议:** WebSocket
+- **端口:** 8765
+- **手机:** Server（等待连接）
+- **PC:** Client（主动连接）
 
-**Drive Command:**
+### 消息格式
+
+**PC → 手机（控制命令）：**
 ```json
-{"cmd": "drive", "val": [left_speed, right_speed]}
-```
-- Speed range: -1.0 (full reverse) to 1.0 (full forward)
-
-**Stop Command:**
-```json
+{"cmd": "drive", "val": [0.5, 0.5]}
 {"cmd": "stop"}
 ```
 
----
+**手机 → PC（视频帧）：**
+```json
+{
+  "type": "video_frame",
+  "data": "<base64编码的JPEG>",
+  "timestamp": 1704441600000
+}
+```
 
-## 🛣️ Roadmap
-
-- ✅ **Milestone 1**: Basic communication and motor control
-- 🚧 **Milestone 2**: Camera streaming and computer vision
-- 🔜 **Milestone 3**: IMU data and sensor fusion
-- 🔜 **Milestone 4**: AI integration (object detection, navigation)
-
----
-
-## 🤝 Contributing
-
-Contributions are welcome! Please feel free to submit a Pull Request.
-
-1. Fork the repository
-2. Create your feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'feat: add amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
-
----
-
-## 📄 License
-
-This project is licensed under the MIT License - see the [LICENSE](../LICENSE) file for details.
+**手机 → PC（传感器数据）：**
+```json
+{
+  "type": "sensor_data",
+  "data": {
+    "accelerometer": {"x": 0.1, "y": 0.2, "z": 9.8},
+    "gyroscope": {"x": 0.01, "y": -0.02, "z": 0.0},
+    "battery_level": 0.85
+  }
+}
+```
 
 ---
 
-## 🙏 Acknowledgments
+## 示例
 
-- Built on the [OpenBot](https://www.openbot.org/) hardware platform
-- Inspired by the "Phone as Body, PC as Brain" philosophy
+查看 `examples/` 目录：
 
----
-
-## 📞 Support
-
-- 📫 Issues: [GitHub Issues](https://github.com/yourusername/openbene/issues)
-- 💬 Discussions: [GitHub Discussions](https://github.com/yourusername/openbene/discussions)
-- 📖 Documentation: [Wiki](https://github.com/yourusername/openbene/wiki)
+- **basic_control.py** - 基础控制示例
+- **video_display.py** - 视频显示示例
+- **data_collection.py** - 数据采集示例
+- **autopilot.py** - 自动驾驶示例（颜色追踪）
 
 ---
 
-**Made with ❤️ for robotics enthusiasts and geeks**
+## 使用流程
+
+1. **手机端：** 打开 OpenBene App，点击 "Start Server"
+2. **PC端：** 运行 Python 脚本，使用手机显示的 IP 地址连接
+3. **控制：** 使用 SDK API 控制机器人
+
+---
+
+## License
+
+MIT License

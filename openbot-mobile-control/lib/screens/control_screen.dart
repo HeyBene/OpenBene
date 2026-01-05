@@ -36,9 +36,9 @@ class _ControlScreenState extends State<ControlScreen>
     await appState.startStreaming();
   }
 
-  Future<void> _disconnect() async {
+  Future<void> _stopServer() async {
     final appState = context.read<AppState>();
-    await appState.disconnect();
+    await appState.stopServer();
     // Don't use Navigator.pop() - let AppNavigator handle the transition
   }
 
@@ -166,7 +166,7 @@ class _ControlScreenState extends State<ControlScreen>
             ),
             child: IconButton(
               icon: const Icon(Icons.logout_rounded),
-              onPressed: _disconnect,
+              onPressed: _stopServer,
               tooltip: localization.get('disconnect'),
               color: Colors.white,
             ),
@@ -280,18 +280,121 @@ class _ControlScreenState extends State<ControlScreen>
                 ),
               ),
 
-              // Sensor Dashboard Section
+              // Sensor Dashboard and Command Log Section
               Expanded(
                 flex: 2,
-                child: SensorDashboard(
-                  sensorData: appState.latestSensorData,
-                  framesSent: appState.framesSent,
-                  sensorUpdatesSent: appState.sensorUpdatesSent,
+                child: Row(
+                  children: [
+                    // Sensor Dashboard
+                    Expanded(
+                      flex: 3,
+                      child: SensorDashboard(
+                        sensorData: appState.latestSensorData,
+                        framesSent: appState.framesSent,
+                        sensorUpdatesSent: appState.sensorUpdatesSent,
+                      ),
+                    ),
+                    // Command Log
+                    Expanded(
+                      flex: 2,
+                      child: _buildCommandLog(appState),
+                    ),
+                  ],
                 ),
               ),
             ],
           );
         },
+      ),
+    );
+  }
+
+  Widget _buildCommandLog(AppState appState) {
+    final localization = context.read<LocalizationService>();
+    final commandLogs = appState.commandLogs;
+
+    return Card(
+      margin: const EdgeInsets.all(8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            decoration: BoxDecoration(
+              color: Colors.blue.shade50,
+              borderRadius: const BorderRadius.only(
+                topLeft: Radius.circular(12),
+                topRight: Radius.circular(12),
+              ),
+            ),
+            child: Row(
+              children: [
+                Icon(Icons.terminal_rounded,
+                    size: 18, color: Colors.blue.shade700),
+                const SizedBox(width: 8),
+                Text(
+                  'Commands (${appState.commandsReceived})',
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    color: Colors.blue.shade900,
+                  ),
+                ),
+                const Spacer(),
+                if (commandLogs.isNotEmpty)
+                  GestureDetector(
+                    onTap: appState.clearCommandLogs,
+                    child: Icon(Icons.clear_all_rounded,
+                        size: 18, color: Colors.grey.shade600),
+                  ),
+              ],
+            ),
+          ),
+          Expanded(
+            child: commandLogs.isEmpty
+                ? Center(
+                    child: Text(
+                      'No commands received',
+                      style: TextStyle(
+                        color: Colors.grey.shade500,
+                        fontSize: 12,
+                      ),
+                    ),
+                  )
+                : ListView.builder(
+                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                    itemCount: commandLogs.length,
+                    itemBuilder: (context, index) {
+                      final log = commandLogs[index];
+                      return Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 2),
+                        child: Row(
+                          children: [
+                            Text(
+                              log.formattedTime,
+                              style: TextStyle(
+                                fontFamily: 'monospace',
+                                fontSize: 10,
+                                color: Colors.grey.shade500,
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                log.displayText,
+                                style: const TextStyle(
+                                  fontFamily: 'monospace',
+                                  fontSize: 12,
+                                ),
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                          ],
+                        ),
+                      );
+                    },
+                  ),
+          ),
+        ],
       ),
     );
   }

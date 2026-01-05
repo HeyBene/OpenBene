@@ -14,7 +14,7 @@ long_description = readme_file.read_text(encoding="utf-8") if readme_file.exists
 setup(
     # Package metadata
     name="openbene",
-    version="1.0.0",
+    version="2.0.0",  # Simplified WebSocket-only architecture
     description="Phone as Body, PC as Brain - Control OpenBot robots with Python",
     long_description=long_description,
     long_description_content_type="text/markdown",
@@ -44,14 +44,12 @@ setup(
 
     # Dependencies
     install_requires=[
-        # Core dependencies (Milestone 1)
-        # No external dependencies required for basic control
+        # WebSocket support for openbot-mobile-control app integration
+        "websockets>=10.0",
 
-        # Future dependencies (Milestone 2+)
-        # Uncomment when implementing camera/vision features:
-        # "opencv-python>=4.5.0",
-        # "numpy>=1.19.0",
-        # "pillow>=8.0.0",
+        # Video streaming support (optional, but recommended)
+        "opencv-python>=4.5.0",
+        "numpy>=1.19.0",
     ],
 
     # Optional dependencies for advanced features

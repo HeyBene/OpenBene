@@ -13,13 +13,8 @@ class ConnectionScreen extends StatefulWidget {
 
 class _ConnectionScreenState extends State<ConnectionScreen>
     with SingleTickerProviderStateMixin {
-  final TextEditingController _hostController =
-      TextEditingController(text: '192.168.1.100');
-  final TextEditingController _portController =
-      TextEditingController(text: '8765');
-
   bool _permissionsGranted = false;
-  bool _isConnecting = false;
+  bool _isStarting = false;
   late AnimationController _animationController;
   late Animation<double> _fadeAnimation;
 
@@ -43,7 +38,6 @@ class _ConnectionScreenState extends State<ConnectionScreen>
     final permissions = await appState.requestPermissions();
 
     setState(() {
-      // Only camera permission is required
       _permissionsGranted = permissions['camera'] == true;
     });
 
@@ -52,45 +46,19 @@ class _ConnectionScreenState extends State<ConnectionScreen>
     }
   }
 
-  Future<void> _connect() async {
-    final localization = context.read<LocalizationService>();
-    final host = _hostController.text.trim();
-    final port = int.tryParse(_portController.text.trim());
+  Future<void> _startServer() async {
+    if (_isStarting) return;
 
-    if (host.isEmpty || port == null) {
-      _showError(localization.get('invalid_host_port'));
-      return;
-    }
-
-    if (!_permissionsGranted) {
-      _showError(localization.get('camera_permission_denied'));
-      return;
-    }
-
-    setState(() => _isConnecting = true);
+    setState(() => _isStarting = true);
 
     final appState = context.read<AppState>();
-    await appState.connect(host, port);
+    final success = await appState.startServer();
 
-    setState(() => _isConnecting = false);
-  }
+    if (success) {
+      await appState.startStreaming();
+    }
 
-  void _showError(String message) {
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Row(
-          children: [
-            const Icon(Icons.error_outline, color: Colors.white),
-            const SizedBox(width: 12),
-            Expanded(child: Text(message)),
-          ],
-        ),
-        backgroundColor: Colors.red.shade700,
-        behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-      ),
-    );
+    setState(() => _isStarting = false);
   }
 
   Widget _buildHeader() {
@@ -109,7 +77,7 @@ class _ConnectionScreenState extends State<ConnectionScreen>
             ),
             boxShadow: [
               BoxShadow(
-                color: Colors.blue.withValues(alpha: 0.3),
+                color: Colors.blue.withOpacity(0.3),
                 blurRadius: 20,
                 spreadRadius: 5,
               ),
@@ -199,8 +167,9 @@ class _ConnectionScreenState extends State<ConnectionScreen>
     );
   }
 
-  Widget _buildConnectionForm() {
-    final localization = context.read<LocalizationService>();
+  Widget _buildServerInfo() {
+    final appState = context.watch<AppState>();
+
     return Card(
       elevation: 2,
       shape: RoundedRectangleBorder(
@@ -211,66 +180,80 @@ class _ConnectionScreenState extends State<ConnectionScreen>
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Text(
-              localization.get('connection_settings'),
-              style: const TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-              ),
+            Row(
+              children: [
+                Icon(Icons.wifi_tethering, color: Colors.blue.shade600, size: 28),
+                const SizedBox(width: 12),
+                Text(
+                  'WebSocket Server',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.grey.shade800,
+                  ),
+                ),
+              ],
             ),
             const SizedBox(height: 20),
-            TextField(
-              controller: _hostController,
-              decoration: InputDecoration(
-                labelText: localization.get('pc_ip_address'),
-                hintText: '192.168.1.100',
-                prefixIcon: const Icon(Icons.computer_rounded),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                enabledBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  borderSide: BorderSide(color: Colors.grey.shade300),
-                ),
-                focusedBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  borderSide: const BorderSide(color: Colors.blue, width: 2),
-                ),
-                filled: true,
-                fillColor: Colors.grey.shade50,
+
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Colors.grey.shade100,
+                borderRadius: BorderRadius.circular(12),
               ),
-              keyboardType: TextInputType.url,
-              enabled: !_isConnecting,
-            ),
-            const SizedBox(height: 16),
-            TextField(
-              controller: _portController,
-              decoration: InputDecoration(
-                labelText: localization.get('port'),
-                hintText: '8765',
-                prefixIcon: const Icon(Icons.settings_ethernet_rounded),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                enabledBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  borderSide: BorderSide(color: Colors.grey.shade300),
-                ),
-                focusedBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  borderSide: const BorderSide(color: Colors.blue, width: 2),
-                ),
-                filled: true,
-                fillColor: Colors.grey.shade50,
+              child: Column(
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        'IP Address:',
+                        style: TextStyle(
+                          color: Colors.grey.shade600,
+                          fontSize: 14,
+                        ),
+                      ),
+                      Text(
+                        appState.localIpAddress ?? 'Loading...',
+                        style: const TextStyle(
+                          fontFamily: 'monospace',
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        'Port:',
+                        style: TextStyle(
+                          color: Colors.grey.shade600,
+                          fontSize: 14,
+                        ),
+                      ),
+                      const Text(
+                        '8765',
+                        style: TextStyle(
+                          fontFamily: 'monospace',
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
               ),
-              keyboardType: TextInputType.number,
-              enabled: !_isConnecting,
             ),
+
             const SizedBox(height: 24),
+
             ElevatedButton.icon(
-              onPressed:
-                  _permissionsGranted && !_isConnecting ? _connect : null,
-              icon: _isConnecting
+              onPressed: _permissionsGranted && !_isStarting ? _startServer : null,
+              icon: _isStarting
                   ? const SizedBox(
                       width: 20,
                       height: 20,
@@ -279,9 +262,9 @@ class _ConnectionScreenState extends State<ConnectionScreen>
                         color: Colors.white,
                       ),
                     )
-                  : const Icon(Icons.wifi_rounded, size: 24),
+                  : const Icon(Icons.play_arrow_rounded, size: 24),
               label: Text(
-                _isConnecting ? localization.get('connecting') : localization.get('connect_to_pc'),
+                _isStarting ? 'Starting...' : 'Start Server',
                 style: const TextStyle(
                   fontSize: 16,
                   fontWeight: FontWeight.w600,
@@ -290,9 +273,9 @@ class _ConnectionScreenState extends State<ConnectionScreen>
               ),
               style: ElevatedButton.styleFrom(
                 padding: const EdgeInsets.symmetric(vertical: 16),
-                backgroundColor: Colors.blue.shade600,
+                backgroundColor: Colors.green.shade600,
                 foregroundColor: Colors.white,
-                elevation: _permissionsGranted && !_isConnecting ? 3 : 0,
+                elevation: _permissionsGranted && !_isStarting ? 3 : 0,
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(12),
                 ),
@@ -306,7 +289,6 @@ class _ConnectionScreenState extends State<ConnectionScreen>
   }
 
   Widget _buildConnectionGuide() {
-    final localization = context.read<LocalizationService>();
     return Card(
       elevation: 0,
       color: Colors.blue.shade50,
@@ -325,7 +307,7 @@ class _ConnectionScreenState extends State<ConnectionScreen>
                     size: 24, color: Colors.blue.shade700),
                 const SizedBox(width: 10),
                 Text(
-                  localization.get('quick_setup_guide'),
+                  'Quick Setup Guide',
                   style: TextStyle(
                     fontWeight: FontWeight.bold,
                     fontSize: 17,
@@ -335,10 +317,10 @@ class _ConnectionScreenState extends State<ConnectionScreen>
               ],
             ),
             const SizedBox(height: 16),
-            _buildGuideStep('1', localization.get('step_1')),
-            _buildGuideStep('2', localization.get('step_2')),
-            _buildGuideStep('3', localization.get('step_3')),
-            _buildGuideStep('4', localization.get('step_4')),
+            _buildGuideStep('1', 'Start the server on this phone'),
+            _buildGuideStep('2', 'On PC: pip install openbene'),
+            _buildGuideStep('3', 'Use the IP address above in Python'),
+            _buildGuideStep('4', 'Control the robot from PC!'),
           ],
         ),
       ),
@@ -437,8 +419,8 @@ class _ConnectionScreenState extends State<ConnectionScreen>
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
             colors: [
-              theme.colorScheme.primary.withValues(alpha: 0.03),
-              theme.colorScheme.secondary.withValues(alpha: 0.02),
+              theme.colorScheme.primary.withOpacity(0.03),
+              theme.colorScheme.secondary.withOpacity(0.02),
             ],
           ),
         ),
@@ -458,7 +440,7 @@ class _ConnectionScreenState extends State<ConnectionScreen>
                       _buildPermissionWarning(),
                       const SizedBox(height: 20),
                     ],
-                    _buildConnectionForm(),
+                    _buildServerInfo(),
                     const SizedBox(height: 20),
                     _buildConnectionGuide(),
                     const SizedBox(height: 16),
@@ -475,8 +457,6 @@ class _ConnectionScreenState extends State<ConnectionScreen>
   @override
   void dispose() {
     _animationController.dispose();
-    _hostController.dispose();
-    _portController.dispose();
     super.dispose();
   }
 }

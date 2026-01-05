@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(timeout 8 python:*)",
+      "Bash(taskkill:*)",
+      "Bash(tree:*)",
+      "Bash(dir:*)",
+      "Bash(powershell -Command:*)",
+      "Bash(python setup.py:*)",
+      "Bash(cat:*)",
+      "Bash(del:*)"
+    ]
+  }
+}
