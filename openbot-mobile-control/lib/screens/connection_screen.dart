@@ -14,7 +14,7 @@ class ConnectionScreen extends StatefulWidget {
 class _ConnectionScreenState extends State<ConnectionScreen>
     with SingleTickerProviderStateMixin {
   bool _permissionsGranted = false;
-  bool _isStarting = false;
+  bool _isStartingStream = false;
   late AnimationController _animationController;
   late Animation<double> _fadeAnimation;
 
@@ -30,10 +30,35 @@ class _ConnectionScreenState extends State<ConnectionScreen>
       curve: Curves.easeIn,
     );
     _animationController.forward();
-    _checkPermissions();
+    _initializeAndStartServer();
   }
 
-  Future<void> _checkPermissions() async {
+  Future<void> _initializeAndStartServer() async {
+    print('[DEBUG] Initializing and starting server...');
+    final appState = context.read<AppState>();
+
+    // 1. 请求权限
+    final permissions = await appState.requestPermissions();
+    setState(() {
+      _permissionsGranted = permissions['camera'] == true;
+    });
+
+    if (!_permissionsGranted) {
+      print('[DEBUG] Camera permission not granted');
+      return;
+    }
+
+    // 2. 初始化摄像头
+    print('[DEBUG] Initializing camera...');
+    await appState.initializeCamera();
+
+    // 3. 自动启动服务器（等待PC连接）
+    print('[DEBUG] Starting server...');
+    await appState.startServer();
+    print('[DEBUG] Server started, waiting for PC connection...');
+  }
+
+  Future<void> _requestPermissions() async {
     final appState = context.read<AppState>();
     final permissions = await appState.requestPermissions();
 
@@ -43,22 +68,19 @@ class _ConnectionScreenState extends State<ConnectionScreen>
 
     if (_permissionsGranted) {
       await appState.initializeCamera();
+      await appState.startServer();
     }
   }
 
-  Future<void> _startServer() async {
-    if (_isStarting) return;
+  Future<void> _startStreaming() async {
+    if (_isStartingStream) return;
 
-    setState(() => _isStarting = true);
+    setState(() => _isStartingStream = true);
 
     final appState = context.read<AppState>();
-    final success = await appState.startServer();
+    await appState.startStreaming();
 
-    if (success) {
-      await appState.startStreaming();
-    }
-
-    setState(() => _isStarting = false);
+    setState(() => _isStartingStream = false);
   }
 
   Widget _buildHeader() {
@@ -147,7 +169,7 @@ class _ConnectionScreenState extends State<ConnectionScreen>
             SizedBox(
               width: double.infinity,
               child: ElevatedButton.icon(
-                onPressed: _checkPermissions,
+                onPressed: _requestPermissions,
                 icon: const Icon(Icons.refresh_rounded),
                 label: Text(localization.get('grant_permissions')),
                 style: ElevatedButton.styleFrom(
@@ -169,6 +191,9 @@ class _ConnectionScreenState extends State<ConnectionScreen>
 
   Widget _buildServerInfo() {
     final appState = context.watch<AppState>();
+    final isConnected = appState.hasClient;
+    final isServerRunning = appState.serverRunning;
+    final isUsbConnected = appState.usbConnected;
 
     return Card(
       elevation: 2,
@@ -180,80 +205,20 @@ class _ConnectionScreenState extends State<ConnectionScreen>
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Row(
-              children: [
-                Icon(Icons.wifi_tethering, color: Colors.blue.shade600, size: 28),
-                const SizedBox(width: 12),
-                Text(
-                  'WebSocket Server',
-                  style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.grey.shade800,
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 20),
+            // 连接状态指示器
+            _buildConnectionStatus(isServerRunning, isConnected),
 
-            Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: Colors.grey.shade100,
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Column(
-                children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text(
-                        'IP Address:',
-                        style: TextStyle(
-                          color: Colors.grey.shade600,
-                          fontSize: 14,
-                        ),
-                      ),
-                      Text(
-                        appState.localIpAddress ?? 'Loading...',
-                        style: const TextStyle(
-                          fontFamily: 'monospace',
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 8),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text(
-                        'Port:',
-                        style: TextStyle(
-                          color: Colors.grey.shade600,
-                          fontSize: 14,
-                        ),
-                      ),
-                      const Text(
-                        '8765',
-                        style: TextStyle(
-                          fontFamily: 'monospace',
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
+            const SizedBox(height: 16),
+
+            // USB/Arduino 连接状态和按钮
+            _buildUsbConnectionCard(appState, isUsbConnected),
 
             const SizedBox(height: 24),
 
+            // 开始流媒体按钮（只有连接成功后才可用）
             ElevatedButton.icon(
-              onPressed: _permissionsGranted && !_isStarting ? _startServer : null,
-              icon: _isStarting
+              onPressed: isConnected && !_isStartingStream ? _startStreaming : null,
+              icon: _isStartingStream
                   ? const SizedBox(
                       width: 20,
                       height: 20,
@@ -262,9 +227,13 @@ class _ConnectionScreenState extends State<ConnectionScreen>
                         color: Colors.white,
                       ),
                     )
-                  : const Icon(Icons.play_arrow_rounded, size: 24),
+                  : const Icon(Icons.videocam_rounded, size: 24),
               label: Text(
-                _isStarting ? 'Starting...' : 'Start Server',
+                _isStartingStream
+                    ? 'Starting...'
+                    : isConnected
+                        ? 'Start Streaming'
+                        : 'Waiting for PC...',
                 style: const TextStyle(
                   fontSize: 16,
                   fontWeight: FontWeight.w600,
@@ -273,9 +242,9 @@ class _ConnectionScreenState extends State<ConnectionScreen>
               ),
               style: ElevatedButton.styleFrom(
                 padding: const EdgeInsets.symmetric(vertical: 16),
-                backgroundColor: Colors.green.shade600,
+                backgroundColor: isConnected ? Colors.green.shade600 : Colors.grey.shade400,
                 foregroundColor: Colors.white,
-                elevation: _permissionsGranted && !_isStarting ? 3 : 0,
+                elevation: isConnected ? 3 : 0,
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(12),
                 ),
@@ -284,6 +253,237 @@ class _ConnectionScreenState extends State<ConnectionScreen>
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _buildUsbConnectionCard(AppState appState, bool isUsbConnected) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: isUsbConnected
+            ? Colors.green.shade50
+            : Colors.orange.shade50,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: isUsbConnected
+              ? Colors.green.shade200
+              : Colors.orange.shade200,
+          width: 1.5,
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(
+                Icons.usb_rounded,
+                color: isUsbConnected
+                    ? Colors.green.shade600
+                    : Colors.orange.shade600,
+                size: 24,
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'OpenBot Connection',
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                        color: Colors.grey.shade800,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      isUsbConnected
+                          ? 'Connected: ${appState.robotType ?? "OpenBot"}'
+                          : 'Not connected',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: isUsbConnected
+                            ? Colors.green.shade700
+                            : Colors.orange.shade700,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              if (isUsbConnected)
+                Icon(
+                  Icons.check_circle,
+                  color: Colors.green.shade600,
+                  size: 24,
+                ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton.icon(
+              onPressed: isUsbConnected
+                  ? () => appState.disconnectFromRobot()
+                  : () => _connectToRobot(appState),
+              icon: Icon(
+                isUsbConnected ? Icons.link_off : Icons.link,
+                size: 20,
+              ),
+              label: Text(
+                isUsbConnected ? 'Disconnect' : 'Connect to OpenBot',
+                style: const TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              style: ElevatedButton.styleFrom(
+                padding: const EdgeInsets.symmetric(vertical: 12),
+                backgroundColor: isUsbConnected
+                    ? Colors.red.shade400
+                    : Colors.blue.shade600,
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _connectToRobot(AppState appState) async {
+    final success = await appState.connectToRobot();
+    if (!success && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Text('Failed to connect to OpenBot. Make sure USB is connected.'),
+          backgroundColor: Colors.red.shade600,
+        ),
+      );
+    }
+  }
+
+  Widget _buildConnectionStatus(bool isServerRunning, bool isConnected) {
+    final appState = context.watch<AppState>();
+    Color statusColor;
+    IconData statusIcon;
+    String statusText;
+
+    if (isConnected) {
+      statusColor = Colors.green.shade600;
+      statusIcon = Icons.check_circle_rounded;
+      statusText = 'PC Connected';
+    } else if (isServerRunning) {
+      statusColor = Colors.orange.shade600;
+      statusIcon = Icons.sync_rounded;
+      statusText = 'Waiting for PC...';
+    } else {
+      statusColor = Colors.grey.shade600;
+      statusIcon = Icons.circle_outlined;
+      statusText = 'Initializing...';
+    }
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: statusColor.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: statusColor.withValues(alpha: 0.3), width: 1.5),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(statusIcon, color: statusColor, size: 32),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Connection Status',
+                      style: TextStyle(
+                        color: Colors.grey.shade600,
+                        fontSize: 12,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      statusText,
+                      style: TextStyle(
+                        color: statusColor,
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              if (!isConnected && isServerRunning)
+                SizedBox(
+                  width: 24,
+                  height: 24,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2.5,
+                    color: statusColor,
+                  ),
+                ),
+            ],
+          ),
+          // 显示服务器地址信息
+          if (isServerRunning && appState.localIpAddress != null) ...[
+            const SizedBox(height: 12),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.grey.shade100,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Icon(Icons.wifi, size: 16, color: Colors.grey.shade700),
+                      const SizedBox(width: 8),
+                      Text(
+                        'Server Address',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: Colors.grey.shade700,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  SelectableText(
+                    'ws://${appState.localIpAddress}:${appState.serverPort}',
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontFamily: 'monospace',
+                      color: Colors.blue.shade800,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    'IP: ${appState.localIpAddress}  Port: ${appState.serverPort}',
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: Colors.grey.shade600,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ],
       ),
     );
   }
@@ -419,8 +619,8 @@ class _ConnectionScreenState extends State<ConnectionScreen>
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
             colors: [
-              theme.colorScheme.primary.withOpacity(0.03),
-              theme.colorScheme.secondary.withOpacity(0.02),
+              theme.colorScheme.primary.withValues(alpha: 0.03),
+              theme.colorScheme.secondary.withValues(alpha: 0.02),
             ],
           ),
         ),

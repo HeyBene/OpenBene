@@ -8,7 +8,8 @@
       "Bash(powershell -Command:*)",
       "Bash(python setup.py:*)",
       "Bash(cat:*)",
-      "Bash(del:*)"
+      "Bash(del:*)",
+      "Bash(git push:*)"
     ]
   }
 }

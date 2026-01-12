@@ -81,31 +81,35 @@ class CameraService {
     int targetWidth = 640,
   }) async {
     try {
-      // Convert YUV420 to RGB
       final int width = image.width;
       final int height = image.height;
 
-      // Create image from YUV420
+      // Create image buffer
       final img.Image imgImage = img.Image(width: width, height: height);
 
+      // Get plane data
+      final Uint8List yPlane = image.planes[0].bytes;
+      final Uint8List uPlane = image.planes[1].bytes;
+      final Uint8List vPlane = image.planes[2].bytes;
+
+      final int yRowStride = image.planes[0].bytesPerRow;
       final int uvRowStride = image.planes[1].bytesPerRow;
       final int uvPixelStride = image.planes[1].bytesPerPixel ?? 1;
 
       for (int y = 0; y < height; y++) {
         for (int x = 0; x < width; x++) {
-          final int uvIndex =
-              uvPixelStride * (x / 2).floor() + uvRowStride * (y / 2).floor();
-          final int index = y * width + x;
+          final int yIndex = y * yRowStride + x;
+          final int uvIndex = (y ~/ 2) * uvRowStride + (x ~/ 2) * uvPixelStride;
 
-          final yp = image.planes[0].bytes[index];
-          final up = image.planes[1].bytes[uvIndex];
-          final vp = image.planes[2].bytes[uvIndex];
+          // Get YUV values
+          final int yValue = yPlane[yIndex];
+          final int uValue = uPlane[uvIndex];
+          final int vValue = vPlane[uvIndex];
 
-          int r = (yp + vp * 1436 / 1024 - 179).round().clamp(0, 255);
-          int g = (yp - up * 46549 / 131072 + 44 - vp * 93604 / 131072 + 91)
-              .round()
-              .clamp(0, 255);
-          int b = (yp + up * 1814 / 1024 - 227).round().clamp(0, 255);
+          // YUV to RGB conversion (BT.601 standard)
+          int r = ((yValue + 1.402 * (vValue - 128))).round().clamp(0, 255);
+          int g = ((yValue - 0.344136 * (uValue - 128) - 0.714136 * (vValue - 128))).round().clamp(0, 255);
+          int b = ((yValue + 1.772 * (uValue - 128))).round().clamp(0, 255);
 
           imgImage.setPixelRgba(x, y, r, g, b, 255);
         }

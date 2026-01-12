@@ -116,8 +116,11 @@ class NetworkService {
 
   /// 处理新的PC连接
   void _handleNewClient(WebSocket client) {
+    print('[NetworkService] New client connecting...');
+
     // 只允许一个客户端连接
     if (_client != null) {
+      print('[NetworkService] Rejecting: another client already connected');
       client.close(4000, 'Another client is already connected');
       return;
     }
@@ -125,12 +128,15 @@ class NetworkService {
     _client = client;
     _clientAddress = 'PC Connected';
 
+    print('[NetworkService] Client connected! Updating state...');
+
     _updateConnectionState(
       ConnectionStatus.connected,
       message: 'PC connected',
     );
 
     _startHeartbeat();
+    print('[NetworkService] Heartbeat started');
 
     // 监听客户端消息
     client.listen(

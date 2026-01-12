@@ -12,7 +12,7 @@ from openbene import OpenBene
 
 def main():
     # 替换为你手机的IP地址
-    PHONE_IP = "192.168.1.100"
+    PHONE_IP = "192.168.123.125"
 
     print(f"连接到手机: {PHONE_IP}")
 

@@ -18,6 +18,7 @@ import asyncio
 import base64
 import os
 import csv
+import socket
 from datetime import datetime
 from typing import Optional, Callable, Dict, Any, List
 
@@ -52,13 +53,23 @@ class ConnectionError(Exception):
     pass
 
 
+class RobotType:
+    """机器人硬件类型"""
+    RTR_TT = "RTR_TT"      # Arduino Nano, TT电机
+    RTR_520 = "RTR_520"    # ESP32, 520电机
+
+
 class OpenBene:
     """
     OpenBene机器人控制器
 
     使用方法：
+        # 方式1: 手动指定IP
         bot = OpenBene("192.168.1.100")
         bot.connect()
+
+        # 方式2: 自动发现（推荐）
+        bot = OpenBene.auto_connect()
 
         bot.forward(0.5)
         time.sleep(2)
@@ -68,7 +79,99 @@ class OpenBene:
     """
 
     DEFAULT_PORT = 8765
+    DISCOVERY_PORT = 12345
     TIMEOUT = 5.0
+
+    @staticmethod
+    def discover(timeout: float = 5.0) -> Optional[Dict[str, Any]]:
+        """
+        自动发现网络中的OpenBene机器人
+
+        通过监听UDP广播消息来发现手机App
+
+        Args:
+            timeout: 发现超时时间（秒）
+
+        Returns:
+            发现的机器人信息字典，包含 'name', 'ip', 'port'
+            如果未发现则返回 None
+        """
+        logger.info(f"正在搜索OpenBene机器人... (超时: {timeout}秒)")
+
+        try:
+            sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            sock.bind(('', OpenBene.DISCOVERY_PORT))
+            sock.settimeout(1.0)  # 每次接收超时1秒
+
+            start_time = time.time()
+
+            try:
+                # 持续监听直到超时或收到有效消息
+                while time.time() - start_time < timeout:
+                    try:
+                        data, addr = sock.recvfrom(1024)
+                        message = json.loads(data.decode('utf-8'))
+
+                        if message.get('type') == 'discovery':
+                            robot_info = {
+                                'name': message.get('name', 'Unknown'),
+                                'ip': message.get('ip', addr[0]),
+                                'port': message.get('port', OpenBene.DEFAULT_PORT),
+                            }
+                            logger.info(f"发现机器人: {robot_info['name']} @ {robot_info['ip']}:{robot_info['port']}")
+                            return robot_info
+
+                    except socket.timeout:
+                        # 1秒内没收到，继续等待
+                        continue
+                    except json.JSONDecodeError:
+                        # 忽略无效的JSON
+                        continue
+
+                # 超时仍未找到
+                logger.warning("发现超时，未找到机器人")
+                return None
+
+            finally:
+                sock.close()
+
+        except Exception as e:
+            logger.error(f"发现服务错误: {e}")
+            return None
+
+    @classmethod
+    def auto_connect(cls, timeout: float = 10.0, retries: int = 3) -> 'OpenBene':
+        """
+        自动发现并连接到机器人
+
+        Args:
+            timeout: 发现和连接的总超时时间（秒）
+            retries: 发现失败时的重试次数
+
+        Returns:
+            已连接的 OpenBene 实例
+
+        Raises:
+            ConnectionError: 未找到机器人或连接失败
+        """
+        discover_timeout = timeout / 2 / retries
+        robot = None
+
+        for attempt in range(retries):
+            logger.info(f"发现尝试 {attempt + 1}/{retries}...")
+            robot = cls.discover(timeout=discover_timeout)
+            if robot is not None:
+                break
+            if attempt < retries - 1:
+                time.sleep(0.5)
+
+        if robot is None:
+            raise ConnectionError("未发现OpenBene机器人，请确保手机App已启动并连接到同一网络")
+
+        bot = cls(robot['ip'], robot['port'])
+        bot.connect(timeout=timeout / 2)
+        return bot
 
     def __init__(self, ip: str, port: int = DEFAULT_PORT):
         """
@@ -84,6 +187,8 @@ class OpenBene:
         self.ip = ip
         self.port = port
         self.connected = False
+        self.name = "OpenBot"  # 机器人名称
+        self.robot_type = None  # 硬件类型 (RobotType.RTR_TT 或 RobotType.RTR_520)
 
         # WebSocket相关
         self._ws = None
@@ -342,6 +447,82 @@ class OpenBene:
         """停止"""
         return self._send_command("stop")
 
+    # ==================== 带持续时间的控制API ====================
+
+    def move_forward(self, speed: float = 0.5, duration: float = 1.0) -> bool:
+        """
+        前进指定时间后自动停止
+
+        Args:
+            speed: 速度 (0.0 到 1.0)
+            duration: 持续时间（秒），默认1秒
+
+        Example:
+            bot.move_forward()           # 以0.5速度前进1秒
+            bot.move_forward(0.8, 2.0)   # 以0.8速度前进2秒
+        """
+        self.forward(speed)
+        time.sleep(duration)
+        self.stop()
+        return True
+
+    def move_backward(self, speed: float = 0.5, duration: float = 1.0) -> bool:
+        """
+        后退指定时间后自动停止
+
+        Args:
+            speed: 速度 (0.0 到 1.0)
+            duration: 持续时间（秒），默认1秒
+        """
+        self.backward(speed)
+        time.sleep(duration)
+        self.stop()
+        return True
+
+    def rotate_left(self, speed: float = 0.5, duration: float = 1.0) -> bool:
+        """
+        左转指定时间后自动停止
+
+        Args:
+            speed: 速度 (0.0 到 1.0)
+            duration: 持续时间（秒），默认1秒
+        """
+        self.turn_left(speed)
+        time.sleep(duration)
+        self.stop()
+        return True
+
+    def rotate_right(self, speed: float = 0.5, duration: float = 1.0) -> bool:
+        """
+        右转指定时间后自动停止
+
+        Args:
+            speed: 速度 (0.0 到 1.0)
+            duration: 持续时间（秒），默认1秒
+        """
+        self.turn_right(speed)
+        time.sleep(duration)
+        self.stop()
+        return True
+
+    def move(self, left: float, right: float, duration: float = 1.0) -> bool:
+        """
+        双轮独立控制，指定时间后自动停止
+
+        Args:
+            left: 左轮速度 (-1.0 到 1.0)
+            right: 右轮速度 (-1.0 到 1.0)
+            duration: 持续时间（秒），默认1秒
+
+        Example:
+            bot.move(0.3, 0.5)        # 左轮0.3，右轮0.5，持续1秒
+            bot.move(0.5, 0.5, 2.0)   # 前进2秒
+        """
+        self.drive(left, right)
+        time.sleep(duration)
+        self.stop()
+        return True
+
     # ==================== 视频API ====================
 
     def get_frame(self) -> Optional[Any]:
@@ -390,6 +571,31 @@ class OpenBene:
         self._frame_callback = None
         if VIDEO_SUPPORT:
             cv2.destroyAllWindows()
+
+    def video_stream(self):
+        """
+        返回视频帧生成器
+
+        Yields:
+            numpy数组 (BGR格式) 每帧视频
+
+        Example:
+            for frame in bot.video_stream():
+                cv2.imshow("Video", frame)
+                if cv2.waitKey(1) == ord('q'):
+                    break
+        """
+        if not VIDEO_SUPPORT:
+            raise ImportError("需要安装OpenCV: pip install opencv-python")
+
+        try:
+            while self.connected:
+                frame = self.get_frame()
+                if frame is not None:
+                    yield frame
+                time.sleep(0.033)  # ~30fps
+        finally:
+            pass
 
     def _display_loop(self):
         """OpenCV显示循环"""
@@ -525,3 +731,75 @@ class OpenBene:
     def __repr__(self):
         status = "已连接" if self.connected else "未连接"
         return f"OpenBene({self.ip}:{self.port}, {status})"
+
+
+# ==================== 工厂函数 ====================
+
+def openbot_rtr_tt(name: str = "OpenBot", ip: str = None, port: int = 8765) -> OpenBene:
+    """
+    创建并连接到RTR_TT版本的OpenBot
+
+    RTR_TT: Arduino Nano, TT电机
+
+    Args:
+        name: 机器人名称
+        ip: 手机IP地址，如果为None则自动发现
+        port: WebSocket端口，默认8765
+
+    Returns:
+        已连接的 OpenBene 实例
+
+    Example:
+        # 自动发现连接
+        bot = openbot_rtr_tt("my_robot")
+
+        # 指定IP连接
+        bot = openbot_rtr_tt("my_robot", ip="192.168.123.125")
+
+        bot.move_forward()
+        bot.disconnect()
+    """
+    if ip is None:
+        bot = OpenBene.auto_connect()
+    else:
+        bot = OpenBene(ip, port)
+        bot.connect()
+
+    bot.name = name
+    bot.robot_type = RobotType.RTR_TT
+    return bot
+
+
+def openbot_rtr_520(name: str = "OpenBot", ip: str = None, port: int = 8765) -> OpenBene:
+    """
+    创建并连接到RTR_520版本的OpenBot
+
+    RTR_520: ESP32, 520电机
+
+    Args:
+        name: 机器人名称
+        ip: 手机IP地址，如果为None则自动发现
+        port: WebSocket端口，默认8765
+
+    Returns:
+        已连接的 OpenBene 实例
+
+    Example:
+        # 自动发现连接
+        bot = openbot_rtr_520("my_robot")
+
+        # 指定IP连接
+        bot = openbot_rtr_520("my_robot", ip="192.168.123.125")
+
+        bot.move_forward()
+        bot.disconnect()
+    """
+    if ip is None:
+        bot = OpenBene.auto_connect()
+    else:
+        bot = OpenBene(ip, port)
+        bot.connect()
+
+    bot.name = name
+    bot.robot_type = RobotType.RTR_520
+    return bot

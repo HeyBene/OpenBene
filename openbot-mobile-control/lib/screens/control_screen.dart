@@ -18,6 +18,9 @@ class _ControlScreenState extends State<ControlScreen>
   late AnimationController _pulseController;
   late Animation<double> _pulseAnimation;
 
+  // 0: 隐藏, 1: 传感器, 2: 命令日志
+  int _bottomPanelMode = 0;
+
   @override
   void initState() {
     super.initState();
@@ -28,18 +31,13 @@ class _ControlScreenState extends State<ControlScreen>
     _pulseAnimation = Tween<double>(begin: 0.7, end: 1.0).animate(
       CurvedAnimation(parent: _pulseController, curve: Curves.easeInOut),
     );
-    _startStreaming();
+    // Streaming is already started from ConnectionScreen
   }
 
-  Future<void> _startStreaming() async {
+  Future<void> _stopStreaming() async {
     final appState = context.read<AppState>();
-    await appState.startStreaming();
-  }
-
-  Future<void> _stopServer() async {
-    final appState = context.read<AppState>();
-    await appState.stopServer();
-    // Don't use Navigator.pop() - let AppNavigator handle the transition
+    await appState.stopStreaming();
+    // AppNavigator will automatically switch back to ConnectionScreen
   }
 
   @override
@@ -166,7 +164,7 @@ class _ControlScreenState extends State<ControlScreen>
             ),
             child: IconButton(
               icon: const Icon(Icons.logout_rounded),
-              onPressed: _stopServer,
+              onPressed: _stopStreaming,
               tooltip: localization.get('disconnect'),
               color: Colors.white,
             ),
@@ -280,31 +278,135 @@ class _ControlScreenState extends State<ControlScreen>
                 ),
               ),
 
-              // Sensor Dashboard and Command Log Section
-              Expanded(
-                flex: 2,
-                child: Row(
-                  children: [
-                    // Sensor Dashboard
-                    Expanded(
-                      flex: 3,
-                      child: SensorDashboard(
-                        sensorData: appState.latestSensorData,
-                        framesSent: appState.framesSent,
-                        sensorUpdatesSent: appState.sensorUpdatesSent,
-                      ),
-                    ),
-                    // Command Log
-                    Expanded(
-                      flex: 2,
-                      child: _buildCommandLog(appState),
+              // Bottom Panel (toggleable)
+              if (_bottomPanelMode != 0)
+                AnimatedContainer(
+                  duration: const Duration(milliseconds: 200),
+                  height: 200,
+                  child: _bottomPanelMode == 1
+                      ? SensorDashboard(
+                          sensorData: appState.latestSensorData,
+                          framesSent: appState.framesSent,
+                          sensorUpdatesSent: appState.sensorUpdatesSent,
+                        )
+                      : _buildCommandLog(appState),
+                ),
+
+              // Bottom Navigation Bar
+              Container(
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.1),
+                      blurRadius: 8,
+                      offset: const Offset(0, -2),
                     ),
                   ],
+                ),
+                child: SafeArea(
+                  top: false,
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                      children: [
+                        _buildNavButton(
+                          icon: Icons.fullscreen_rounded,
+                          label: 'Full',
+                          isSelected: _bottomPanelMode == 0,
+                          onTap: () => setState(() => _bottomPanelMode = 0),
+                        ),
+                        _buildNavButton(
+                          icon: Icons.sensors_rounded,
+                          label: 'Sensors',
+                          isSelected: _bottomPanelMode == 1,
+                          badge: appState.sensorUpdatesSent > 0 ? '${appState.sensorUpdatesSent}' : null,
+                          onTap: () => setState(() => _bottomPanelMode = 1),
+                        ),
+                        _buildNavButton(
+                          icon: Icons.terminal_rounded,
+                          label: 'Commands',
+                          isSelected: _bottomPanelMode == 2,
+                          badge: appState.commandsReceived > 0 ? '${appState.commandsReceived}' : null,
+                          onTap: () => setState(() => _bottomPanelMode = 2),
+                        ),
+                      ],
+                    ),
+                  ),
                 ),
               ),
             ],
           );
         },
+      ),
+    );
+  }
+
+  Widget _buildNavButton({
+    required IconData icon,
+    required String label,
+    required bool isSelected,
+    required VoidCallback onTap,
+    String? badge,
+  }) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        decoration: BoxDecoration(
+          color: isSelected ? Colors.blue.shade50 : Colors.transparent,
+          borderRadius: BorderRadius.circular(12),
+          border: isSelected
+              ? Border.all(color: Colors.blue.shade200, width: 1.5)
+              : null,
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Stack(
+              clipBehavior: Clip.none,
+              children: [
+                Icon(
+                  icon,
+                  color: isSelected ? Colors.blue.shade700 : Colors.grey.shade600,
+                  size: 24,
+                ),
+                if (badge != null)
+                  Positioned(
+                    right: -8,
+                    top: -4,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                      decoration: BoxDecoration(
+                        color: Colors.red.shade500,
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      constraints: const BoxConstraints(minWidth: 16),
+                      child: Text(
+                        badge,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 10,
+                          fontWeight: FontWeight.bold,
+                        ),
+                        textAlign: TextAlign.center,
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+            const SizedBox(height: 4),
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
+                color: isSelected ? Colors.blue.shade700 : Colors.grey.shade600,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

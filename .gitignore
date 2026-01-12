@@ -30,24 +30,22 @@ venv.bak/
 *.log
 
 # Flutter/Dart
-openbene_app/.dart_tool/
-openbene_app/.flutter-plugins
-openbene_app/.flutter-plugins-dependencies
-openbene_app/.packages
-openbene_app/build/
-openbene_app/.pub-cache/
-openbene_app/.pub/
-openbene_app/pubspec.lock
-openbene_app/android/
-openbene_app/ios/
-openbene_app/linux/
-openbene_app/macos/
-openbene_app/windows/
-openbene_app/web/
-openbene_app/test/
-openbene_app/.metadata
-openbene_app/analysis_options.yaml
-openbene_app/README.md
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.packages
+.pub-cache/
+.pub/
+.metadata
+openbot-mobile-control/build/
+openbot-mobile-control/android/.gradle/
+openbot-mobile-control/android/app/build/
+openbot-mobile-control/android/local.properties
+openbot-mobile-control/ios/
+openbot-mobile-control/linux/
+openbot-mobile-control/macos/
+openbot-mobile-control/windows/
+openbot-mobile-control/web/
 
 # IDE
 .vscode/
@@ -64,3 +62,13 @@ htmlcov/
 .tox/
 .coverage.*
 .cache
+
+# OS
+Thumbs.db
+Desktop.ini
+
+# Claude Code settings (local only)
+.claude/settings.local.json
+
+# Windows reserved names
+nul

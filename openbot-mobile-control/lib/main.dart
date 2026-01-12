@@ -41,11 +41,17 @@ class AppNavigator extends StatelessWidget {
   Widget build(BuildContext context) {
     return Consumer<AppState>(
       builder: (context, appState, child) {
-        final connectionStatus = appState.connectionState.status;
+        final isStreaming = appState.isStreaming;
 
-        if (connectionStatus == ConnectionStatus.connected) {
+        print('[DEBUG] AppNavigator building');
+        print('[DEBUG]   isStreaming: $isStreaming');
+
+        // 只有开始流媒体后才切换到控制页面
+        if (isStreaming) {
+          print('[DEBUG]   -> Showing ControlScreen');
           return const ControlScreen();
         } else {
+          print('[DEBUG]   -> Showing ConnectionScreen');
           return const ConnectionScreen();
         }
       },
