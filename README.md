@@ -78,11 +78,16 @@ python examples/video_display.py
 
 ```
 OpenBene/
-├── openbene_sdk/          # Python SDK
-│   ├── src/               # 核心代码
-│   └── examples/          # 示例脚本
-├── openbot-mobile-control/ # Flutter 手机 App
-└── openbot.ino            # Arduino 固件
+├── .github/                     # GitHub 配置（Issue/PR 模板、Actions 工作流等）
+├── openbene_sdk/                # Python SDK
+│   ├── src/                     # 核心代码
+│   └── examples/                # 示例脚本
+├── openbot-mobile-control/      # Flutter 手机 App（控制端）
+├── openbot.ino                  # Arduino 固件（MCU 端控制电机等）
+├── .gitignore                   # Git 忽略规则（不提交缓存/构建产物等）
+├── LICENSE                      # 开源许可证（MIT）
+├── PROJECT_CONTEXT.md           # 项目背景/设计说明/架构上下文（给开发者理解用）
+└── README.md                    # 项目总览与快速开始（入口文档）
 ```
 
 ## 文档
