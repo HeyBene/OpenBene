@@ -1,0 +1,87 @@
+name: Bug report
+description: Report a reproducible bug
+title: "[Bug] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting a bug! Please fill out the form below so we can reproduce and fix it faster.
+
+  - type: dropdown
+    id: component
+    attributes:
+      label: Component
+      description: Which part is affected?
+      options:
+        - openbene_sdk (Python)
+        - openbot-mobile-control (Flutter app)
+        - firmware / openbot.ino (Arduino/MCU)
+        - docs
+        - other
+    validations:
+      required: true
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: Describe the bug clearly.
+      placeholder: "When I ..., the app/sdk ..., but expected ..."
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: Provide exact steps so we can reproduce the issue.
+      placeholder: |
+        1) ...
+        2) ...
+        3) ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+      placeholder: "I expected ..."
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs / screenshots
+      description: Paste logs or attach screenshots. (Remove any secrets!)
+      render: shell
+    validations:
+      required: false
+
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: Provide your environment details.
+      placeholder: |
+        OS: (macOS/Windows/Linux)
+        Python: (e.g., 3.11.x)
+        SDK version/tag: (e.g., v2.0.0)
+        Phone model + Android/iOS version:
+        App version/tag:
+        MCU/Board: (e.g., Arduino Uno / ESP32)
+        Connection: (USB serial / WiFi / BT)
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: confirmation
+    attributes:
+      label: Confirmation
+      options:
+        - label: I have removed any sensitive information (tokens/keys/passwords) from logs and screenshots
+          required: true
+        - label: I can reproduce this issue consistently
+          required: false
