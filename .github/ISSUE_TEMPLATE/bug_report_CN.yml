@@ -1,0 +1,88 @@
+name: Bug 反馈
+description: 报告一个可复现的问题，帮助我们更快定位与修复
+title: "[Bug] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        感谢你的反馈！请尽量填写完整信息，以便我们快速复现并修复问题。
+
+  - type: dropdown
+    id: component
+    attributes:
+      label: 影响范围（组件）
+      description: 你遇到的问题主要发生在哪一部分？
+      options:
+        - openbene_sdk（Python SDK）
+        - openbot-mobile-control（移动端 App / Flutter）
+        - firmware / openbot.ino（固件 / Arduino / MCU）
+        - docs（文档）
+        - 其他（请在下方说明）
+    validations:
+      required: true
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: 发生了什么？
+      description: 请清晰描述现象（实际发生了什么）。
+      placeholder: "我在……操作时，出现了……；原本我期望……"
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: 复现步骤
+      description: 请按顺序写出可复现步骤（越具体越好）。
+      placeholder: |
+        1) ...
+        2) ...
+        3) ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: 期望结果
+      placeholder: "我期望看到……"
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: 日志 / 截图
+      description: 请粘贴关键日志或上传截图（务必先脱敏，移除 Token/密码/隐私信息）。
+      render: shell
+    validations:
+      required: false
+
+  - type: textarea
+    id: environment
+    attributes:
+      label: 环境信息
+      description: 请尽量填写完整，信息越全越容易定位问题。
+      placeholder: |
+        电脑系统：macOS / Windows / Linux（版本）
+        Python 版本：（如 3.11.x）
+        SDK 版本/Commit：（如 v0.1.0 或 main@xxxx）
+        手机型号 + 系统版本：Android/iOS（版本）
+        App 版本/Commit：（如 v0.1.0 或 main@xxxx）
+        MCU/板子型号：（如 Arduino Uno / ESP32）
+        连接方式：USB 串口 / WiFi / 蓝牙（如适用）
+        串口参数：端口名 + 波特率（如适用）
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: confirmation
+    attributes:
+      label: 提交前确认
+      options:
+        - label: 我确认日志/截图已脱敏，不包含任何密钥（Token/Key）、密码或隐私信息
+          required: true
+        - label: 我可以稳定复现这个问题（或已说明触发条件）
+          required: false
