@@ -90,6 +90,17 @@ OpenBene/
 - [PROJECT_CONTEXT.md](PROJECT_CONTEXT.md) - 技术架构详情
 - [openbene_sdk/README.md](openbene_sdk/README.md) - SDK 详细文档
 
+## 致谢
+
+本项目基于以下开源项目：
+
+- **[OpenBot](https://github.com/isl-org/OpenBot)** - Intel ISL 开发的开源机器人平台
+  - Arduino 固件 (`openbot.ino`) 来自 OpenBot 项目
+  - 原作者：Matthias Mueller 及贡献者
+  - 许可证：MIT License
+
+感谢 OpenBot 团队的出色工作！
+
 ## 许可证
 
-MIT License
+MIT License - 详见 [LICENSE](LICENSE) 文件

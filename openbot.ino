@@ -1,5 +1,13 @@
 // Required App Version: 0.7.0
 // ---------------------------------------------------------------------------
+// OpenBot Firmware
+// Original source: https://github.com/isl-org/OpenBot
+// Copyright (c) 2020-2023 Intel ISL (Matthias Mueller)
+// Licensed under the MIT License
+//
+// This file is part of the OpenBot project and is redistributed under the
+// terms of the MIT License. See LICENSE file for full license text.
+// ---------------------------------------------------------------------------
 // This Arduino Nano sketch accompanies the OpenBot Android application.
 //
 // The sketch has the following functionalities:
