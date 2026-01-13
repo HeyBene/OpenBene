@@ -1,0 +1,68 @@
+name: 功能建议
+description: 提出一个新功能/改进建议，帮助我们规划 Roadmap
+title: "[Feature] "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        感谢你的建议！请尽量把“需求背景 + 具体方案”写清楚，方便我们评估实现成本与优先级。
+
+  - type: dropdown
+    id: component
+    attributes:
+      label: 影响范围（组件）
+      options:
+        - openbene_sdk（Python SDK）
+        - openbot-mobile-control（移动端 App / Flutter）
+        - firmware / openbot.ino（固件 / Arduino / MCU）
+        - docs（文档）
+        - 其他（请在下方说明）
+    validations:
+      required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: 需求背景 / 痛点是什么？
+      description: 你遇到了什么问题？为什么需要这个功能？
+      placeholder: "目前在……场景下，我很难……，因为……"
+    validations:
+      required: true
+
+  - type: textarea
+    id: solution
+    attributes:
+      label: 你希望的解决方案（尽量具体）
+      description: 你期望我们怎么做？最好带上行为、参数、界面或交互细节。
+      placeholder: "建议增加……，当……时……，并且支持……"
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: 替代方案（可选）
+      description: 你考虑过哪些其他做法？为什么不够好？
+      placeholder: "我也考虑过……，但……"
+    validations:
+      required: false
+
+  - type: textarea
+    id: extra
+    attributes:
+      label: 补充信息（可选）
+      description: 相关截图、参考链接、示例、预期效果等。
+    validations:
+      required: false
+
+  - type: dropdown
+    id: priority
+    attributes:
+      label: 优先级
+      options:
+        - 可有可无（Nice to have）
+        - 重要（Important）
+        - 紧急/关键（Critical）
+    validations:
+      required: true
