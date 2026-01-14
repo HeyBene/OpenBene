@@ -17,20 +17,21 @@ OpenBene 赛车风格实时控制
     ESC - 退出
 """
 
+import subprocess
 import sys
 import threading
 import time
 
 sys.path.insert(0, '../src')
 
+# 自动安装 pynput（如果未安装）
 try:
     from pynput import keyboard
 except ImportError:
-    print("需要安装 pynput 库:")
-    print("  pip install pynput")
-    print("或者:")
-    print("  cd openbene_sdk && pip install -e \".[keyboard]\"")
-    sys.exit(1)
+    print("正在自动安装 pynput...")
+    subprocess.check_call([sys.executable, "-m", "pip", "install", "pynput"])
+    from pynput import keyboard
+    print("pynput 安装完成！\n")
 
 from openbene import OpenBene
 
@@ -45,9 +46,25 @@ class RacingController:
         self.running = False
 
         # 转向参数 (可调整以获得不同的手感)
-        self.turn_ratio = 0.4       # 圆弧转弯时内轮速度比例 (0-1)
+        self.turn_ratio = 0.15      # 圆弧转弯时内轮速度比例 (0-1)，更小=转弯更紧
         self.drift_ratio = -0.3     # 漂移时内轮反转比例 (负值)
         self.spin_speed = 0.6       # 原地转向速度
+
+        # 死区补偿：电机在低速时无法启动，需要映射到最小有效速度
+        self.min_motor_speed = 0.35  # 电机最小有效速度 (实测 30-40% 才能动)
+
+    def apply_deadzone(self, value: float) -> float:
+        """死区补偿：将速度映射到电机可动范围
+
+        将 [0.01, 1.0] 映射到 [min_motor_speed, 1.0]
+        这样即使设置 10% 速度，实际发送的也是 35%+ 的值
+        """
+        if abs(value) < 0.01:
+            return 0.0
+        sign = 1 if value > 0 else -1
+        # 将 abs(value) 从 [0.01, 1.0] 映射到 [min_motor_speed, 1.0]
+        mapped = self.min_motor_speed + abs(value) * (1.0 - self.min_motor_speed)
+        return sign * mapped
 
     def calculate_motors(self) -> tuple:
         """根据当前按键计算电机速度"""
@@ -107,6 +124,10 @@ class RacingController:
         # 限制范围
         left_motor = max(-1.0, min(1.0, left_motor))
         right_motor = max(-1.0, min(1.0, right_motor))
+
+        # 应用死区补偿（将低速映射到电机可动范围）
+        left_motor = self.apply_deadzone(left_motor)
+        right_motor = self.apply_deadzone(right_motor)
 
         return left_motor, right_motor
 
