@@ -459,8 +459,14 @@ class OpenBene:
                 if (left, right) != (last_left, last_right):
                     if left == 0 and right == 0:
                         self.stop()
+                        # 同步到数据采集器
+                        if self._recorder and self._recorder.is_recording:
+                            self._recorder.set_command("stop", [0.0, 0.0])
                     else:
                         self.drive(left, right)
+                        # 同步到数据采集器
+                        if self._recorder and self._recorder.is_recording:
+                            self._recorder.set_command("drive", [left, right])
                     last_left, last_right = left, right
 
                     now = time.time()
@@ -471,7 +477,8 @@ class OpenBene:
                             status = f"L:{left:+.2f} R:{right:+.2f}"
                             if 'shift' in pressed_keys:
                                 status += " [DRIFT]"
-                        print(f"\rSpeed {int(current_speed[0] * 100)}% | {status}      ", end='', flush=True)
+                        rec_status = " [REC]" if (self._recorder and self._recorder.is_recording) else ""
+                        print(f"\rSpeed {int(current_speed[0] * 100)}% | {status}{rec_status}      ", end='', flush=True)
                         last_print_time = now
 
                 time.sleep(0.03)
@@ -486,6 +493,15 @@ class OpenBene:
                 elif k in ['-', '_']:
                     current_speed[0] = max(0.1, current_speed[0] - 0.1)
                     print(f"\rSpeed: {int(current_speed[0] * 100)}%                  ")
+                elif k == 'r':
+                    # 切换录制状态
+                    if self._recorder:
+                        if self._recorder.is_recording:
+                            self._recorder.stop()
+                            print(f"\rRecording stopped                    ")
+                        else:
+                            self._recorder.start()
+                            print(f"\rRecording started                    ")
             except AttributeError:
                 if key in [keyboard.Key.shift, keyboard.Key.shift_l, keyboard.Key.shift_r]:
                     pressed_keys.add('shift')
@@ -506,7 +522,8 @@ class OpenBene:
         print("\n  W - Forward    S - Backward")
         print("  A - Left       D - Right")
         print("  Shift+A/D - Drift")
-        print("  +/- - Speed    ESC - Exit")
+        print("  +/- - Speed    R - Record")
+        print("  ESC - Exit")
         print(f"\nSpeed: {int(current_speed[0] * 100)}%")
         print("=" * 50 + "\n")
 
