@@ -362,6 +362,167 @@ class OpenBene:
         """停止数据采集"""
         self.recorder.stop()
 
+    # ==================== 实时控制 ====================
+
+    def realtime_control(self, base_speed: float = 0.7):
+        """
+        启动实时键盘控制
+
+        控制方式:
+            W - 前进
+            S - 后退
+            A - 左转 (边走边转)
+            D - 右转 (边走边转)
+            Shift+A/D - 漂移急转
+            +/- - 调速
+            ESC - 退出
+
+        Args:
+            base_speed: 基础速度 (0.1-1.0)，默认0.7
+        """
+        import subprocess
+        import sys
+        import threading
+
+        # 自动安装 pynput
+        try:
+            from pynput import keyboard
+        except ImportError:
+            print("Installing pynput...")
+            subprocess.check_call([sys.executable, "-m", "pip", "install", "pynput"])
+            from pynput import keyboard
+            print("pynput installed!\n")
+
+        # 控制参数
+        turn_ratio = 0.15
+        drift_ratio = -0.3
+        spin_speed = 0.6
+        min_motor_speed = 0.35
+
+        pressed_keys = set()
+        running = [True]
+        current_speed = [base_speed]
+
+        def apply_deadzone(value: float) -> float:
+            if abs(value) < 0.01:
+                return 0.0
+            sign = 1 if value > 0 else -1
+            mapped = min_motor_speed + abs(value) * (1.0 - min_motor_speed)
+            return sign * mapped
+
+        def calculate_motors() -> tuple:
+            keys = pressed_keys
+            speed = current_speed[0]
+
+            drift = 'shift' in keys
+            fwd = 'w' in keys
+            bwd = 's' in keys
+            left = 'a' in keys
+            right = 'd' in keys
+
+            if not (fwd or bwd or left or right):
+                return 0, 0
+
+            base = speed if fwd else (-speed if bwd else 0)
+            left_motor = base
+            right_motor = base
+
+            if left:
+                if drift and base != 0:
+                    left_motor = base * drift_ratio
+                elif base != 0:
+                    left_motor = base * turn_ratio
+                else:
+                    left_motor = -speed * spin_speed
+                    right_motor = speed * spin_speed
+            elif right:
+                if drift and base != 0:
+                    right_motor = base * drift_ratio
+                elif base != 0:
+                    right_motor = base * turn_ratio
+                else:
+                    left_motor = speed * spin_speed
+                    right_motor = -speed * spin_speed
+
+            left_motor = max(-1.0, min(1.0, apply_deadzone(left_motor)))
+            right_motor = max(-1.0, min(1.0, apply_deadzone(right_motor)))
+
+            return left_motor, right_motor
+
+        def update_loop():
+            last_left, last_right = 0, 0
+            last_print_time = 0
+
+            while running[0]:
+                left, right = calculate_motors()
+
+                if (left, right) != (last_left, last_right):
+                    if left == 0 and right == 0:
+                        self.stop()
+                    else:
+                        self.drive(left, right)
+                    last_left, last_right = left, right
+
+                    now = time.time()
+                    if now - last_print_time > 0.2:
+                        if left == 0 and right == 0:
+                            status = "STOP"
+                        else:
+                            status = f"L:{left:+.2f} R:{right:+.2f}"
+                            if 'shift' in pressed_keys:
+                                status += " [DRIFT]"
+                        print(f"\rSpeed {int(current_speed[0] * 100)}% | {status}      ", end='', flush=True)
+                        last_print_time = now
+
+                time.sleep(0.03)
+
+        def on_press(key):
+            try:
+                k = key.char.lower()
+                pressed_keys.add(k)
+                if k in ['+', '=']:
+                    current_speed[0] = min(1.0, current_speed[0] + 0.1)
+                    print(f"\rSpeed: {int(current_speed[0] * 100)}%                  ")
+                elif k in ['-', '_']:
+                    current_speed[0] = max(0.1, current_speed[0] - 0.1)
+                    print(f"\rSpeed: {int(current_speed[0] * 100)}%                  ")
+            except AttributeError:
+                if key in [keyboard.Key.shift, keyboard.Key.shift_l, keyboard.Key.shift_r]:
+                    pressed_keys.add('shift')
+                elif key == keyboard.Key.esc:
+                    running[0] = False
+                    return False
+
+        def on_release(key):
+            try:
+                pressed_keys.discard(key.char.lower())
+            except AttributeError:
+                if key in [keyboard.Key.shift, keyboard.Key.shift_l, keyboard.Key.shift_r]:
+                    pressed_keys.discard('shift')
+
+        print("\n" + "=" * 50)
+        print("Realtime Control - WASD")
+        print("=" * 50)
+        print("\n  W - Forward    S - Backward")
+        print("  A - Left       D - Right")
+        print("  Shift+A/D - Drift")
+        print("  +/- - Speed    ESC - Exit")
+        print(f"\nSpeed: {int(current_speed[0] * 100)}%")
+        print("=" * 50 + "\n")
+
+        update_thread = threading.Thread(target=update_loop, daemon=True)
+        update_thread.start()
+
+        try:
+            with keyboard.Listener(on_press=on_press, on_release=on_release) as listener:
+                listener.join()
+        except KeyboardInterrupt:
+            pass
+        finally:
+            running[0] = False
+            self.stop()
+            print("\n\nControl stopped")
+
     # ==================== 上下文管理器 ====================
 
     def __enter__(self):
