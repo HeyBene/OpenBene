@@ -94,6 +94,16 @@ OpenBene/
 
 - [PROJECT_CONTEXT.md](PROJECT_CONTEXT.md) - 技术架构详情
 - [openbene_sdk/README.md](openbene_sdk/README.md) - SDK 详细文档
+- [CHANGELOG.md](CHANGELOG.md) - 版本更新日志
+
+## 参与贡献
+
+我们欢迎任何形式的贡献！
+
+- 🐛 [报告 Bug](https://github.com/HeyBene/OpenBene/issues/new?template=bug_report_CN.yml)
+- 💡 [提出建议](https://github.com/HeyBene/OpenBene/issues/new?template=feature_request_CN.yml)
+- 📖 阅读 [贡献指南](CONTRIBUTING.md)
+- 💬 参与 [社区讨论](https://github.com/HeyBene/OpenBene/discussions)
 
 ## 致谢
 
