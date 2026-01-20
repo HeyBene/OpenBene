@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: 💬 社区讨论 | Discussions
+    url: https://github.com/HeyBene/OpenBene/discussions
+    about: 有问题想讨论？在这里交流！| Have questions? Discuss here!
+  - name: 📖 SDK 文档 | Documentation
+    url: https://github.com/HeyBene/OpenBene/blob/main/openbene_sdk/README.md
+    about: 查看 SDK 使用文档 | Check SDK documentation
+  - name: 📋 贡献指南 | Contributing Guide
+    url: https://github.com/HeyBene/OpenBene/blob/main/CONTRIBUTING.md
+    about: 了解如何贡献代码 | Learn how to contribute

@@ -1,0 +1,40 @@
+name: 问题咨询 | Question
+description: 使用上遇到问题？在这里提问 | Have a question about usage?
+title: "[Question] "
+labels: ["question"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        感谢提问！请先查看 [SDK 文档](https://github.com/HeyBene/OpenBene/blob/main/openbene_sdk/README.md) 和 [常见问题](https://github.com/HeyBene/OpenBene/blob/main/openbene_sdk/README.md#常见问题)。
+
+        Thanks for asking! Please check the [SDK docs](https://github.com/HeyBene/OpenBene/blob/main/openbene_sdk/README.md) first.
+
+  - type: textarea
+    id: question
+    attributes:
+      label: 你的问题 | Your Question
+      description: 请清晰描述你的问题
+      placeholder: "我想知道如何..."
+    validations:
+      required: true
+
+  - type: textarea
+    id: tried
+    attributes:
+      label: 已尝试的方法 | What you've tried
+      description: 你已经尝试了什么？
+      placeholder: "我尝试了...，但是..."
+    validations:
+      required: false
+
+  - type: textarea
+    id: environment
+    attributes:
+      label: 环境信息 | Environment
+      placeholder: |
+        操作系统：Windows/macOS/Linux
+        Python 版本：3.x
+        SDK 版本：
+    validations:
+      required: false
