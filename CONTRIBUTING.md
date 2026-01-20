@@ -123,6 +123,54 @@ OpenBene/
 - 在 [Discussions](https://github.com/HeyBene/OpenBene/discussions) 提问
 - 阅读 [SDK 文档](openbene_sdk/README.md)
 
+### 分支管理策略
+
+我们使用 **GitHub Flow** 分支模型：
+
+```
+main (受保护) ← feature/xxx ← 你的开发
+```
+
+**分支命名规范：**
+- `feature/xxx` - 新功能
+- `fix/xxx` - Bug 修复
+- `docs/xxx` - 文档更新
+- `refactor/xxx` - 重构
+
+**注意：** `main` 分支受保护，禁止直接 push，必须通过 PR 合并。
+
+### Code Review 标准
+
+所有 PR 必须经过至少 **1 人审核** 才能合并。
+
+**审核清单：**
+
+| 类别 | 要求 |
+|------|------|
+| **代码质量** | 遵循代码规范（PEP 8 / Dart Style） |
+| **功能完整** | 功能实现完整，无明显 Bug |
+| **测试验证** | 提供测试方法或使用示例 |
+| **文档更新** | 新 API 需更新 README 或文档 |
+| **CHANGELOG** | 重要变更需更新 CHANGELOG.md |
+| **安全检查** | 不包含密钥、Token 等敏感信息 |
+
+**审核者职责：**
+- 48 小时内完成首次审核
+- 提供建设性反馈
+- 及时回复作者的问题
+
+**作者职责：**
+- 及时响应审核意见
+- 解释代码设计决策
+- 修复发现的问题
+
+### PR 合并要求
+
+1. ✅ 至少 1 人 Approve
+2. ✅ 所有对话已解决
+3. ✅ CI 检查通过（如有）
+4. ✅ 与最新 main 分支无冲突
+
 ---
 
 ## English
@@ -215,6 +263,57 @@ pip install -e ".[dev]"
 - Check [Issues](https://github.com/HeyBene/OpenBene/issues) labeled `good first issue`
 - Ask in [Discussions](https://github.com/HeyBene/OpenBene/discussions)
 - Read the [SDK docs](openbene_sdk/README.md)
+
+### Branch Strategy
+
+We use **GitHub Flow** branching model:
+
+```
+main (protected) ← feature/xxx ← your development
+```
+
+**Branch naming:**
+
+- `feature/xxx` - New features
+- `fix/xxx` - Bug fixes
+- `docs/xxx` - Documentation
+- `refactor/xxx` - Refactoring
+
+**Note:** `main` branch is protected. Direct push is disabled; changes must go through PR.
+
+### Code Review Standards
+
+All PRs require at least **1 approval** before merging.
+
+**Review Checklist:**
+
+| Category | Requirement |
+| -------- | ----------- |
+| **Code Quality** | Follows style guide (PEP 8 / Dart Style) |
+| **Completeness** | Feature works correctly, no obvious bugs |
+| **Testing** | Includes test method or usage example |
+| **Documentation** | New APIs documented in README |
+| **CHANGELOG** | Important changes added to CHANGELOG.md |
+| **Security** | No secrets, tokens, or sensitive data |
+
+**Reviewer Responsibilities:**
+
+- Complete first review within 48 hours
+- Provide constructive feedback
+- Respond to author questions promptly
+
+**Author Responsibilities:**
+
+- Respond to review comments
+- Explain design decisions
+- Fix identified issues
+
+### PR Merge Requirements
+
+1. ✅ At least 1 approval
+2. ✅ All conversations resolved
+3. ✅ CI checks pass (if configured)
+4. ✅ No conflicts with main branch
 
 ---
 
