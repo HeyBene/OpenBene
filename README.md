@@ -1,6 +1,12 @@
 # OpenBene
 
+![Python Version](https://img.shields.io/badge/python-3.8%2B-blue)
+![License](https://img.shields.io/badge/license-MIT-green)
+[![GitHub Discussions](https://img.shields.io/github/discussions/HeyBene/OpenBene)](https://github.com/HeyBene/OpenBene/discussions)
+
 **Phone as Body, PC as Brain** - 用 Python 控制 OpenBot 机器人
+
+[![💬 加入讨论](https://img.shields.io/badge/💬_加入讨论-GitHub_Discussions-blue?style=for-the-badge)](https://github.com/HeyBene/OpenBene/discussions)
 
 ## 项目简介
 
