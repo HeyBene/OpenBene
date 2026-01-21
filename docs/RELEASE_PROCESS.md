@@ -52,19 +52,19 @@ version: 2.2.0+1  # 更新版本号
 
 #### 3. 更新 CHANGELOG
 
-在 `CHANGELOG.md` 顶部添加新版本内容：
+在 `CHANGELOG.md` 顶部添加新版本内容（以下为格式示例，请根据实际更改填写）：
 
 ```markdown
-## [2.2.0] - 2026-01-15
+## [X.X.X] - YYYY-MM-DD
 
 ### ✨ 新功能
-- 添加实时键盘控制 `realtime_control()` (#12)
+- 你的新功能描述 (#PR号)
 
 ### 🐛 Bug 修复
-- 修复转弯半径过大问题 (#10)
+- 你的修复描述 (#Issue号)
 
 ### 📝 文档
-- 更新 SDK 使用文档
+- 文档更新描述
 ```
 
 #### 4. 提交版本变更
@@ -175,19 +175,19 @@ version: 2.2.0+1
 
 #### 3. Update CHANGELOG
 
-Add new version at top of `CHANGELOG.md`:
+Add new version at top of `CHANGELOG.md` (format example below, fill in based on actual changes):
 
 ```markdown
-## [2.2.0] - 2026-01-15
+## [X.X.X] - YYYY-MM-DD
 
 ### ✨ New Features
-- Add realtime keyboard control `realtime_control()` (#12)
+- Your new feature description (#PR)
 
 ### 🐛 Bug Fixes
-- Fix turn radius too large (#10)
+- Your fix description (#Issue)
 
 ### 📝 Documentation
-- Update SDK documentation
+- Documentation update description
 ```
 
 #### 4. Commit Version Changes
