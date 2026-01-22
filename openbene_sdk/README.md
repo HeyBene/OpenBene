@@ -3,9 +3,456 @@
 ![Python Version](https://img.shields.io/badge/python-3.8%2B-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
 
-**Phone as Body, PC as Brain** - 用手机控制机器人，用PC运行AI算法。
+**Phone as Body, PC as Brain** - Use your phone to control robots, run AI algorithms on PC.
+
+[English](#english) | [中文](#中文)
+
+---
+
+## English
+
+OpenBene SDK is a Python library that enables you to:
+
+- Connect to the phone App via WebSocket
+- Send control commands (forward, backward, turn)
+- Receive real-time video stream
+- Get sensor data
+- Collect training data
+
+---
+
+### Table of Contents
+
+- [Installation](#installation)
+- [Quick Start for Beginners](#quick-start-for-beginners)
+- [Feature Details](#feature-details)
+- [API Reference](#api-reference)
+- [Example Code](#example-code)
+- [FAQ](#faq)
+
+---
+
+### Installation
+
+#### Method 1: pip install (Recommended)
+
+```bash
+pip install openbene
+```
+
+#### Method 2: Install from source
+
+```bash
+git clone https://github.com/HeyBene/OpenBene.git
+cd OpenBene/openbene_sdk
+pip install -e .
+```
+
+#### Dependencies
+
+SDK will auto-install dependencies. For manual installation:
+
+```bash
+pip install websockets opencv-python numpy pynput
+```
+
+---
+
+### Quick Start for Beginners
+
+#### Step 1: Preparation
+
+1. **Hardware**
+   - OpenBot robot (assembled)
+   - Android phone (with OpenBene App installed)
+   - Computer (Python 3.8+ installed)
+
+2. **Network**
+   - Ensure phone and computer are on **the same WiFi network**
+
+3. **Start Phone App**
+   - Open OpenBene App
+   - Tap "Start Server"
+   - Note the **IP address** shown on screen (e.g., `192.168.1.100`)
+
+#### Step 2: Test Connection
+
+Open terminal on your computer, navigate to SDK directory:
+
+```bash
+cd OpenBene/openbene_sdk
+```
+
+Start Python:
+
+```bash
+python
+```
+
+Enter the following code to test connection (replace IP with your phone's address):
+
+```python
+from openbene import OpenBene
+
+# Create connection (replace with your phone IP)
+bot = OpenBene("192.168.1.100")
+
+# Connect to phone
+bot.connect()
+
+# If you see "Connected", it worked!
+print(bot.connected)  # Should output True
+```
+
+#### Step 3: Control Robot Movement
+
+```python
+# Move forward for 2 seconds
+bot.forward(0.5)
+import time
+time.sleep(2)
+
+# Stop
+bot.stop()
+
+# Turn left for 1 second
+bot.turn_left(0.5)
+time.sleep(1)
+bot.stop()
+
+# Disconnect
+bot.disconnect()
+```
+
+#### Step 4: Realtime Keyboard Control (Recommended)
+
+The most intuitive way to control - use keyboard like playing a game:
+
+```python
+from openbene import OpenBene
+
+bot = OpenBene("192.168.1.100")
+bot.connect()
+
+# Start realtime control
+bot.realtime_control()
+```
+
+**Keyboard Controls:**
+
+| Key | Function |
+|-----|----------|
+| `W` | Forward |
+| `S` | Backward |
+| `A` | Turn left |
+| `D` | Turn right |
+| `W+A` | Forward while turning left (arc) |
+| `W+D` | Forward while turning right (arc) |
+| `Shift+A` | Drift left (sharp turn) |
+| `Shift+D` | Drift right (sharp turn) |
+| `+` / `=` | Speed up |
+| `-` | Slow down |
+| `R` | Start/Stop recording data |
+| `ESC` | Exit control |
+
+---
+
+### Feature Details
+
+#### 1. Video Display
+
+Watch video while controlling robot:
+
+```python
+from openbene import OpenBene
+
+bot = OpenBene("192.168.1.100")
+bot.connect()
+
+# Open video window
+bot.start_video()
+
+# Start keyboard control (video window stays open)
+bot.realtime_control()
+
+# Close video after exit
+bot.stop_video()
+bot.disconnect()
+```
+
+#### 2. Data Collection
+
+Collect training data for AI models:
+
+**Method 1: Collect during realtime control**
+
+```python
+bot.connect()
+bot.start_video()
+bot.realtime_control()  # Press R to start/stop recording
+```
+
+**Method 2: Programmatic collection**
+
+```python
+bot.connect()
+
+# Start collection
+bot.start_recording("./my_dataset")
+
+# Control robot, data is automatically recorded
+bot.forward(0.5)
+time.sleep(5)
+bot.turn_left(0.3)
+time.sleep(2)
+bot.stop()
+
+# Stop collection
+bot.stop_recording()
+bot.disconnect()
+```
+
+**Collected data format:**
+
+```
+my_dataset/
+├── images/           # Video frame images
+│   ├── 000001.jpg
+│   ├── 000002.jpg
+│   └── ...
+└── labels.csv        # Labels file
+```
+
+**labels.csv example:**
+
+| image | timestamp | accel_x | accel_y | accel_z | gyro_x | gyro_y | gyro_z | command | speed_left | speed_right |
+|-------|-----------|---------|---------|---------|--------|--------|--------|---------|------------|-------------|
+| 000001.jpg | 2024-01-05T10:30:00 | 0.1 | 0.2 | 9.8 | 0.0 | 0.0 | 0.0 | drive | 0.5 | 0.5 |
+| 000002.jpg | 2024-01-05T10:30:01 | 0.1 | 0.3 | 9.8 | 0.0 | 0.1 | 0.0 | drive | 0.3 | 0.5 |
+
+#### 3. Sensor Data
+
+Read phone sensors:
+
+```python
+bot.connect()
+
+# Get accelerometer
+accel = bot.get_accelerometer()
+print(f"Acceleration: x={accel['x']}, y={accel['y']}, z={accel['z']}")
+
+# Get gyroscope
+gyro = bot.get_gyroscope()
+print(f"Angular velocity: x={gyro['x']}, y={gyro['y']}, z={gyro['z']}")
+
+# Get all sensors
+sensors = bot.get_sensors()
+print(sensors)
+```
+
+#### 4. Precise Control
+
+Movement commands with duration:
+
+```python
+# Move forward for 2 seconds then auto-stop
+bot.move_forward(speed=0.5, duration=2.0)
+
+# Move backward for 1 second
+bot.move_backward(speed=0.5, duration=1.0)
+
+# Turn left for 0.5 seconds
+bot.rotate_left(speed=0.5, duration=0.5)
+
+# Turn right for 0.5 seconds
+bot.rotate_right(speed=0.5, duration=0.5)
+
+# Custom dual-wheel speed for 1 second
+bot.move(left=0.3, right=0.7, duration=1.0)
+```
+
+#### 5. Direct Module Access
+
+Advanced users can access underlying modules:
+
+```python
+bot.connect()
+
+# Motor module
+bot.motor.drive(0.5, 0.3)
+
+# Video module
+frame = bot.video.get_frame()
+
+# Sensor module
+accel = bot.sensors.get_accelerometer()
+
+# Recording module
+bot.recorder.start("./data")
+```
+
+---
+
+### API Reference
+
+#### Connection Management
+
+| Method | Description |
+|--------|-------------|
+| `OpenBene(ip, port=8765)` | Create controller instance |
+| `connect(timeout=5.0)` | Connect to phone |
+| `disconnect()` | Disconnect |
+| `connected` | Property: connection status |
+
+#### Basic Control
+
+| Method | Description |
+|--------|-------------|
+| `drive(left, right)` | Set left/right wheel speed (-1.0 to 1.0) |
+| `forward(speed=0.5)` | Move forward |
+| `backward(speed=0.5)` | Move backward |
+| `turn_left(speed=0.5)` | Turn left |
+| `turn_right(speed=0.5)` | Turn right |
+| `stop()` | Stop |
+
+#### Timed Control
+
+| Method | Description |
+|--------|-------------|
+| `move_forward(speed, duration)` | Move forward for duration then stop |
+| `move_backward(speed, duration)` | Move backward for duration then stop |
+| `rotate_left(speed, duration)` | Turn left for duration then stop |
+| `rotate_right(speed, duration)` | Turn right for duration then stop |
+| `move(left, right, duration)` | Dual-wheel control for duration then stop |
+
+#### Realtime Control
+
+| Method | Description |
+|--------|-------------|
+| `realtime_control(base_speed=0.7)` | Start keyboard realtime control |
+
+#### Video
+
+| Method | Description |
+|--------|-------------|
+| `start_video(display=True)` | Start video (optional OpenCV window) |
+| `stop_video()` | Stop video |
+| `get_frame()` | Get latest frame (numpy BGR) |
+
+#### Sensors
+
+| Method | Description |
+|--------|-------------|
+| `get_sensors()` | Get all sensor data |
+| `get_accelerometer()` | Get accelerometer (m/s²) |
+| `get_gyroscope()` | Get gyroscope (rad/s) |
+
+#### Data Collection
+
+| Method | Description |
+|--------|-------------|
+| `start_recording(output_dir="./dataset")` | Start data collection |
+| `stop_recording()` | Stop collection |
+
+---
+
+### Example Code
+
+See `examples/` directory:
+
+| File | Description |
+|------|-------------|
+| `basic_control.py` | Basic control example |
+| `video_display.py` | Video display example |
+| `data_collection.py` | Data collection example |
+| `racing_control.py` | Realtime keyboard control example |
+| `autopilot.py` | Autopilot example (color tracking) |
+| `main.py` | Interactive control panel |
+
+Run examples:
+
+```bash
+cd openbene_sdk
+python examples/basic_control.py
+```
+
+---
+
+### FAQ
+
+#### Q: Connection failed?
+
+1. Ensure phone and computer are on **the same WiFi** network
+2. Ensure phone App is started and shows "Server Running"
+3. Check if IP address is correct
+4. Disable computer firewall or allow Python through
+
+#### Q: Robot not moving?
+
+1. Check if robot battery is charged
+2. Check USB connection between phone and robot
+3. Test control on phone App first
+
+#### Q: Video stuttering?
+
+1. Ensure good WiFi signal
+2. Lower video resolution (in App settings)
+3. Close other running programs
+
+#### Q: Keyboard control not responding?
+
+1. Ensure terminal window is focused
+2. First use will auto-install `pynput`, wait for completion
+3. On macOS, grant terminal "Accessibility" permission
+
+---
+
+### Communication Protocol
+
+#### Connection
+
+- **Protocol:** WebSocket
+- **Port:** 8765
+- **Phone:** Server (waits for connection)
+- **PC:** Client (initiates connection)
+
+#### Message Format
+
+**PC → Phone (control commands):**
+
+```json
+{"cmd": "drive", "val": [0.5, 0.5]}
+{"cmd": "stop"}
+```
+
+**Phone → PC (video frames):**
+
+```json
+{
+  "type": "video_frame",
+  "data": "<base64 encoded JPEG>",
+  "timestamp": 1704441600000
+}
+```
+
+**Phone → PC (sensor data):**
+
+```json
+{
+  "type": "sensor_data",
+  "data": {
+    "accelerometer": {"x": 0.1, "y": 0.2, "z": 9.8},
+    "gyroscope": {"x": 0.01, "y": -0.02, "z": 0.0}
+  }
+}
+```
+
+---
+
+## 中文
 
 OpenBene SDK 是一个 Python 库，让你可以：
+
 - 通过 WebSocket 连接到手机 App
 - 发送控制命令（前进、后退、转向）
 - 接收实时视频流
@@ -14,7 +461,7 @@ OpenBene SDK 是一个 Python 库，让你可以：
 
 ---
 
-## 目录
+### 目录
 
 - [安装](#安装)
 - [零基础快速上手](#零基础快速上手)
@@ -25,15 +472,15 @@ OpenBene SDK 是一个 Python 库，让你可以：
 
 ---
 
-## 安装
+### 安装
 
-### 方式1：pip 安装（推荐）
+#### 方式1：pip 安装（推荐）
 
 ```bash
 pip install openbene
 ```
 
-### 方式2：从源码安装
+#### 方式2：从源码安装
 
 ```bash
 git clone https://github.com/HeyBene/OpenBene.git
@@ -41,7 +488,7 @@ cd OpenBene/openbene_sdk
 pip install -e .
 ```
 
-### 依赖库
+#### 依赖库
 
 SDK 会自动安装依赖，如需手动安装：
 
@@ -51,9 +498,9 @@ pip install websockets opencv-python numpy pynput
 
 ---
 
-## 零基础快速上手
+### 零基础快速上手
 
-### 第一步：准备工作
+#### 第一步：准备工作
 
 1. **硬件准备**
    - OpenBot 机器人（已组装）
@@ -68,7 +515,7 @@ pip install websockets opencv-python numpy pynput
    - 点击 "Start Server"
    - 记下屏幕上显示的 **IP 地址**（如 `192.168.1.100`）
 
-### 第二步：测试连接
+#### 第二步：测试连接
 
 打开电脑的命令行（终端），进入 SDK 目录：
 
@@ -97,7 +544,7 @@ bot.connect()
 print(bot.connected)  # 应该输出 True
 ```
 
-### 第三步：控制机器人移动
+#### 第三步：控制机器人移动
 
 ```python
 # 前进 2 秒
@@ -117,7 +564,7 @@ bot.stop()
 bot.disconnect()
 ```
 
-### 第四步：实时键盘控制（推荐）
+#### 第四步：实时键盘控制（推荐）
 
 这是最直观的控制方式，像玩游戏一样用键盘控制机器人：
 
@@ -150,9 +597,9 @@ bot.realtime_control()
 
 ---
 
-## 功能详解
+### 功能详解
 
-### 1. 视频显示
+#### 1. 视频显示
 
 边看视频边控制机器人：
 
@@ -173,7 +620,7 @@ bot.stop_video()
 bot.disconnect()
 ```
 
-### 2. 数据采集
+#### 2. 数据采集
 
 采集训练数据用于 AI 模型：
 
@@ -223,7 +670,7 @@ my_dataset/
 | 000001.jpg | 2024-01-05T10:30:00 | 0.1 | 0.2 | 9.8 | 0.0 | 0.0 | 0.0 | drive | 0.5 | 0.5 |
 | 000002.jpg | 2024-01-05T10:30:01 | 0.1 | 0.3 | 9.8 | 0.0 | 0.1 | 0.0 | drive | 0.3 | 0.5 |
 
-### 3. 传感器数据
+#### 3. 传感器数据
 
 读取手机传感器：
 
@@ -243,7 +690,7 @@ sensors = bot.get_sensors()
 print(sensors)
 ```
 
-### 4. 精确控制
+#### 4. 精确控制
 
 带时间的移动命令：
 
@@ -264,7 +711,7 @@ bot.rotate_right(speed=0.5, duration=0.5)
 bot.move(left=0.3, right=0.7, duration=1.0)
 ```
 
-### 5. 直接访问模块
+#### 5. 直接访问模块
 
 高级用户可以直接访问底层模块：
 
@@ -286,9 +733,9 @@ bot.recorder.start("./data")
 
 ---
 
-## API 参考
+### API 参考
 
-### 连接管理
+#### 连接管理
 
 | 方法 | 说明 |
 |------|------|
@@ -297,7 +744,7 @@ bot.recorder.start("./data")
 | `disconnect()` | 断开连接 |
 | `connected` | 属性：是否已连接 |
 
-### 基础控制
+#### 基础控制
 
 | 方法 | 说明 |
 |------|------|
@@ -308,7 +755,7 @@ bot.recorder.start("./data")
 | `turn_right(speed=0.5)` | 右转 |
 | `stop()` | 停止 |
 
-### 带时间的控制
+#### 带时间的控制
 
 | 方法 | 说明 |
 |------|------|
@@ -318,13 +765,13 @@ bot.recorder.start("./data")
 | `rotate_right(speed, duration)` | 右转指定时间后停止 |
 | `move(left, right, duration)` | 双轮控制指定时间后停止 |
 
-### 实时控制
+#### 实时控制
 
 | 方法 | 说明 |
 |------|------|
 | `realtime_control(base_speed=0.7)` | 启动键盘实时控制 |
 
-### 视频
+#### 视频
 
 | 方法 | 说明 |
 |------|------|
@@ -332,7 +779,7 @@ bot.recorder.start("./data")
 | `stop_video()` | 停止视频 |
 | `get_frame()` | 获取最新帧 (numpy BGR) |
 
-### 传感器
+#### 传感器
 
 | 方法 | 说明 |
 |------|------|
@@ -340,7 +787,7 @@ bot.recorder.start("./data")
 | `get_accelerometer()` | 获取加速度计 (m/s²) |
 | `get_gyroscope()` | 获取陀螺仪 (rad/s) |
 
-### 数据采集
+#### 数据采集
 
 | 方法 | 说明 |
 |------|------|
@@ -349,7 +796,7 @@ bot.recorder.start("./data")
 
 ---
 
-## 示例代码
+### 示例代码
 
 查看 `examples/` 目录：
 
@@ -371,28 +818,28 @@ python examples/basic_control.py
 
 ---
 
-## 常见问题
+### 常见问题
 
-### Q: 连接失败怎么办？
+#### Q: 连接失败怎么办？
 
 1. 确保手机和电脑在**同一个 WiFi** 网络
 2. 确保手机 App 已启动并显示 "Server Running"
 3. 检查 IP 地址是否正确
 4. 关闭电脑防火墙或允许 Python 通过
 
-### Q: 机器人不动怎么办？
+#### Q: 机器人不动怎么办？
 
 1. 检查机器人电池是否有电
 2. 检查手机和机器人的 USB 连接
 3. 在手机 App 上测试控制是否正常
 
-### Q: 视频卡顿怎么办？
+#### Q: 视频卡顿怎么办？
 
 1. 确保 WiFi 信号良好
 2. 降低视频分辨率（在 App 设置中）
 3. 减少同时运行的程序
 
-### Q: 键盘控制没反应？
+#### Q: 键盘控制没反应？
 
 1. 确保终端窗口处于焦点状态
 2. 首次使用会自动安装 `pynput`，等待安装完成
@@ -400,24 +847,26 @@ python examples/basic_control.py
 
 ---
 
-## 通信协议
+### 通信协议
 
-### 连接方式
+#### 连接方式
 
 - **协议:** WebSocket
 - **端口:** 8765
 - **手机:** Server（等待连接）
 - **PC:** Client（主动连接）
 
-### 消息格式
+#### 消息格式
 
 **PC → 手机（控制命令）：**
+
 ```json
 {"cmd": "drive", "val": [0.5, 0.5]}
 {"cmd": "stop"}
 ```
 
 **手机 → PC（视频帧）：**
+
 ```json
 {
   "type": "video_frame",
@@ -427,6 +876,7 @@ python examples/basic_control.py
 ```
 
 **手机 → PC（传感器数据）：**
+
 ```json
 {
   "type": "sensor_data",

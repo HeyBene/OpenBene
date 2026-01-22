@@ -4,11 +4,140 @@
 ![License](https://img.shields.io/badge/license-MIT-green)
 [![GitHub Discussions](https://img.shields.io/github/discussions/HeyBene/OpenBene)](https://github.com/HeyBene/OpenBene/discussions)
 
-**Phone as Body, PC as Brain** - 用 Python 控制 OpenBot 机器人
+**Phone as Body, PC as Brain** - Control OpenBot robots with Python
 
-[![💬 加入讨论](https://img.shields.io/badge/💬_加入讨论-GitHub_Discussions-blue?style=for-the-badge)](https://github.com/HeyBene/OpenBene/discussions)
+[English](#english) | [中文](#中文)
 
-## 项目简介
+[![💬 Join Discussion](https://img.shields.io/badge/💬_Join_Discussion-GitHub_Discussions-blue?style=for-the-badge)](https://github.com/HeyBene/OpenBene/discussions)
+
+---
+
+## English
+
+### Project Overview
+
+OpenBene is a geek development platform based on OpenBot hardware, enabling you to easily control robots with Python.
+
+### Architecture
+
+```
+PC (Python) → WebSocket → Phone App → USB → Arduino → Motors
+```
+
+### Quick Start
+
+#### 1. Install Phone App
+
+Download APK from [GitHub Releases](https://github.com/HeyBene/OpenBene/releases) and install on your Android phone.
+
+#### 2. Install Python SDK
+
+```bash
+cd openbene_sdk
+pip install -e .
+```
+
+#### 3. Connect and Control
+
+1. Ensure phone and computer are on the same WiFi network
+2. Open phone App, note the displayed IP address
+3. Run Python script:
+
+```python
+from openbene import OpenBene
+
+with OpenBene("192.168.1.100") as bot:  # Replace with your phone IP
+    bot.forward(0.5)   # Move forward
+    bot.turn_left(0.5) # Turn left
+    bot.stop()         # Stop
+```
+
+### Control Examples
+
+#### Basic Control
+
+```bash
+python examples/basic_control.py
+```
+
+#### Interactive Console
+
+```bash
+python examples/interactive_control.py
+```
+
+#### Racing Style Control (Realtime Keyboard)
+
+```bash
+pip install -e ".[keyboard]"
+python examples/racing_control.py
+```
+
+Controls:
+
+- **W/S** - Forward/Backward
+- **A/D** - Turn (arc)
+- **W+A/D** - Move while turning
+- **Shift+A/D** - Drift
+- **ESC** - Exit
+
+#### Video Display
+
+```bash
+python examples/video_display.py
+```
+
+### Project Structure
+
+```
+OpenBene/
+├── .github/                     # GitHub config (Issue/PR templates, Actions workflows)
+├── openbene_sdk/                # Python SDK
+│   ├── src/                     # Core code
+│   └── examples/                # Example scripts
+├── openbot-mobile-control/      # Flutter phone App (controller)
+├── openbot.ino                  # Arduino firmware (MCU motor control)
+├── .gitignore                   # Git ignore rules
+├── LICENSE                      # Open source license (MIT)
+├── PROJECT_CONTEXT.md           # Project background/design/architecture context
+└── README.md                    # Project overview and quick start
+```
+
+### Documentation
+
+- [PROJECT_CONTEXT.md](PROJECT_CONTEXT.md) - Technical architecture details
+- [openbene_sdk/README.md](openbene_sdk/README.md) - SDK detailed documentation
+- [CHANGELOG.md](CHANGELOG.md) - Version changelog
+
+### Contributing
+
+We welcome all contributions!
+
+- 🐛 [Report Bug](https://github.com/HeyBene/OpenBene/issues/new?template=bug_report.yml)
+- 💡 [Feature Request](https://github.com/HeyBene/OpenBene/issues/new?template=feature_request.yml)
+- 📖 Read [Contributing Guide](CONTRIBUTING.md)
+- 💬 Join [Community Discussion](https://github.com/HeyBene/OpenBene/discussions)
+
+### Acknowledgments
+
+This project is based on the following open source projects:
+
+- **[OpenBot](https://github.com/isl-org/OpenBot)** - Open source robot platform by Intel ISL
+  - Arduino firmware (`openbot.ino`) from OpenBot project
+  - Original authors: Matthias Mueller and contributors
+  - License: MIT License
+
+Thanks to the OpenBot team for their excellent work!
+
+### License
+
+MIT License - See [LICENSE](LICENSE) file
+
+---
+
+## 中文
+
+### 项目简介
 
 OpenBene 是一个基于 OpenBot 硬件的极客开发平台，让你可以用 Python 轻松控制机器人。
 
@@ -18,20 +147,20 @@ OpenBene 是一个基于 OpenBot 硬件的极客开发平台，让你可以用 P
 PC (Python) → WebSocket → 手机 App → USB → Arduino → 电机
 ```
 
-## 快速开始
+### 快速开始
 
-### 1. 安装手机 App
+#### 1. 安装手机 App
 
 从 [GitHub Releases](https://github.com/HeyBene/OpenBene/releases) 下载 APK 并安装到 Android 手机。
 
-### 2. 安装 Python SDK
+#### 2. 安装 Python SDK
 
 ```bash
 cd openbene_sdk
 pip install -e .
 ```
 
-### 3. 连接并控制
+#### 3. 连接并控制
 
 1. 确保手机和电脑在同一 WiFi 网络
 2. 打开手机 App，记下显示的 IP 地址
@@ -46,21 +175,21 @@ with OpenBene("192.168.1.100") as bot:  # 替换为手机 IP
     bot.stop()         # 停止
 ```
 
-## 控制示例
+### 控制示例
 
-### 基础控制
+#### 基础控制
 
 ```bash
 python examples/basic_control.py
 ```
 
-### 交互式控制台
+#### 交互式控制台
 
 ```bash
 python examples/interactive_control.py
 ```
 
-### 赛车风格控制（实时键盘）
+#### 赛车风格控制（实时键盘）
 
 ```bash
 pip install -e ".[keyboard]"
@@ -74,13 +203,13 @@ python examples/racing_control.py
 - **Shift+A/D** - 漂移
 - **ESC** - 退出
 
-### 视频显示
+#### 视频显示
 
 ```bash
 python examples/video_display.py
 ```
 
-## 项目结构
+### 项目结构
 
 ```
 OpenBene/
@@ -96,13 +225,13 @@ OpenBene/
 └── README.md                    # 项目总览与快速开始（入口文档）
 ```
 
-## 文档
+### 文档
 
 - [PROJECT_CONTEXT.md](PROJECT_CONTEXT.md) - 技术架构详情
 - [openbene_sdk/README.md](openbene_sdk/README.md) - SDK 详细文档
 - [CHANGELOG.md](CHANGELOG.md) - 版本更新日志
 
-## 参与贡献
+### 参与贡献
 
 我们欢迎任何形式的贡献！
 
@@ -111,7 +240,7 @@ OpenBene/
 - 📖 阅读 [贡献指南](CONTRIBUTING.md)
 - 💬 参与 [社区讨论](https://github.com/HeyBene/OpenBene/discussions)
 
-## 致谢
+### 致谢
 
 本项目基于以下开源项目：
 
@@ -122,6 +251,6 @@ OpenBene/
 
 感谢 OpenBot 团队的出色工作！
 
-## 许可证
+### 许可证
 
 MIT License - 详见 [LICENSE](LICENSE) 文件
