@@ -50,6 +50,9 @@ setup(
         # Video streaming support (optional, but recommended)
         "opencv-python>=4.5.0",
         "numpy>=1.19.0",
+
+        # MQTT support for smart home devices
+        "paho-mqtt>=1.6.0",
     ],
 
     # Optional dependencies for advanced features
@@ -68,6 +71,9 @@ setup(
             "opencv-python>=4.5.0",
             "numpy>=1.19.0",
             "pillow>=8.0.0",
+        ],
+        "mqtt": [
+            "paho-mqtt>=1.6.0",
         ],
     },
 

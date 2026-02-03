@@ -58,7 +58,14 @@ from .recording import DataRecorder
 # 设备发现模块
 from .discovery import Discovery
 
-__version__ = '2.2.0'  # 模块化版本
+# MQTT模块
+from .mqtt_connection import (
+    MQTTConnection,
+    MQTTConnectionError,
+    MQTTTopics,
+)
+
+__version__ = '2.3.0'  # 添加MQTT支持
 
 __all__ = [
     # 主类
@@ -75,4 +82,8 @@ __all__ = [
     'SensorManager',
     'DataRecorder',
     'Discovery',
+    # MQTT
+    'MQTTConnection',
+    'MQTTConnectionError',
+    'MQTTTopics',
 ]
