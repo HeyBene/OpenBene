@@ -1,7 +1,10 @@
+import 'lidar_data.dart';
+
 class SensorData {
   final AccelerometerData? accelerometer;
   final GyroscopeData? gyroscope;
   final MagnetometerData? magnetometer;
+  final LiDARData? lidar;
   final double? batteryLevel;
   final double? voltage;
   final DateTime timestamp;
@@ -10,6 +13,7 @@ class SensorData {
     this.accelerometer,
     this.gyroscope,
     this.magnetometer,
+    this.lidar,
     this.batteryLevel,
     this.voltage,
     DateTime? timestamp,
@@ -20,6 +24,7 @@ class SensorData {
       'accelerometer': accelerometer?.toJson(),
       'gyroscope': gyroscope?.toJson(),
       'magnetometer': magnetometer?.toJson(),
+      'lidar': lidar?.toJson(),
       'battery_level': batteryLevel,
       'voltage': voltage,
       'timestamp': timestamp.toIso8601String(),
@@ -36,6 +41,9 @@ class SensorData {
           : null,
       magnetometer: json['magnetometer'] != null
           ? MagnetometerData.fromJson(json['magnetometer'])
+          : null,
+      lidar: json['lidar'] != null
+          ? LiDARData.fromJson(json['lidar'])
           : null,
       batteryLevel: json['battery_level']?.toDouble(),
       voltage: json['voltage']?.toDouble(),
