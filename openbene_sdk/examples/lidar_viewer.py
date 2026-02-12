@@ -5,16 +5,21 @@ Displays real-time depth map from iPhone LiDAR sensor.
 Requires: numpy, opencv-python, matplotlib
 
 Usage:
-    python lidar_viewer.py <iPhone_IP>
+    python lidar_viewer.py <iPhone_IP> [--scale SCALE]
 
 Example:
     python lidar_viewer.py 192.168.1.100
+    python lidar_viewer.py 192.168.1.100 --scale 3
 """
 
 import sys
+import argparse
 import cv2
 import numpy as np
 from openbene import OpenBene
+
+# Default visualization scale factor
+DEFAULT_SCALE = 2
 
 
 def visualize_depth(depth_array, min_depth, max_depth):
@@ -41,12 +46,15 @@ def visualize_depth(depth_array, min_depth, max_depth):
 
 
 def main():
-    if len(sys.argv) < 2:
-        print("Usage: python lidar_viewer.py <iPhone_IP>")
-        print("Example: python lidar_viewer.py 192.168.1.100")
-        sys.exit(1)
+    # Parse command line arguments
+    parser = argparse.ArgumentParser(description='LiDAR Depth Viewer')
+    parser.add_argument('phone_ip', help='iPhone IP address')
+    parser.add_argument('--scale', type=int, default=DEFAULT_SCALE, 
+                       help=f'Visualization scale factor (default: {DEFAULT_SCALE})')
+    args = parser.parse_args()
     
-    phone_ip = sys.argv[1]
+    phone_ip = args.phone_ip
+    scale_factor = args.scale
     
     print(f"Connecting to iPhone at {phone_ip}...")
     bot = OpenBene()
@@ -91,8 +99,8 @@ def main():
                             lidar_data['max_depth']
                         )
                     
-                    # Resize for better visibility (scale 2x)
-                    vis = cv2.resize(vis, (vis.shape[1] * 2, vis.shape[0] * 2), 
+                    # Resize for better visibility (configurable scale factor)
+                    vis = cv2.resize(vis, (vis.shape[1] * scale_factor, vis.shape[0] * scale_factor), 
                                    interpolation=cv2.INTER_NEAREST)
                     
                     # Add info text overlay

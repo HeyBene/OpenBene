@@ -127,6 +127,10 @@ class LiDARBridge: NSObject, FlutterStreamHandler, ARSessionDelegate {
         let floatBuffer = baseAddress.assumingMemoryBound(to: Float32.self)
         let count = width * height
         
+        // Maximum expected LiDAR range (ARKit LiDAR typically works up to 5m, 
+        // but we use 100m as safety threshold for filtering invalid values)
+        let maxLiDARRange: Float32 = 100.0
+        
         // Find min/max depth values and convert to array
         var minDepth: Float32 = Float32.greatestFiniteMagnitude
         var maxDepth: Float32 = 0.0
@@ -135,7 +139,7 @@ class LiDARBridge: NSObject, FlutterStreamHandler, ARSessionDelegate {
         
         for i in 0..<count {
             let depth = floatBuffer[i]
-            if depth > 0 && depth < 100 { // Filter invalid values
+            if depth > 0 && depth < maxLiDARRange { // Filter invalid values
                 minDepth = min(minDepth, depth)
                 maxDepth = max(maxDepth, depth)
             }

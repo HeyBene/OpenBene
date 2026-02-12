@@ -28,8 +28,6 @@ class LiDARService {
     if (_isInitialized) return true;
 
     try {
-      _lidarDataController = StreamController<LiDARData>.broadcast();
-      
       // Check if LiDAR is available on this device
       final available = await _channel.invokeMethod('isLiDARAvailable');
       if (!available) {
@@ -37,6 +35,9 @@ class LiDARService {
         return false;
       }
 
+      // Only create stream controller if LiDAR is available
+      _lidarDataController = StreamController<LiDARData>.broadcast();
+      
       _isInitialized = true;
       print('[LiDARService] Initialized successfully');
       return true;

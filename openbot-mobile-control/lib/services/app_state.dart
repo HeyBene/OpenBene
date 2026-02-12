@@ -209,6 +209,8 @@ class AppState extends ChangeNotifier {
         _latestSensorData = sensorData;
         
         // Combine sensor data with latest LiDAR data if available
+        // Note: We create a new SensorData object only when LiDAR is available
+        // to include the depth information in the network transmission
         if (_latestLidarData != null) {
           final combinedData = SensorData(
             accelerometer: sensorData.accelerometer,

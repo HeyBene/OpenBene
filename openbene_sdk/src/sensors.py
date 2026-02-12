@@ -152,6 +152,8 @@ class SensorManager:
             } or None
         """
         with self._sensor_lock:
+            # Return defensive copy to prevent external modification
+            # Note: The depth_map list itself is not deep-copied for performance
             return self._lidar_depth.copy() if self._lidar_depth else None
     
     def get_depth_image(self) -> Optional[np.ndarray]:
