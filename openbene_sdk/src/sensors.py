@@ -18,6 +18,7 @@ OpenBene Sensors Module - 传感器数据
 import logging
 import threading
 from typing import Optional, Dict, Any
+import numpy as np
 
 from .connection import WebSocketConnection
 
@@ -49,6 +50,7 @@ class SensorManager:
         self._gyroscope: Optional[Dict[str, float]] = None
         self._magnetometer: Optional[Dict[str, float]] = None
         self._battery_level: Optional[float] = None
+        self._lidar_depth: Optional[Dict[str, Any]] = None
 
         # 注册消息回调
         connection.on_message(self._handle_message)
@@ -68,6 +70,7 @@ class SensorManager:
                 self._gyroscope = data.get('gyroscope')
                 self._magnetometer = data.get('magnetometer')
                 self._battery_level = data.get('battery_level')
+                self._lidar_depth = data.get('lidar')
 
         except Exception as e:
             logger.error(f"传感器数据处理错误: {e}")
@@ -81,7 +84,8 @@ class SensorManager:
                 'accelerometer': {'x': float, 'y': float, 'z': float},
                 'gyroscope': {'x': float, 'y': float, 'z': float},
                 'magnetometer': {'x': float, 'y': float, 'z': float},
-                'battery_level': float
+                'battery_level': float,
+                'lidar': {'depth_map': List[float], 'width': int, 'height': int, ...}
             }
         """
         with self._sensor_lock:
@@ -90,6 +94,7 @@ class SensorManager:
                 'gyroscope': self._gyroscope,
                 'magnetometer': self._magnetometer,
                 'battery_level': self._battery_level,
+                'lidar': self._lidar_depth,
             }
 
     def get_accelerometer(self) -> Optional[Dict[str, float]]:
@@ -131,6 +136,39 @@ class SensorManager:
         """
         with self._sensor_lock:
             return self._battery_level
+
+    def get_lidar_depth(self) -> Optional[Dict[str, Any]]:
+        """
+        Get LiDAR depth map data
+        
+        Returns:
+            dict: {
+                'depth_map': List[float],  # Flattened depth values
+                'width': int,
+                'height': int,
+                'min_depth': float,  # meters
+                'max_depth': float,  # meters
+                'timestamp': str
+            } or None
+        """
+        with self._sensor_lock:
+            # Return defensive copy to prevent external modification
+            # Note: The depth_map list itself is not deep-copied for performance
+            return self._lidar_depth.copy() if self._lidar_depth else None
+    
+    def get_depth_image(self) -> Optional[np.ndarray]:
+        """
+        Get LiDAR depth as numpy array for visualization
+        
+        Returns:
+            np.ndarray: 2D array of depth values (height x width)
+        """
+        lidar = self.get_lidar_depth()
+        if not lidar:
+            return None
+        
+        depth_map = np.array(lidar['depth_map'])
+        return depth_map.reshape(lidar['height'], lidar['width'])
 
     @property
     def has_data(self) -> bool:
