@@ -10,8 +10,8 @@ dist/
 downloads/
 eggs/
 .eggs/
-lib/
-lib64/
+openbene_sdk/lib/
+openbene_sdk/lib64/
 parts/
 sdist/
 var/
@@ -41,7 +41,10 @@ openbot-mobile-control/build/
 openbot-mobile-control/android/.gradle/
 openbot-mobile-control/android/app/build/
 openbot-mobile-control/android/local.properties
-openbot-mobile-control/ios/
+openbot-mobile-control/ios/Pods/
+openbot-mobile-control/ios/.symlinks/
+openbot-mobile-control/ios/Flutter/Flutter.framework
+openbot-mobile-control/ios/Flutter/Flutter.podspec
 openbot-mobile-control/linux/
 openbot-mobile-control/macos/
 openbot-mobile-control/windows/
