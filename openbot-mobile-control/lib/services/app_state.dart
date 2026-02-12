@@ -2,11 +2,13 @@ import 'dart:async';
 import 'dart:typed_data';
 import 'package:flutter/foundation.dart';
 import '../models/sensor_data.dart';
+import '../models/lidar_data.dart';
 import '../models/connection_state.dart';
 import '../services/camera_service.dart';
 import '../services/sensor_service.dart';
 import '../services/network_service.dart';
 import '../services/permission_service.dart';
+import '../services/lidar_service.dart';
 
 
 /// 控制命令记录
@@ -40,11 +42,13 @@ class AppState extends ChangeNotifier {
   final SensorService _sensorService = SensorService();
   final NetworkService _networkService = NetworkService();
   final PermissionService _permissionService = PermissionService();
+  final LiDARService _lidarService = LiDARService();
 
   ConnectionState _connectionState = ConnectionState(
     status: ConnectionStatus.disconnected,
   );
   SensorData? _latestSensorData;
+  LiDARData? _latestLidarData;
   Uint8List? _latestFrame;
 
   bool _isStreaming = false;
@@ -61,6 +65,7 @@ class AppState extends ChangeNotifier {
   StreamSubscription? _sensorDataSubscription;
   StreamSubscription? _connectionStateSubscription;
   StreamSubscription? _commandSubscription;
+  StreamSubscription? _lidarDataSubscription;
 
   // Getters
   ConnectionState get connectionState => _connectionState;
@@ -84,6 +89,14 @@ class AppState extends ChangeNotifier {
   Future<void> initialize() async {
     await _sensorService.initialize();
     await _networkService.initialize();
+    
+    // Initialize LiDAR service (only available on iOS 14.0+ with LiDAR)
+    try {
+      await _lidarService.initialize();
+      debugPrint('[AppState] LiDAR service initialized');
+    } catch (e) {
+      debugPrint('[AppState] LiDAR not available: $e');
+    }
 
     // 获取本机IP
     _localIpAddress = await _networkService.getLocalIpAddress();
@@ -194,7 +207,21 @@ class AppState extends ChangeNotifier {
       _sensorDataSubscription =
           _sensorService.sensorDataStream?.listen((sensorData) {
         _latestSensorData = sensorData;
-        _networkService.sendSensorData(sensorData);
+        
+        // Combine sensor data with latest LiDAR data if available
+        if (_latestLidarData != null) {
+          final combinedData = SensorData(
+            accelerometer: sensorData.accelerometer,
+            gyroscope: sensorData.gyroscope,
+            magnetometer: sensorData.magnetometer,
+            lidar: _latestLidarData,
+            batteryLevel: sensorData.batteryLevel,
+            voltage: sensorData.voltage,
+          );
+          _networkService.sendSensorData(combinedData);
+        } else {
+          _networkService.sendSensorData(sensorData);
+        }
 
         // Only notify listeners every 3rd update (300ms instead of 100ms)
         uiUpdateCounter++;
@@ -203,6 +230,16 @@ class AppState extends ChangeNotifier {
           notifyListeners();
         }
       });
+
+      // Start LiDAR capture if available
+      if (_lidarService.isInitialized) {
+        await _lidarService.startCapture();
+        _lidarDataSubscription = _lidarService.lidarDataStream?.listen((lidarData) {
+          _latestLidarData = lidarData;
+          // LiDAR data will be included in next sensor update
+        });
+        debugPrint('[AppState] LiDAR capture started');
+      }
 
       _isStreaming = true;
       notifyListeners();
@@ -218,6 +255,13 @@ class AppState extends ChangeNotifier {
     await _sensorService.stopListening();
     await _sensorDataSubscription?.cancel();
     _sensorDataSubscription = null;
+    
+    // Stop LiDAR capture
+    if (_lidarService.isInitialized) {
+      await _lidarService.stopCapture();
+      await _lidarDataSubscription?.cancel();
+      _lidarDataSubscription = null;
+    }
 
     _isStreaming = false;
     notifyListeners();
@@ -240,9 +284,11 @@ class AppState extends ChangeNotifier {
     _sensorDataSubscription?.cancel();
     _connectionStateSubscription?.cancel();
     _commandSubscription?.cancel();
+    _lidarDataSubscription?.cancel();
     _cameraService.dispose();
     _sensorService.dispose();
     _networkService.dispose();
+    _lidarService.dispose();
     super.dispose();
   }
 }
