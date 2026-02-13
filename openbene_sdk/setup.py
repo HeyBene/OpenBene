@@ -4,7 +4,7 @@ OpenBene SDK - Python package for OpenBot robot control
 Setup configuration for PyPI distribution.
 """
 
-from setuptools import setup
+from setuptools import setup, find_packages
 from pathlib import Path
 
 # Read README for long description
@@ -36,8 +36,8 @@ setup(
     license="MIT",
 
     # Package discovery
-    package_dir={"openbene": "src"},
-    packages=["openbene"],
+    package_dir={"": "src"},
+    packages=find_packages(where="src"),
 
     # Python version requirement
     python_requires=">=3.8",
