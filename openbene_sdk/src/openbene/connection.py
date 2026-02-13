@@ -32,7 +32,10 @@ logger = logging.getLogger(__name__)
 
 
 class ConnectionError(Exception):
-    """连接失败异常"""
+    """连接失败异常。
+
+    当 WebSocket 连接失败、超时或被拒绝时抛出。
+    """
     pass
 
 
@@ -106,8 +109,11 @@ class WebSocketConnection:
         logger.info(f"已连接到 {self.ip}:{self.port}")
         return True
 
-    def disconnect(self):
-        """断开连接"""
+    def disconnect(self) -> None:
+        """断开与手机的 WebSocket 连接。
+
+        停止事件循环线程并清理所有资源。
+        """
         self._ws_running = False
 
         if self._ws_thread and self._ws_thread.is_alive():
@@ -134,27 +140,31 @@ class WebSocketConnection:
         logger.debug(f"发送: {message}")
         return True
 
-    def on_message(self, callback: Callable[[Dict[str, Any]], None]):
-        """
-        注册消息回调
+    def on_message(self, callback: Callable[[Dict[str, Any]], None]) -> None:
+        """注册消息回调函数。
+
+        当收到手机发送的消息时，会调用所有注册的回调函数。
 
         Args:
-            callback: 消息回调函数，接收消息字典
+            callback: 回调函数，接收消息字典作为参数。
         """
         self._message_callbacks.append(callback)
 
-    def remove_callback(self, callback: Callable[[Dict[str, Any]], None]):
-        """
-        移除消息回调
+    def remove_callback(self, callback: Callable[[Dict[str, Any]], None]) -> None:
+        """移除已注册的消息回调函数。
 
         Args:
-            callback: 要移除的回调函数
+            callback: 要移除的回调函数。
         """
         if callback in self._message_callbacks:
             self._message_callbacks.remove(callback)
 
-    def _run_ws_loop(self):
-        """WebSocket事件循环（在独立线程中运行）"""
+    def _run_ws_loop(self) -> None:
+        """运行 WebSocket 事件循环。
+
+        在独立的守护线程中运行异步事件循环，处理 WebSocket 连接。
+        当连接断开或发生错误时，会自动清理资源。
+        """
         try:
             self._ws_loop = asyncio.new_event_loop()
             asyncio.set_event_loop(self._ws_loop)
@@ -167,8 +177,15 @@ class WebSocketConnection:
             if self._ws_loop:
                 self._ws_loop.close()
 
-    async def _ws_handler(self):
-        """WebSocket连接处理"""
+    async def _ws_handler(self) -> None:
+        """处理 WebSocket 连接的主协程。
+
+        建立连接后，并行运行发送和接收任务。
+        当任一任务完成时（通常是因为断开连接），会取消另一个任务。
+
+        Raises:
+            ConnectionError: 当连接失败时抛出。
+        """
         uri = f"ws://{self.ip}:{self.port}"
         try:
             async with websockets.connect(uri) as ws:
@@ -195,8 +212,12 @@ class WebSocketConnection:
             self.connected = False
             self._ws = None
 
-    async def _ws_sender(self):
-        """发送消息到手机"""
+    async def _ws_sender(self) -> None:
+        """发送消息的异步任务。
+
+        从发送队列中获取消息并通过 WebSocket 发送到手机。
+        支持超时机制，避免阻塞。
+        """
         while self._ws_running and self._ws:
             try:
                 msg = await asyncio.wait_for(self._send_queue.get(), timeout=0.1)
@@ -208,8 +229,11 @@ class WebSocketConnection:
                 logger.error(f"发送错误: {e}")
                 break
 
-    async def _ws_receiver(self):
-        """接收手机发来的消息"""
+    async def _ws_receiver(self) -> None:
+        """接收消息的异步任务。
+
+        持续接收手机发送的 WebSocket 消息，解析 JSON 并分发到回调函数。
+        """
         while self._ws_running and self._ws:
             try:
                 message = await self._ws.recv()
@@ -221,8 +245,14 @@ class WebSocketConnection:
                 logger.error(f"接收错误: {e}")
                 break
 
-    def _dispatch_message(self, message: Dict[str, Any]):
-        """分发消息到所有回调"""
+    def _dispatch_message(self, message: Dict[str, Any]) -> None:
+        """分发收到的消息到所有回调函数。
+
+        自动处理心跳消息，其他消息分发到已注册的回调函数。
+
+        Args:
+            message: 解析后的消息字典。
+        """
         msg_type = message.get('type')
 
         # 处理心跳
@@ -237,8 +267,14 @@ class WebSocketConnection:
             except Exception as e:
                 logger.error(f"消息回调错误: {e}")
 
-    def _queue_message(self, message: dict):
-        """添加消息到发送队列"""
+    def _queue_message(self, message: dict) -> None:
+        """将消息添加到发送队列。
+
+        线程安全地将消息放入异步队列，由发送任务处理。
+
+        Args:
+            message: 要发送的消息字典。
+        """
         if self._ws_loop and self._send_queue:
             asyncio.run_coroutine_threadsafe(
                 self._send_queue.put(message),
@@ -247,16 +283,31 @@ class WebSocketConnection:
 
     @property
     def is_connected(self) -> bool:
-        """是否已连接"""
+        """检查是否已连接到手机。
+
+        Returns:
+            如果已连接返回 True，否则返回 False。
+        """
         return self.connected
 
-    def __repr__(self):
+    def __repr__(self) -> str:
+        """返回对象的字符串表示。
+
+        Returns:
+            格式化的字符串，包含 IP、端口和连接状态。
+        """
         status = "已连接" if self.connected else "未连接"
         return f"WebSocketConnection({self.ip}:{self.port}, {status})"
 
-    def __enter__(self):
+    def __enter__(self) -> 'WebSocketConnection':
+        """进入上下文管理器，自动连接。
+
+        Returns:
+            已连接的 WebSocketConnection 实例。
+        """
         self.connect()
         return self
 
-    def __exit__(self, exc_type, exc_val, exc_tb):
+    def __exit__(self, exc_type, exc_val, exc_tb) -> None:
+        """退出上下文管理器，自动断开连接。"""
         self.disconnect()

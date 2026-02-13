@@ -1,5 +1,14 @@
 # OpenBene
 
+> ⚠️ **重要提示 / Important Notice**
+> 
+> **请从 [`openbot-mobile-control/releases/`](openbot-mobile-control/releases/) 文件夹下载最新 APK！**  
+> **Download latest APK from [`openbot-mobile-control/releases/`](openbot-mobile-control/releases/) folder!**
+> 
+> 最新版本 / Latest: **v1.0.6** (支持 UDP 自动发现 / UDP auto-discovery support)
+
+---
+
 ![Python Version](https://img.shields.io/badge/python-3.8%2B-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
 [![GitHub Discussions](https://img.shields.io/github/discussions/HeyBene/OpenBene)](https://github.com/HeyBene/OpenBene/discussions)
@@ -9,6 +18,60 @@
 [English](#english) | [中文](#中文)
 
 [![💬 Join Discussion](https://img.shields.io/badge/💬_Join_Discussion-GitHub_Discussions-blue?style=for-the-badge)](https://github.com/HeyBene/OpenBene/discussions)
+
+---
+
+## 🚀 快速开始 / Quick Start
+
+### 1️⃣ 下载并安装手机 App / Download & Install Mobile App
+
+**✅ 正确下载位置 / Correct Download Location:**
+
+访问: [`openbot-mobile-control/releases/`](openbot-mobile-control/releases/)
+
+下载文件: `openbot-mobile-control-v1.0.6-with-discovery.apk`
+
+**❌ 请勿从其他地方下载！/ Do NOT download from elsewhere!**
+
+### 2️⃣ 安装 Python SDK / Install Python SDK
+
+```bash
+cd openbene_sdk
+pip install -e .
+```
+
+### 3️⃣ 自动连接（推荐）/ Auto-Connect (Recommended)
+
+```python
+from openbene import OpenBene
+
+# 自动发现并连接（无需输入 IP）
+bot = OpenBene.auto_connect()
+
+print(f"✓ Connected to {bot.ip}")
+
+# 控制小车
+bot.forward(0.5)
+import time
+time.sleep(2)
+bot.stop()
+
+bot.disconnect()
+```
+
+### 4️⃣ 验证 App 版本 / Verify App Version
+
+**正确版本界面：**
+- ✅ "Server Address: ws://192.168.x.x:8765"
+- ✅ "Waiting for PC..."
+- ✅ 显示手机 IP（不是输入框）
+
+**错误版本界面：**
+- ❌ "PC IP Address" 输入框
+- ❌ "Connection Settings"
+- ❌ "Enter your PC's IP address"
+
+**如果看到错误界面，请重新下载并安装正确版本。**
 
 ---
 
@@ -28,7 +91,13 @@ PC (Python) → WebSocket → Phone App → USB → Arduino → Motors
 
 #### 1. Install Phone App
 
-Download APK from [GitHub Releases](https://github.com/HeyBene/OpenBene/releases) and install on your Android phone.
+**✅ Correct Download Location:**
+
+Visit: [`openbot-mobile-control/releases/`](openbot-mobile-control/releases/)
+
+Download: `openbot-mobile-control-v1.0.6-with-discovery.apk`
+
+**❌ Do NOT download from elsewhere!**
 
 #### 2. Install Python SDK
 
@@ -37,7 +106,42 @@ cd openbene_sdk
 pip install -e .
 ```
 
-#### 3. Connect and Control
+#### 3. Auto-Connect (Recommended)
+
+```python
+from openbene import OpenBene
+
+# Auto-discover and connect (no IP input needed)
+bot = OpenBene.auto_connect()
+
+print(f"✓ Connected to {bot.ip}")
+
+# Control the robot
+bot.forward(0.5)
+import time
+time.sleep(2)
+bot.stop()
+
+bot.disconnect()
+```
+
+#### 4. Verify App Version
+
+**Correct Version UI:**
+- ✅ "Server Address: ws://192.168.x.x:8765"
+- ✅ "Waiting for PC..."
+- ✅ Shows phone IP (not an input field)
+
+**Wrong Version UI:**
+- ❌ "PC IP Address" input field
+- ❌ "Connection Settings"
+- ❌ "Enter your PC's IP address"
+
+**If you see the wrong UI, please re-download and install the correct version.**
+
+---
+
+#### Old Method: Manual IP Connection
 
 1. Ensure phone and computer are on the same WiFi network
 2. Open phone App, note the displayed IP address

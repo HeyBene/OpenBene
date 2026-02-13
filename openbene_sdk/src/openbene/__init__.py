@@ -53,10 +53,13 @@ from .video import VideoReceiver
 from .sensors import SensorManager
 
 # 数据采集模块
-from .recording import DataRecorder
+from .recording import DataRecorder, DataLogger
 
 # 设备发现模块
 from .discovery import Discovery
+
+# 图像处理模块
+from .processor import ImageProcessor, PassthroughProcessor
 
 # MQTT模块
 from .mqtt_connection import (
@@ -65,7 +68,7 @@ from .mqtt_connection import (
     MQTTTopics,
 )
 
-__version__ = '2.3.0'  # 添加MQTT支持
+__version__ = '2.5.0'  # 添加 DataLogger 灵活数据录制器
 
 __all__ = [
     # 主类
@@ -81,7 +84,11 @@ __all__ = [
     'VideoReceiver',
     'SensorManager',
     'DataRecorder',
+    'DataLogger',
     'Discovery',
+    # 图像处理
+    'ImageProcessor',
+    'PassthroughProcessor',
     # MQTT
     'MQTTConnection',
     'MQTTConnectionError',

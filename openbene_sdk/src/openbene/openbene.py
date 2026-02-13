@@ -34,7 +34,8 @@ import socket
 import json
 import time
 import logging
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, Callable, Generator
+import numpy as np
 
 # 导入各模块
 from .connection import WebSocketConnection, ConnectionError
@@ -224,8 +225,14 @@ class OpenBene:
 
         return result
 
-    def disconnect(self):
-        """断开连接"""
+    def disconnect(self) -> None:
+        """断开与手机的连接。
+
+        清理所有资源，包括停止录制和视频显示。
+
+        Returns:
+            None
+        """
         if self._recorder and self._recorder.is_recording:
             self._recorder.stop()
 
@@ -236,35 +243,67 @@ class OpenBene:
 
     @property
     def connected(self) -> bool:
-        """是否已连接"""
+        """检查是否已连接到手机。
+
+        Returns:
+            如果已连接返回 True，否则返回 False。
+        """
         return self._conn.connected
 
     # ==================== 模块访问 ====================
 
     @property
     def motor(self) -> MotorController:
-        """电机控制器"""
+        """获取电机控制器模块。
+
+        Returns:
+            MotorController 实例，用于控制机器人电机。
+
+        Raises:
+            ConnectionError: 如果尚未连接到手机。
+        """
         if self._motor is None:
             raise ConnectionError("未连接，请先调用 connect()")
         return self._motor
 
     @property
     def video(self) -> VideoReceiver:
-        """视频接收器"""
+        """获取视频接收器模块。
+
+        Returns:
+            VideoReceiver 实例，用于接收和处理视频帧。
+
+        Raises:
+            ConnectionError: 如果尚未连接到手机。
+        """
         if self._video is None:
             raise ConnectionError("未连接，请先调用 connect()")
         return self._video
 
     @property
     def sensors(self) -> SensorManager:
-        """传感器管理器"""
+        """获取传感器管理器模块。
+
+        Returns:
+            SensorManager 实例，用于读取传感器数据。
+
+        Raises:
+            ConnectionError: 如果尚未连接到手机。
+        """
         if self._sensors is None:
             raise ConnectionError("未连接，请先调用 connect()")
         return self._sensors
 
     @property
     def recorder(self) -> DataRecorder:
-        """数据采集器"""
+        """获取数据采集器模块。
+
+        Returns:
+            DataRecorder 实例，用于录制训练数据。
+
+        Raises:
+            ConnectionError: 如果尚未连接到手机。
+        """
         if self._recorder is None:
             raise ConnectionError("未连接，请先调用 connect()")
         return self._recorder
@@ -272,101 +311,228 @@ class OpenBene:
     # ==================== 电机控制（代理到motor模块）====================
 
     def drive(self, left: float, right: float) -> bool:
-        """控制电机速度"""
+        """控制左右电机速度。
+
+        Args:
+            left: 左轮速度，范围 -1.0 到 1.0。正值前进，负值后退。
+            right: 右轮速度，范围 -1.0 到 1.0。正值前进，负值后退。
+
+        Returns:
+            发送成功返回 True。
+
+        Example:
+            >>> bot.drive(0.5, 0.5)   # 直行
+            >>> bot.drive(0.5, -0.5)  # 原地右转
+        """
         return self.motor.drive(left, right)
 
     def forward(self, speed: float = 0.5) -> bool:
-        """前进"""
+        """控制机器人前进。
+
+        Args:
+            speed: 前进速度，范围 0.0 到 1.0，默认 0.5。
+
+        Returns:
+            发送成功返回 True。
+        """
         return self.motor.forward(speed)
 
     def backward(self, speed: float = 0.5) -> bool:
-        """后退"""
+        """控制机器人后退。
+
+        Args:
+            speed: 后退速度，范围 0.0 到 1.0，默认 0.5。
+
+        Returns:
+            发送成功返回 True。
+        """
         return self.motor.backward(speed)
 
     def turn_left(self, speed: float = 0.5) -> bool:
-        """左转"""
+        """控制机器人原地左转。
+
+        Args:
+            speed: 转弯速度，范围 0.0 到 1.0，默认 0.5。
+
+        Returns:
+            发送成功返回 True。
+        """
         return self.motor.turn_left(speed)
 
     def turn_right(self, speed: float = 0.5) -> bool:
-        """右转"""
+        """控制机器人原地右转。
+
+        Args:
+            speed: 转弯速度，范围 0.0 到 1.0，默认 0.5。
+
+        Returns:
+            发送成功返回 True。
+        """
         return self.motor.turn_right(speed)
 
     def stop(self) -> bool:
-        """停止"""
+        """停止机器人所有电机。
+
+        Returns:
+            发送成功返回 True。
+        """
         return self.motor.stop()
 
     # ==================== 带持续时间的控制 ====================
 
     def move_forward(self, speed: float = 0.5, duration: float = 1.0) -> bool:
-        """前进指定时间后自动停止"""
+        """前进指定时间后自动停止。
+
+        Args:
+            speed: 前进速度，范围 0.0 到 1.0，默认 0.5。
+            duration: 持续时间（秒），默认 1.0。
+
+        Returns:
+            发送成功返回 True。
+        """
         return self.motor.move_forward(speed, duration)
 
     def move_backward(self, speed: float = 0.5, duration: float = 1.0) -> bool:
-        """后退指定时间后自动停止"""
+        """后退指定时间后自动停止。
+
+        Args:
+            speed: 后退速度，范围 0.0 到 1.0，默认 0.5。
+            duration: 持续时间（秒），默认 1.0。
+
+        Returns:
+            发送成功返回 True。
+        """
         return self.motor.move_backward(speed, duration)
 
     def rotate_left(self, speed: float = 0.5, duration: float = 1.0) -> bool:
-        """左转指定时间后自动停止"""
+        """原地左转指定时间后自动停止。
+
+        Args:
+            speed: 转弯速度，范围 0.0 到 1.0，默认 0.5。
+            duration: 持续时间（秒），默认 1.0。
+
+        Returns:
+            发送成功返回 True。
+        """
         return self.motor.rotate_left(speed, duration)
 
     def rotate_right(self, speed: float = 0.5, duration: float = 1.0) -> bool:
-        """右转指定时间后自动停止"""
+        """原地右转指定时间后自动停止。
+
+        Args:
+            speed: 转弯速度，范围 0.0 到 1.0，默认 0.5。
+            duration: 持续时间（秒），默认 1.0。
+
+        Returns:
+            发送成功返回 True。
+        """
         return self.motor.rotate_right(speed, duration)
 
     def move(self, left: float, right: float, duration: float = 1.0) -> bool:
-        """双轮独立控制，指定时间后自动停止"""
+        """双轮独立控制，指定时间后自动停止。
+
+        Args:
+            left: 左轮速度，范围 -1.0 到 1.0。
+            right: 右轮速度，范围 -1.0 到 1.0。
+            duration: 持续时间（秒），默认 1.0。
+
+        Returns:
+            发送成功返回 True。
+        """
         return self.motor.move(left, right, duration)
 
     # ==================== 视频（代理到video模块）====================
 
-    def get_frame(self):
-        """获取最新视频帧"""
+    def get_frame(self) -> Optional[np.ndarray]:
+        """获取最新视频帧。
+
+        Returns:
+            numpy 数组格式的图像帧 (BGR格式)，如果没有帧则返回 None。
+        """
         return self.video.get_frame()
 
-    def start_video(self, display: bool = True, callback=None):
-        """开始接收视频"""
+    def start_video(self, display: bool = True, callback: Optional[Callable[[np.ndarray], None]] = None) -> None:
+        """开始接收并显示视频。
+
+        Args:
+            display: 是否显示视频窗口，默认 True。
+            callback: 每帧回调函数，接收 numpy 数组参数。
+        """
         if callback:
             self.video.set_callback(callback)
         if display:
             self.video.start_display()
 
-    def stop_video(self):
-        """停止视频显示"""
+    def stop_video(self) -> None:
+        """停止视频显示窗口。"""
         self.video.stop_display()
 
-    def video_stream(self):
-        """返回视频帧生成器"""
+    def video_stream(self) -> Generator[np.ndarray, None, None]:
+        """获取视频帧生成器。
+
+        Returns:
+            生成器，每次迭代返回一帧图像 (numpy 数组)。
+
+        Example:
+            >>> for frame in bot.video_stream():
+            ...     process(frame)
+        """
         return self.video.stream()
 
     # ==================== 传感器（代理到sensors模块）====================
 
     def get_sensors(self) -> Dict[str, Any]:
-        """获取所有传感器数据"""
+        """获取所有传感器数据。
+
+        Returns:
+            包含所有传感器数据的字典，键包括:
+            - 'accelerometer': 加速度计数据 {x, y, z}
+            - 'gyroscope': 陀螺仪数据 {x, y, z}
+            - 'magnetometer': 磁力计数据 {x, y, z}
+            - 'battery_level': 电池电量百分比
+        """
         return self.sensors.get_all()
 
-    def get_accelerometer(self):
-        """获取加速度计数据"""
+    def get_accelerometer(self) -> Optional[Dict[str, float]]:
+        """获取加速度计数据。
+
+        Returns:
+            包含 x, y, z 轴加速度的字典，单位 m/s²。
+            如果没有数据则返回 None。
+        """
         return self.sensors.get_accelerometer()
 
-    def get_gyroscope(self):
-        """获取陀螺仪数据"""
+    def get_gyroscope(self) -> Optional[Dict[str, float]]:
+        """获取陀螺仪数据。
+
+        Returns:
+            包含 x, y, z 轴角速度的字典，单位 rad/s。
+            如果没有数据则返回 None。
+        """
         return self.sensors.get_gyroscope()
 
     # ==================== 数据采集（代理到recorder模块）====================
 
-    def start_recording(self, output_dir: str = "./dataset"):
-        """开始数据采集"""
+    def start_recording(self, output_dir: str = "./dataset") -> None:
+        """开始数据采集。
+
+        将视频帧和传感器数据保存到指定目录。
+
+        Args:
+            output_dir: 数据保存目录，默认 "./dataset"。
+        """
         self.recorder.start(output_dir)
 
-    def stop_recording(self):
-        """停止数据采集"""
+    def stop_recording(self) -> None:
+        """停止数据采集。"""
         self.recorder.stop()
 
     # ==================== 实时控制 ====================
 
-    def realtime_control(self, base_speed: float = 0.7):
-        """
-        启动实时键盘控制
+    def realtime_control(self, base_speed: float = 0.7) -> None:
+        """启动实时键盘控制。
+
+        使用键盘控制机器人移动，支持漂移和调速功能。
 
         控制方式:
             W - 前进
@@ -375,10 +541,15 @@ class OpenBene:
             D - 右转 (边走边转)
             Shift+A/D - 漂移急转
             +/- - 调速
+            R - 切换录制
             ESC - 退出
 
         Args:
-            base_speed: 基础速度 (0.1-1.0)，默认0.7
+            base_speed: 基础速度，范围 0.1-1.0，默认 0.7。
+
+        Note:
+            此方法会阻塞直到用户按 ESC 退出。
+            首次使用时会自动安装 pynput 库。
         """
         import subprocess
         import sys
@@ -542,14 +713,25 @@ class OpenBene:
 
     # ==================== 上下文管理器 ====================
 
-    def __enter__(self):
+    def __enter__(self) -> 'OpenBene':
+        """进入上下文管理器，自动连接。
+
+        Returns:
+            已连接的 OpenBene 实例。
+        """
         self.connect()
         return self
 
-    def __exit__(self, exc_type, exc_val, exc_tb):
+    def __exit__(self, exc_type, exc_val, exc_tb) -> None:
+        """退出上下文管理器，自动断开连接。"""
         self.disconnect()
 
-    def __repr__(self):
+    def __repr__(self) -> str:
+        """返回对象的字符串表示。
+
+        Returns:
+            格式化的字符串，包含 IP、端口和连接状态。
+        """
         status = "已连接" if self.connected else "未连接"
         return f"OpenBene({self.ip}:{self.port}, {status})"
 

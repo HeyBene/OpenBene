@@ -53,13 +53,25 @@ class SensorManager:
         # 注册消息回调
         connection.on_message(self._handle_message)
 
-    def _handle_message(self, message: Dict[str, Any]):
-        """处理收到的消息"""
+    def _handle_message(self, message: Dict[str, Any]) -> None:
+        """处理收到的 WebSocket 消息。
+
+        筛选传感器数据类型的消息并转发处理。
+
+        Args:
+            message: 解析后的消息字典。
+        """
         if message.get('type') == 'sensor_data':
             self._handle_sensor_data(message)
 
-    def _handle_sensor_data(self, message: Dict[str, Any]):
-        """处理传感器数据"""
+    def _handle_sensor_data(self, message: Dict[str, Any]) -> None:
+        """处理传感器数据消息。
+
+        解析并存储各类传感器数据。
+
+        Args:
+            message: 包含传感器数据的消息字典。
+        """
         try:
             data = message.get('data', {})
 
@@ -134,10 +146,19 @@ class SensorManager:
 
     @property
     def has_data(self) -> bool:
-        """是否有传感器数据"""
+        """检查是否有可用的传感器数据。
+
+        Returns:
+            如果有加速度计或陀螺仪数据返回 True，否则返回 False。
+        """
         with self._sensor_lock:
             return self._accelerometer is not None or self._gyroscope is not None
 
-    def __repr__(self):
+    def __repr__(self) -> str:
+        """返回对象的字符串表示。
+
+        Returns:
+            格式化的字符串，包含数据状态信息。
+        """
         has_data = "有数据" if self.has_data else "无数据"
         return f"SensorManager({has_data})"

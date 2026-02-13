@@ -33,7 +33,10 @@ logger = logging.getLogger(__name__)
 
 
 class MQTTConnectionError(Exception):
-    """MQTT连接失败异常"""
+    """MQTT 连接失败异常。
+
+    当 MQTT 连接失败、超时或被拒绝时抛出。
+    """
     pass
 
 
@@ -150,7 +153,7 @@ class MQTTConnection:
         return True
 
     def disconnect(self) -> None:
-        """断开MQTT连接"""
+        """断开 MQTT 连接并清理资源。"""
         if self._client:
             self._client.loop_stop()
             self._client.disconnect()
@@ -257,20 +260,20 @@ class MQTTConnection:
             return False
 
     def on_message(self, callback: Callable[[str, Dict[str, Any]], None]) -> None:
-        """
-        注册全局消息回调
+        """注册全局消息回调函数。
+
+        当收到任何主题的消息时，会调用所有注册的全局回调函数。
 
         Args:
-            callback: 回调函数，接收 (topic, message) 参数
+            callback: 回调函数，接收 (topic, message) 参数。
         """
         self._message_callbacks.append(callback)
 
     def remove_callback(self, callback: Callable) -> None:
-        """
-        移除消息回调
+        """移除已注册的消息回调函数。
 
         Args:
-            callback: 要移除的回调函数
+            callback: 要移除的回调函数。
         """
         if callback in self._message_callbacks:
             self._message_callbacks.remove(callback)
@@ -288,17 +291,16 @@ class MQTTConnection:
         qos: int = 0,
         retain: bool = False
     ) -> None:
-        """
-        设置遗嘱消息 (Last Will and Testament)
+        """设置遗嘱消息 (Last Will and Testament)。
 
-        当客户端异常断开时，Broker会自动发布此消息。
+        当客户端异常断开时，Broker 会自动发布此消息。
         必须在 connect() 之前调用。
 
         Args:
-            topic: 遗嘱消息主题
-            message: 遗嘱消息内容
-            qos: QoS等级
-            retain: 是否保留
+            topic: 遗嘱消息主题。
+            message: 遗嘱消息内容（字典）。
+            qos: QoS 等级 (0, 1, 2)，默认 0。
+            retain: 是否保留消息，默认 False。
         """
         if self._client is None:
             # 预先创建客户端以设置遗嘱
@@ -308,8 +310,18 @@ class MQTTConnection:
         self._client.will_set(topic, payload, qos=qos, retain=retain)
         logger.debug(f"已设置遗嘱消息: {topic}")
 
-    def _on_connect(self, client, userdata, flags, rc):
-        """连接回调"""
+    def _on_connect(self, client, userdata, flags, rc) -> None:
+        """paho-mqtt 连接回调函数。
+
+        当连接成功或失败时由 paho-mqtt 库调用。
+        自动重新订阅之前的主题（用于重连场景）。
+
+        Args:
+            client: MQTT 客户端实例。
+            userdata: 用户数据（未使用）。
+            flags: 连接标志。
+            rc: 返回码，0 表示成功。
+        """
         if rc == 0:
             self.connected = True
             logger.debug("MQTT连接成功")
@@ -332,16 +344,33 @@ class MQTTConnection:
 
         self._connect_event.set()
 
-    def _on_disconnect(self, client, userdata, rc):
-        """断开连接回调"""
+    def _on_disconnect(self, client, userdata, rc) -> None:
+        """paho-mqtt 断开连接回调函数。
+
+        当连接断开时由 paho-mqtt 库调用。
+
+        Args:
+            client: MQTT 客户端实例。
+            userdata: 用户数据（未使用）。
+            rc: 返回码，0 表示正常断开，非 0 表示异常断开。
+        """
         self.connected = False
         if rc != 0:
             logger.warning(f"MQTT意外断开: rc={rc}")
         else:
             logger.debug("MQTT正常断开")
 
-    def _on_message(self, client, userdata, msg):
-        """消息接收回调"""
+    def _on_message(self, client, userdata, msg) -> None:
+        """paho-mqtt 消息接收回调函数。
+
+        当收到订阅主题的消息时由 paho-mqtt 库调用。
+        解析 JSON 并分发到全局回调和主题专用回调。
+
+        Args:
+            client: MQTT 客户端实例。
+            userdata: 用户数据（未使用）。
+            msg: 消息对象，包含 topic 和 payload。
+        """
         try:
             topic = msg.topic
             payload = json.loads(msg.payload.decode('utf-8'))
@@ -380,7 +409,19 @@ class MQTTConnection:
             logger.error(f"消息处理错误: {e}")
 
     def _topic_matches(self, pattern: str, topic: str) -> bool:
-        """检查主题是否匹配订阅模式"""
+        """检查主题是否匹配订阅模式。
+
+        支持 MQTT 通配符：
+        - '+' 匹配单层
+        - '#' 匹配多层
+
+        Args:
+            pattern: 订阅模式，如 "openbene/+/sensors" 或 "openbene/#"。
+            topic: 实际主题，如 "openbene/bot1/sensors"。
+
+        Returns:
+            如果匹配返回 True，否则返回 False。
+        """
         pattern_parts = pattern.split('/')
         topic_parts = topic.split('/')
 
@@ -397,12 +438,20 @@ class MQTTConnection:
 
     @property
     def is_connected(self) -> bool:
-        """是否已连接"""
+        """检查是否已连接到 MQTT Broker。
+
+        Returns:
+            如果已连接返回 True，否则返回 False。
+        """
         return self.connected
 
     @property
     def subscribed_topics(self) -> List[str]:
-        """已订阅的主题列表"""
+        """获取已订阅的主题列表。
+
+        Returns:
+            已订阅的主题名称列表。
+        """
         with self._lock:
             return list(self._subscriptions.keys())
 
@@ -420,39 +469,93 @@ class MQTTConnection:
 
 # 预定义的主题模板
 class MQTTTopics:
-    """MQTT主题命名规范"""
+    """MQTT 主题命名规范工具类。
+
+    提供标准化的主题名称生成方法，确保主题命名一致性。
+    """
 
     @staticmethod
     def control(device_id: str) -> str:
-        """控制命令主题"""
+        """生成控制命令主题。
+
+        Args:
+            device_id: 设备 ID。
+
+        Returns:
+            控制命令主题，格式: "openbene/{device_id}/control"。
+        """
         return f"openbene/{device_id}/control"
 
     @staticmethod
     def status(device_id: str) -> str:
-        """设备状态主题"""
+        """生成设备状态主题。
+
+        Args:
+            device_id: 设备 ID。
+
+        Returns:
+            设备状态主题，格式: "openbene/{device_id}/status"。
+        """
         return f"openbene/{device_id}/status"
 
     @staticmethod
     def sensors(device_id: str) -> str:
-        """传感器数据主题"""
+        """生成传感器数据主题。
+
+        Args:
+            device_id: 设备 ID。
+
+        Returns:
+            传感器数据主题，格式: "openbene/{device_id}/sensors"。
+        """
         return f"openbene/{device_id}/sensors"
 
     @staticmethod
     def video(device_id: str) -> str:
-        """视频帧主题"""
+        """生成视频帧主题。
+
+        Args:
+            device_id: 设备 ID。
+
+        Returns:
+            视频帧主题，格式: "openbene/{device_id}/video"。
+        """
         return f"openbene/{device_id}/video"
 
     @staticmethod
     def lwt(device_id: str) -> str:
-        """遗嘱消息主题"""
+        """生成遗嘱消息主题。
+
+        Args:
+            device_id: 设备 ID。
+
+        Returns:
+            遗嘱消息主题，格式: "openbene/{device_id}/lwt"。
+        """
         return f"openbene/{device_id}/lwt"
 
     @staticmethod
     def smarthome_set(room: str, device: str) -> str:
-        """智能家居设置命令"""
+        """生成智能家居设置命令主题。
+
+        Args:
+            room: 房间名称。
+            device: 设备名称。
+
+        Returns:
+            设置命令主题，格式: "smarthome/{room}/{device}/set"。
+        """
         return f"smarthome/{room}/{device}/set"
 
     @staticmethod
     def smarthome_state(room: str, device: str) -> str:
-        """智能家居状态反馈"""
+        """生成智能家居状态反馈主题。
+
+        Args:
+            room: 房间名称。
+            device: 设备名称。
+
+        Returns:
+            状态反馈主题，格式: "smarthome/{room}/{device}/state"。
+        """
         return f"smarthome/{room}/{device}/state"

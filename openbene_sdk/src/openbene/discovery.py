@@ -42,16 +42,15 @@ class Discovery:
         self.sock: Optional[socket.socket] = None
         self.running = False
 
-    def start(self, on_discovery: Optional[Callable[[Dict[str, Any]], None]] = None):
-        """
-        Start listening for UDP broadcast messages.
+    def start(self, on_discovery: Optional[Callable[[Dict[str, Any]], None]] = None) -> None:
+        """Start listening for UDP broadcast messages.
 
         This method blocks and continuously listens for discovery messages.
         When a valid message is received, it calls the on_discovery callback
         (if provided) or prints the discovered bot information.
 
         Args:
-            on_discovery (Callable): Optional callback function that receives
+            on_discovery: Optional callback function that receives
                 the parsed discovery data as a dictionary.
 
         Raises:
@@ -103,10 +102,8 @@ class Discovery:
         finally:
             self.stop()
 
-    def stop(self):
-        """
-        Stop the discovery service and close the socket.
-        """
+    def stop(self) -> None:
+        """Stop the discovery service and close the socket."""
         self.running = False
         if self.sock:
             self.sock.close()
@@ -135,9 +132,8 @@ class Discovery:
         return True
 
 
-def main():
-    """
-    Main entry point for testing the Discovery service.
+def main() -> None:
+    """Main entry point for testing the Discovery service.
 
     Runs the discovery service and prints found robots to console.
     Press Ctrl+C to stop.

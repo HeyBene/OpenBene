@@ -38,30 +38,54 @@ Official mobile control application for OpenBot robots. Stream real-time video a
 
 ### For PC Users (Python SDK)
 
-1. **Install Python SDK**
+> ⚠️ **注意 / Note**: Python SDK 现在位于独立项目 `openbene_sdk/`  
+> ⚠️ **Note**: Python SDK is now in separate project `openbene_sdk/`
+
+1. **Install OpenBene SDK**
    ```bash
-   cd python_sdk
-   pip install -r requirements.txt
+   # 导航到 SDK 目录
+   cd ../../openbene_sdk
+   
+   # 安装 SDK
+   pip install -e .
    ```
 
-2. **Run Test Client**
-   ```bash
-   cd python_sdk/examples
-   python test_client.py
-   ```
-
-3. **Use in Your Code**
+2. **Auto-Connect (Recommended)**
    ```python
-   from openbot_sdk import OpenBotClient
-
-   # Create and start client
-   client = OpenBotClient(host="0.0.0.0", port=8765)
-   client.start()
-
-   # Get latest data
-   video_frame = client.get_video_frame()  # JPEG bytes
-   sensor_data = client.get_sensor_data()  # Dict with sensor readings
+   from openbene import OpenBene
+   
+   # 自动发现并连接手机
+   bot = OpenBene.auto_connect()
+   print(f"Connected to {bot.ip}")
+   
+   # 控制机器人
+   bot.forward(0.5)
+   bot.stop()
+   bot.disconnect()
    ```
+
+3. **Manual Connection**
+   ```python
+   from openbene import OpenBene
+   
+   # 手动输入手机IP
+   bot = OpenBene("192.168.1.15", port=8765)
+   bot.connect()
+   
+   # 控制
+   bot.forward(0.5)
+   bot.stop()
+   bot.disconnect()
+   ```
+
+4. **查看更多示例**
+   ```bash
+   cd ../../openbene_sdk/examples
+   python basic_control.py
+   python sdk_demo.py
+   ```
+
+详细的 SDK 文档请查看: [openbene_sdk/README.md](../../openbene_sdk/README.md)
 
 ## 📖 Documentation
 
@@ -71,45 +95,40 @@ Official mobile control application for OpenBot robots. Stream real-time video a
 - Camera: For video streaming
 - Internet: For network communication
 - Network State: To detect connection status
+- WiFi State: For UDP discovery broadcast
 
 **Connection Guide:**
-1. Find your PC's local IP address
-   - Windows: Run `ipconfig` in Command Prompt
-   - macOS/Linux: Run `ifconfig` or `ip addr`
-2. Ensure firewall allows port 8765
-3. Use the same Wi-Fi network for both devices
+1. 手机和电脑连接到同一 WiFi
+2. 打开手机 App，看到 "Waiting for PC..." 状态
+3. 运行 `OpenBene.auto_connect()` 即可自动连接
+4. 或者记下手机显示的 IP，手动连接
 
 ### Python SDK
 
-**Installation:**
-```bash
-pip install -e python_sdk
-```
+**详细文档 / Detailed Documentation:**
+请查看 [openbene_sdk/README.md](../../openbene_sdk/README.md)
 
-**API Reference:**
+**快速参考 / Quick Reference:**
 
 ```python
-client = OpenBotClient(host="0.0.0.0", port=8765)
-client.start()                          # Start server
-client.stop()                           # Stop server
-client.get_video_frame()                # Get latest JPEG frame (bytes)
-client.get_sensor_data()                # Get latest sensor data (dict)
-client.set_video_frame_callback(func)   # Set callback for frames
-client.set_sensor_data_callback(func)   # Set callback for sensor data
-client.is_connected()                   # Check connection status
-client.get_statistics()                 # Get statistics
-```
+from openbene import OpenBene
 
-**Sensor Data Format:**
-```python
-{
-    'accelerometer': {'x': 0.1, 'y': 0.2, 'z': 9.8},  # m/s²
-    'gyroscope': {'x': 0.0, 'y': 0.0, 'z': 0.0},      # rad/s
-    'magnetometer': {'x': 30.0, 'y': -20.0, 'z': 40.0},  # μT
-    'battery_level': 0.85,                             # 0.0-1.0
-    'voltage': 12.6,                                   # V
-    'timestamp': '2025-12-30T12:00:00.000Z'
-}
+# 自动发现 / Auto-discovery
+bot = OpenBene.auto_connect(timeout=10)
+
+# 手动连接 / Manual connection
+bot = OpenBene("192.168.1.15", port=8765)
+bot.connect()
+
+# 运动控制 / Motion control
+bot.forward(speed)    # 前进
+bot.backward(speed)   # 后退
+bot.left(speed)       # 左转
+bot.right(speed)      # 右转
+bot.stop()            # 停止
+
+# 断开连接 / Disconnect
+bot.disconnect()
 ```
 
 ## 🛠️ Development
@@ -125,7 +144,6 @@ client.get_statistics()                 # Get statistics
 ```bash
 # Install dependencies
 flutter pub get
-
 # Run in debug mode
 flutter run
 

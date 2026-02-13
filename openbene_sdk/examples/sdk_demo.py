@@ -3,11 +3,14 @@ OpenBene SDK 新API演示
 
 展示如何使用新的工厂函数和控制方法
 """
-
 import sys
 import os
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
-
+# 从 sys.path 中移除 openbene_sdk 相关路径，强制使用安装的包
+sys.path = [p for p in sys.path if 'openbene_sdk' not in os.path.normpath(p)]
+# 再移除当前目录及父目录
+current_dir = os.path.dirname(os.path.abspath(__file__))
+parent_dir = os.path.dirname(current_dir)
+sys.path = [p for p in sys.path if os.path.normpath(p) not in [current_dir, parent_dir]]
 import openbene
 
 def main():

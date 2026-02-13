@@ -69,13 +69,25 @@ class VideoReceiver:
         # 注册消息回调
         connection.on_message(self._handle_message)
 
-    def _handle_message(self, message: Dict[str, Any]):
-        """处理收到的消息"""
+    def _handle_message(self, message: Dict[str, Any]) -> None:
+        """处理收到的 WebSocket 消息。
+
+        筛选视频帧类型的消息并转发处理。
+
+        Args:
+            message: 解析后的消息字典。
+        """
         if message.get('type') == 'video_frame':
             self._handle_video_frame(message)
 
-    def _handle_video_frame(self, message: Dict[str, Any]):
-        """处理视频帧"""
+    def _handle_video_frame(self, message: Dict[str, Any]) -> None:
+        """处理视频帧消息。
+
+        解码 Base64 编码的 JPEG 数据并存储，调用用户回调。
+
+        Args:
+            message: 包含视频帧数据的消息字典。
+        """
         try:
             base64_data = message.get('data', '')
             jpeg_bytes = base64.b64decode(base64_data)
@@ -125,12 +137,13 @@ class VideoReceiver:
         with self._frame_lock:
             return self._latest_frame
 
-    def start_display(self, window_name: str = "OpenBene Camera"):
-        """
-        开始OpenCV视频显示
+    def start_display(self, window_name: str = "OpenBene Camera") -> None:
+        """开始 OpenCV 视频显示窗口。
+
+        在独立线程中运行视频显示循环，按 'q' 键可关闭窗口。
 
         Args:
-            window_name: 窗口名称
+            window_name: OpenCV 窗口名称，默认 "OpenBene Camera"。
         """
         if not VIDEO_SUPPORT:
             logger.warning("需要安装OpenCV: pip install opencv-python")
@@ -144,15 +157,21 @@ class VideoReceiver:
         )
         self._display_thread.start()
 
-    def stop_display(self):
-        """停止视频显示"""
+    def stop_display(self) -> None:
+        """停止视频显示窗口并清理资源。"""
         self._display_active = False
         self._frame_callback = None
         if VIDEO_SUPPORT:
             cv2.destroyAllWindows()
 
-    def _display_loop(self, window_name: str):
-        """OpenCV显示循环"""
+    def _display_loop(self, window_name: str) -> None:
+        """OpenCV 视频显示循环。
+
+        持续获取帧并显示，直到连接断开或用户按 'q' 键。
+
+        Args:
+            window_name: OpenCV 窗口名称。
+        """
         while self._display_active and self.connection.connected:
             frame = self.get_frame()
             if frame is not None:
@@ -190,21 +209,32 @@ class VideoReceiver:
         finally:
             pass
 
-    def set_callback(self, callback: Optional[Callable[[bytes], None]]):
-        """
-        设置帧回调函数
+    def set_callback(self, callback: Optional[Callable[[bytes], None]]) -> None:
+        """设置帧回调函数。
+
+        每当收到新的视频帧时，会调用此回调函数。
 
         Args:
-            callback: 帧回调函数 callback(jpeg_bytes)
+            callback: 回调函数，接收 JPEG 字节数据作为参数。
+                     传入 None 可清除回调。
         """
         self._frame_callback = callback
 
     @property
     def has_frame(self) -> bool:
-        """是否有可用帧"""
+        """检查是否有可用的视频帧。
+
+        Returns:
+            如果有可用帧返回 True，否则返回 False。
+        """
         with self._frame_lock:
             return self._latest_frame is not None
 
-    def __repr__(self):
+    def __repr__(self) -> str:
+        """返回对象的字符串表示。
+
+        Returns:
+            格式化的字符串，包含帧状态信息。
+        """
         has_frame = "有帧" if self.has_frame else "无帧"
         return f"VideoReceiver({has_frame})"

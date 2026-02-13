@@ -3,7 +3,7 @@
 ## 📁 目录组织 / Directory Organization
 
 ```
-my_app/
+openbot-mobile-control/
 ├── 📱 lib/                          # Flutter应用源代码 / Flutter app source
 │   ├── models/                     # 数据模型 / Data models
 │   │   ├── app_language.dart      # 语言设置 / Language settings
@@ -23,15 +23,6 @@ my_app/
 │   │   └── sensor_dashboard.dart  # 传感器仪表板 / Sensor dashboard
 │   └── main.dart                   # 应用入口 / App entry point
 │
-├── 🖥️ server/                       # 服务器端组件 / Server components
-│   ├── test_server.py             # WebSocket测试服务器 / Test server
-│   ├── python_sdk/                # Python SDK
-│   │   ├── openbot_sdk/          # SDK源码 / SDK source
-│   │   ├── examples/             # 示例代码 / Examples
-│   │   ├── requirements.txt      # Python依赖 / Dependencies
-│   │   └── setup.py              # 安装配置 / Setup config
-│   └── README.md                  # 服务器文档 / Server docs
-│
 ├── 📚 docs/                         # 项目文档 / Documentation
 │   ├── README.md                  # 详细文档 / Detailed docs
 │   ├── CHANGELOG.md               # 更新日志 / Changelog
@@ -39,7 +30,7 @@ my_app/
 │   └── RELEASE_NOTES_v1.0.0.md    # 发布说明 / Release notes
 │
 ├── 📦 releases/                     # 发布文件 / Release files
-│   ├── openbot-mobile-control-v1.0.5.apk
+│   ├── openbot-mobile-control-v1.0.6-with-discovery.apk
 │   └── README.md                  # 版本说明 / Version info
 │
 ├── 🤖 android/                      # Android平台代码 / Android code
@@ -51,8 +42,20 @@ my_app/
 ├── 🧪 test/                         # 单元测试 / Unit tests
 │
 ├── README.md                       # 项目简介 / Project intro
+├── CHANGELOG.md                    # 更新日志 / Changelog
 ├── pubspec.yaml                    # Flutter依赖配置 / Dependencies
 └── .gitignore                      # Git忽略文件 / Git ignore
+
+../openbene_sdk/                    # Python SDK (独立项目 / Separate project)
+├── src/                           # SDK源码 / SDK source
+│   ├── openbene.py               # 主API / Main API
+│   ├── connection.py             # 连接管理 / Connection
+│   └── discovery.py              # UDP自动发现 / UDP discovery
+├── examples/                      # 使用示例 / Usage examples
+│   ├── basic_control.py          # 基础控制 / Basic control
+│   └── sdk_demo.py               # 完整演示 / Full demo
+├── README.md                      # SDK文档 / SDK documentation
+└── setup.py                       # 安装配置 / Setup config
 ```
 
 ## 📋 核心文件说明 / Core Files
@@ -60,18 +63,19 @@ my_app/
 ### 应用代码 / Application Code
 - **lib/main.dart**: 应用入口，设置Provider和路由 / App entry, setup providers
 - **lib/services/app_state.dart**: 核心状态管理 / Core state management
-- **lib/services/network_service.dart**: WebSocket通信 / WebSocket communication
+- **lib/services/network_service.dart**: WebSocket通信 + UDP广播 / WebSocket + UDP broadcast
 - **lib/widgets/sensor_dashboard.dart**: 传感器数据显示 / Sensor data display
 
-### 服务器端 / Server Side
-- **server/test_server.py**: 接收视频和传感器数据的测试服务器 / Test server for data
-- **server/python_sdk/**: Python集成SDK / Python integration SDK
+### Python SDK (独立项目 / Separate Project)
+- **../openbene_sdk/**: Python SDK用于PC端控制 / Python SDK for PC control
+- 支持自动发现和手动连接 / Supports auto-discovery and manual connection
+- 详细文档见 [openbene_sdk/README.md](../openbene_sdk/README.md)
 
 ### 文档 / Documentation
 - **README.md**: 项目概览和快速链接 / Project overview
+- **CHANGELOG.md**: 版本更新历史 / Version history
 - **docs/README.md**: 完整使用文档 / Complete documentation
 - **docs/QUICK_START.md**: 5分钟快速开始 / 5-minute quick start
-- **docs/CHANGELOG.md**: 版本更新历史 / Version history
 
 ### 构建配置 / Build Configuration
 - **pubspec.yaml**: Flutter包依赖 / Flutter dependencies
