@@ -212,8 +212,140 @@ class ObstacleDetector:
         Returns:
             List of detected obstacles
         """
-        # TODO: Implement in Task 3
-        raise NotImplementedError("Detection will be implemented in Task 3")
+        # Step 1: Convert depth map to 3D points
+        points = self._depth_to_points(depth_map)
+        
+        if len(points) == 0:
+            return []
+        
+        # Step 2: Cluster points into obstacles
+        clusters = self._cluster_points(points)
+        
+        # Step 3: Extract obstacle properties
+        obstacles = []
+        for cluster_id, cluster_points in clusters.items():
+            obstacle = self._extract_obstacle_properties(cluster_points, cluster_id)
+            if obstacle:
+                obstacles.append(obstacle)
+        
+        return obstacles
+    
+    def _depth_to_points(self, depth_map: np.ndarray) -> np.ndarray:
+        """
+        Convert depth map to 3D point cloud.
+        
+        Args:
+            depth_map: 2D depth map (height x width)
+            
+        Returns:
+            Nx3 array of (x, y, z) points in meters
+        """
+        height, width = depth_map.shape
+        
+        # Create pixel coordinates
+        v, u = np.mgrid[0:height, 0:width]
+        
+        # Filter valid depths
+        valid_mask = ~np.isnan(depth_map) & (depth_map > 0)
+        
+        u_valid = u[valid_mask]
+        v_valid = v[valid_mask]
+        z_valid = depth_map[valid_mask]
+        
+        # Simple camera model (assume FOV of 90 degrees)
+        # x = (u - width/2) * z / (width/2)
+        # y = (v - height/2) * z / (height/2)
+        
+        x = (u_valid - width / 2) * z_valid / (width / 2)
+        y = (v_valid - height / 2) * z_valid / (height / 2)
+        z = z_valid
+        
+        # Stack into Nx3 array
+        points = np.column_stack([x, y, z])
+        
+        return points
+    
+    def _cluster_points(self, points: np.ndarray) -> dict:
+        """
+        Cluster 3D points into obstacles using DBSCAN.
+        
+        Args:
+            points: Nx3 array of 3D points
+            
+        Returns:
+            Dictionary mapping cluster_id -> cluster_points
+        """
+        from sklearn.cluster import DBSCAN
+        
+        if len(points) == 0:
+            return {}
+        
+        # DBSCAN clustering
+        # eps: maximum distance between points in same cluster (meters)
+        # min_samples: minimum points to form a cluster
+        clustering = DBSCAN(eps=0.3, min_samples=5).fit(points)
+        
+        labels = clustering.labels_
+        
+        # Group points by cluster
+        clusters = {}
+        for label in set(labels):
+            if label == -1:  # Noise points
+                continue
+            
+            cluster_mask = labels == label
+            clusters[label] = points[cluster_mask]
+        
+        return clusters
+    
+    def _extract_obstacle_properties(
+        self, 
+        cluster_points: np.ndarray, 
+        cluster_id: int
+    ) -> Optional[Obstacle]:
+        """
+        Extract obstacle properties from clustered points.
+        
+        Args:
+            cluster_points: Nx3 array of points in cluster
+            cluster_id: Unique cluster identifier
+            
+        Returns:
+            Obstacle object or None if invalid
+        """
+        if len(cluster_points) == 0:
+            return None
+        
+        # Calculate centroid
+        centroid = np.mean(cluster_points, axis=0)
+        x, y, z = centroid
+        
+        # Calculate distance from robot (at origin)
+        distance = np.sqrt(x**2 + z**2)
+        
+        # Calculate angle (in degrees, 0 = straight ahead)
+        angle = np.degrees(np.arctan2(x, z))
+        
+        # Calculate bounding box
+        min_bounds = np.min(cluster_points, axis=0)
+        max_bounds = np.max(cluster_points, axis=0)
+        
+        width = max_bounds[0] - min_bounds[0]
+        height = max_bounds[1] - min_bounds[1]
+        
+        # Determine threat level
+        threat_level = self._calculate_threat_level(distance)
+        
+        return Obstacle(
+            id=cluster_id,
+            distance=float(distance),
+            angle=float(angle),
+            width=float(width),
+            height=float(height),
+            position=(float(x), float(z)),
+            threat_level=threat_level
+        )
+
     
     def _calculate_threat_level(self, distance: float) -> str:
         """Calculate threat level based on distance."""
