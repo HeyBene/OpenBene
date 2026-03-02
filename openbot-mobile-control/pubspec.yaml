@@ -50,6 +50,9 @@ dependencies:
   # USB Serial for Arduino communication
   usb_serial: ^0.5.1
 
+  # BLE for robot communication (Android & iOS)
+  flutter_blue_plus: ^1.35.3
+
   # Permissions
   permission_handler: ^11.3.1
 

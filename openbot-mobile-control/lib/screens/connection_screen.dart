@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import '../models/robot_connection_mode.dart';
+import '../models/robot_drive_profile.dart';
 import '../services/app_state.dart';
 import '../services/localization_service.dart';
 import '../models/app_language.dart';
+import '../widgets/bluetooth_scan_sheet.dart';
 
 class ConnectionScreen extends StatefulWidget {
   const ConnectionScreen({super.key});
@@ -39,6 +42,7 @@ class _ConnectionScreenState extends State<ConnectionScreen>
 
     // 1. 请求权限
     final permissions = await appState.requestPermissions();
+    if (!mounted) return;
     setState(() {
       _permissionsGranted = permissions['camera'] == true;
     });
@@ -62,12 +66,14 @@ class _ConnectionScreenState extends State<ConnectionScreen>
     final appState = context.read<AppState>();
     final permissions = await appState.requestPermissions();
 
+    if (!mounted) return;
     setState(() {
       _permissionsGranted = permissions['camera'] == true;
     });
 
     if (_permissionsGranted) {
       await appState.initializeCamera();
+      if (!mounted) return;
       await appState.startServer();
     }
   }
@@ -80,6 +86,7 @@ class _ConnectionScreenState extends State<ConnectionScreen>
     final appState = context.read<AppState>();
     await appState.startStreaming();
 
+    if (!mounted) return;
     setState(() => _isStartingStream = false);
   }
 
@@ -193,7 +200,6 @@ class _ConnectionScreenState extends State<ConnectionScreen>
     final appState = context.watch<AppState>();
     final isConnected = appState.hasClient;
     final isServerRunning = appState.serverRunning;
-    final isUsbConnected = appState.usbConnected;
 
     return Card(
       elevation: 2,
@@ -210,8 +216,8 @@ class _ConnectionScreenState extends State<ConnectionScreen>
 
             const SizedBox(height: 16),
 
-            // USB/Arduino 连接状态和按钮
-            _buildUsbConnectionCard(appState, isUsbConnected),
+            // 小车连接状态和按钮（USB/BLE）
+            _buildRobotConnectionCard(appState),
 
             const SizedBox(height: 24),
 
@@ -257,114 +263,219 @@ class _ConnectionScreenState extends State<ConnectionScreen>
     );
   }
 
-  Widget _buildUsbConnectionCard(AppState appState, bool isUsbConnected) {
+  Widget _buildRobotConnectionCard(AppState appState) {
+    final mode = appState.connectionMode;
+    final isConnected = appState.robotConnected;
+    final driveProfile = appState.driveProfile;
+
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: isUsbConnected
-            ? Colors.green.shade50
-            : Colors.orange.shade50,
+        color: isConnected ? Colors.green.shade50 : Colors.grey.shade50,
         borderRadius: BorderRadius.circular(12),
         border: Border.all(
-          color: isUsbConnected
-              ? Colors.green.shade200
-              : Colors.orange.shade200,
+          color: isConnected ? Colors.green.shade200 : Colors.grey.shade300,
           width: 1.5,
         ),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          const Text(
+            'OpenBot Connection',
+            style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+          ),
+          const SizedBox(height: 12),
+          if (appState.supportsUsb) ...[
+            SegmentedButton<RobotConnectionMode>(
+              segments: const [
+                ButtonSegment(
+                  value: RobotConnectionMode.usb,
+                  icon: Icon(Icons.usb_rounded, size: 18),
+                  label: Text('USB'),
+                ),
+                ButtonSegment(
+                  value: RobotConnectionMode.bluetooth,
+                  icon: Icon(Icons.bluetooth_rounded, size: 18),
+                  label: Text('Bluetooth'),
+                ),
+              ],
+              selected: {mode},
+              onSelectionChanged: (selected) {
+                if (isConnected) {
+                  appState.disconnectFromRobot();
+                }
+                appState.setConnectionMode(selected.first);
+              },
+            ),
+            const SizedBox(height: 12),
+          ] else ...[
+            Row(
+              children: [
+                Icon(
+                  Icons.bluetooth_rounded,
+                  size: 16,
+                  color: Colors.blue.shade600,
+                ),
+                const SizedBox(width: 6),
+                Text(
+                  'Bluetooth (BLE)',
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: Colors.blue.shade700,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+          ],
           Row(
             children: [
               Icon(
-                Icons.usb_rounded,
-                color: isUsbConnected
-                    ? Colors.green.shade600
-                    : Colors.orange.shade600,
-                size: 24,
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'OpenBot Connection',
-                      style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w600,
-                        color: Colors.grey.shade800,
-                      ),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      isUsbConnected
-                          ? 'Connected: ${appState.robotType ?? "OpenBot"}'
-                          : 'Not connected',
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: isUsbConnected
-                            ? Colors.green.shade700
-                            : Colors.orange.shade700,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              if (isUsbConnected)
-                Icon(
-                  Icons.check_circle,
-                  color: Colors.green.shade600,
-                  size: 24,
-                ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          SizedBox(
-            width: double.infinity,
-            child: ElevatedButton.icon(
-              onPressed: isUsbConnected
-                  ? () => appState.disconnectFromRobot()
-                  : () => _connectToRobot(appState),
-              icon: Icon(
-                isUsbConnected ? Icons.link_off : Icons.link,
+                isConnected ? Icons.check_circle : Icons.circle_outlined,
+                color: isConnected ? Colors.green.shade600 : Colors.grey.shade400,
                 size: 20,
               ),
-              label: Text(
-                isUsbConnected ? 'Disconnect' : 'Connect to OpenBot',
-                style: const TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  isConnected
+                      ? (mode == RobotConnectionMode.usb
+                          ? 'USB Connected: ${appState.robotType ?? "OpenBot"}'
+                          : 'BT: ${appState.bluetoothService.connectedDeviceName ?? "Connected"}')
+                      : 'Not connected',
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: isConnected ? Colors.green.shade700 : Colors.grey.shade600,
+                  ),
                 ),
               ),
-              style: ElevatedButton.styleFrom(
-                padding: const EdgeInsets.symmetric(vertical: 12),
-                backgroundColor: isUsbConnected
-                    ? Colors.red.shade400
-                    : Colors.blue.shade600,
-                foregroundColor: Colors.white,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(8),
+              ElevatedButton(
+                onPressed: isConnected
+                    ? () => appState.disconnectFromRobot()
+                    : () => _connectToRobot(appState, mode),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor:
+                      isConnected ? Colors.red.shade400 : Colors.blue.shade600,
+                  foregroundColor: Colors.white,
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                ),
+                child: Text(
+                  isConnected ? 'Disconnect' : 'Connect',
+                  style: const TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                  ),
                 ),
               ),
-            ),
+            ],
           ),
+          if (mode == RobotConnectionMode.bluetooth && isConnected) ...[
+            const SizedBox(height: 10),
+            const Text(
+              'Drive Profile',
+              style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+            ),
+            const SizedBox(height: 8),
+            SegmentedButton<RobotDriveProfile>(
+              segments: const [
+                ButtonSegment(
+                  value: RobotDriveProfile.standard,
+                  label: Text('Standard'),
+                ),
+                ButtonSegment(
+                  value: RobotDriveProfile.rtr520,
+                  label: Text('RTR-520 Boost'),
+                ),
+              ],
+              selected: {driveProfile},
+              onSelectionChanged: (selected) {
+                appState.setDriveProfile(selected.first);
+              },
+            ),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                OutlinedButton.icon(
+                  onPressed: appState.isTestingBluetooth
+                      ? null
+                      : () async {
+                          final ok = await appState.testBluetoothConnection();
+                          if (!mounted) return;
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text(
+                                ok
+                                    ? 'BLE test passed: robot responded.'
+                                    : 'BLE test failed: no response.',
+                              ),
+                              backgroundColor:
+                                  ok ? Colors.green.shade600 : Colors.red.shade600,
+                            ),
+                          );
+                        },
+                  icon: appState.isTestingBluetooth
+                      ? const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.wifi_tethering_rounded, size: 16),
+                  label: Text(
+                    appState.isTestingBluetooth ? 'Testing...' : 'Test BLE',
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    appState.lastBluetoothTestResult ?? 'Not tested yet',
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: Colors.grey.shade700,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
         ],
       ),
     );
   }
 
-  Future<void> _connectToRobot(AppState appState) async {
-    final success = await appState.connectToRobot();
-    if (!success && mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: const Text('Failed to connect to OpenBot. Make sure USB is connected.'),
-          backgroundColor: Colors.red.shade600,
-        ),
-      );
+  Future<void> _connectToRobot(
+      AppState appState, RobotConnectionMode mode) async {
+    if (mode == RobotConnectionMode.usb) {
+      final success = await appState.connectToRobot();
+      if (!success && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: const Text(
+              'USB connection failed. Make sure cable is connected.',
+            ),
+            backgroundColor: Colors.red.shade600,
+          ),
+        );
+      }
+      return;
     }
+
+    if (!mounted) return;
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (_) => BluetoothScanSheet(appState: appState),
+    );
   }
 
   Widget _buildConnectionStatus(bool isServerRunning, bool isConnected) {

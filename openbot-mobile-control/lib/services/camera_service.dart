@@ -81,6 +81,16 @@ class CameraService {
     int targetWidth = 640,
   }) async {
     try {
+      // iOS uses BGRA8888, Android uses YUV420
+      if (image.format.group == ImageFormatGroup.bgra8888) {
+        return _convertBgraToJpeg(image, quality: quality, targetWidth: targetWidth);
+      }
+
+      if (image.planes.length < 3) {
+        debugPrint('Unsupported image format: ${image.format.group}');
+        return null;
+      }
+
       final int width = image.width;
       final int height = image.height;
 
@@ -131,6 +141,50 @@ class CameraService {
       return Uint8List.fromList(jpegBytes);
     } catch (e) {
       debugPrint('Error converting image to JPEG: $e');
+      return null;
+    }
+  }
+
+  /// Convert BGRA8888 image (iOS) to JPEG
+  Uint8List? _convertBgraToJpeg(
+    CameraImage image, {
+    int quality = 85,
+    int targetWidth = 640,
+  }) {
+    try {
+      final int width = image.width;
+      final int height = image.height;
+      final plane = image.planes[0];
+      final bytes = plane.bytes;
+      final rowStride = plane.bytesPerRow;
+
+      final img.Image imgImage = img.Image(width: width, height: height);
+
+      for (int y = 0; y < height; y++) {
+        for (int x = 0; x < width; x++) {
+          final index = y * rowStride + x * 4;
+          final b = bytes[index];
+          final g = bytes[index + 1];
+          final r = bytes[index + 2];
+          final a = bytes[index + 3];
+          imgImage.setPixelRgba(x, y, r, g, b, a);
+        }
+      }
+
+      img.Image resized = imgImage;
+      if (width > targetWidth) {
+        final int targetHeight = (height * targetWidth / width).round();
+        resized = img.copyResize(
+          imgImage,
+          width: targetWidth,
+          height: targetHeight,
+        );
+      }
+
+      final jpegBytes = img.encodeJpg(resized, quality: quality);
+      return Uint8List.fromList(jpegBytes);
+    } catch (e) {
+      debugPrint('Error converting BGRA image to JPEG: $e');
       return null;
     }
   }

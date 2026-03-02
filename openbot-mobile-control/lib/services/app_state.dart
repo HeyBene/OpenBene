@@ -1,14 +1,18 @@
 import 'dart:async';
 import 'dart:typed_data';
 import 'package:flutter/foundation.dart';
+import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import '../models/sensor_data.dart';
 import '../models/connection_state.dart';
+import '../models/robot_connection_mode.dart';
+import '../models/robot_drive_profile.dart';
 import '../services/camera_service.dart';
 import '../services/sensor_service.dart';
 import '../services/network_service.dart';
 import '../services/permission_service.dart';
 import '../services/discovery_service.dart';
 import '../services/usb_service.dart';
+import '../services/bluetooth_service.dart' as ble;
 
 /// 控制命令记录
 class CommandLog {
@@ -43,6 +47,7 @@ class AppState extends ChangeNotifier {
   final PermissionService _permissionService = PermissionService();
   final DiscoveryService _discoveryService = DiscoveryService();
   final UsbService _usbService = UsbService();
+  final ble.BluetoothService _bluetoothService = ble.BluetoothService();
 
   ConnectionState _connectionState = ConnectionState(
     status: ConnectionStatus.disconnected,
@@ -57,8 +62,15 @@ class AppState extends ChangeNotifier {
 
   // USB/Arduino 连接状态
   bool _usbConnected = false;
+  RobotConnectionMode _connectionMode =
+      (!kIsWeb && defaultTargetPlatform == TargetPlatform.iOS)
+          ? RobotConnectionMode.bluetooth
+          : RobotConnectionMode.usb;
   String? _robotType;
   Map<String, bool> _robotFeatures = {};
+  RobotDriveProfile _driveProfile = RobotDriveProfile.standard;
+  bool _isTestingBluetooth = false;
+  String? _lastBluetoothTestResult;
 
   // 命令日志
   final List<CommandLog> _commandLogs = [];
@@ -69,6 +81,7 @@ class AppState extends ChangeNotifier {
   StreamSubscription? _commandSubscription;
   StreamSubscription? _usbConnectionSubscription;
   StreamSubscription? _usbSensorSubscription;
+  StreamSubscription? _bluetoothConnectionSubscription;
 
   // Getters
   ConnectionState get connectionState => _connectionState;
@@ -89,9 +102,59 @@ class AppState extends ChangeNotifier {
 
   // USB/Arduino getters
   bool get usbConnected => _usbConnected;
+  RobotConnectionMode get connectionMode => _connectionMode;
+  bool get supportsUsb =>
+      !kIsWeb && defaultTargetPlatform == TargetPlatform.android;
+  ble.BluetoothService get bluetoothService => _bluetoothService;
+  bool get robotConnected => _connectionMode == RobotConnectionMode.usb
+      ? _usbConnected
+      : _bluetoothService.isConnected;
   String? get robotType => _robotType;
   Map<String, bool> get robotFeatures => Map.unmodifiable(_robotFeatures);
   UsbService get usbService => _usbService;
+  RobotDriveProfile get driveProfile => _driveProfile;
+  bool get isTestingBluetooth => _isTestingBluetooth;
+  String? get lastBluetoothTestResult => _lastBluetoothTestResult;
+
+  void setConnectionMode(RobotConnectionMode mode) {
+    if (mode == RobotConnectionMode.usb && !supportsUsb) return;
+    if (_connectionMode == mode) return;
+
+    _connectionMode = mode;
+    notifyListeners();
+  }
+
+  void setDriveProfile(RobotDriveProfile profile) {
+    if (_driveProfile == profile) return;
+    _driveProfile = profile;
+    notifyListeners();
+  }
+
+  List<double> _applyDriveCompensation(double left, double right) {
+    final (gain, minStart) = switch (_driveProfile) {
+      RobotDriveProfile.standard => (1.0, 0.0),
+      RobotDriveProfile.rtr520 => (1.2, 0.22),
+    };
+
+    return [
+      _compensateSingle(left, gain: gain, minStart: minStart),
+      _compensateSingle(right, gain: gain, minStart: minStart),
+    ];
+  }
+
+  double _compensateSingle(
+    double value, {
+    required double gain,
+    required double minStart,
+  }) {
+    final signed = value.clamp(-1.0, 1.0);
+    final absValue = signed.abs();
+    if (absValue < 0.02) return 0.0;
+
+    final normalized = (minStart + (1.0 - minStart) * absValue) * gain;
+    final clamped = normalized.clamp(0.0, 1.0);
+    return signed.sign * clamped;
+  }
 
   Future<void> initialize() async {
     await _sensorService.initialize();
@@ -121,6 +184,11 @@ class AppState extends ChangeNotifier {
     // 监听Arduino传感器数据
     _usbSensorSubscription =
         _usbService.sensorDataStream.listen(_handleArduinoSensorData);
+
+    _bluetoothConnectionSubscription =
+        _bluetoothService.connectionStream.listen((_) {
+      notifyListeners();
+    });
   }
 
   /// 处理Arduino传感器数据
@@ -157,24 +225,24 @@ class AppState extends ChangeNotifier {
 
     List<double>? values;
     if (message['val'] != null) {
-      values = (message['val'] as List)
-          .map((e) => (e as num).toDouble())
-          .toList();
+      values =
+          (message['val'] as List).map((e) => (e as num).toDouble()).toList();
     }
 
     // 记录命令
     _addCommandLog(cmd, values);
 
-    // 将命令转发给Arduino
-    _forwardCommandToArduino(cmd, values);
+    // 将命令转发给小车（USB/BLE）
+    _forwardCommandToRobot(cmd, values);
 
     notifyListeners();
   }
 
-  /// 将PC命令转发给Arduino
-  void _forwardCommandToArduino(String cmd, List<double>? values) {
-    if (!_usbConnected) {
-      debugPrint('[AppState] USB not connected, cannot forward command: $cmd');
+  /// 将PC命令转发给小车（USB/BLE）
+  void _forwardCommandToRobot(String cmd, List<double>? values) {
+    if (!robotConnected) {
+      debugPrint(
+          '[AppState] Robot not connected, cannot forward command: $cmd');
       return;
     }
 
@@ -182,32 +250,57 @@ class AppState extends ChangeNotifier {
       case 'drive':
         // drive命令: values = [left, right], 范围 -1.0 到 1.0
         if (values != null && values.length >= 2) {
-          _usbService.sendControlNormalized(values[0], values[1]);
+          final compensated = _applyDriveCompensation(values[0], values[1]);
+          if (_connectionMode == RobotConnectionMode.usb) {
+            _usbService.sendControlNormalized(compensated[0], compensated[1]);
+          } else {
+            _bluetoothService.sendControlNormalized(
+              compensated[0],
+              compensated[1],
+            );
+          }
         }
         break;
 
       case 'stop':
-        _usbService.stop();
+        if (_connectionMode == RobotConnectionMode.usb) {
+          _usbService.stop();
+        } else {
+          _bluetoothService.stop();
+        }
         break;
 
       case 'indicator':
         // indicator命令: values = [left, right], 0 或 1
         if (values != null && values.length >= 2) {
-          _usbService.setIndicators(values[0].toInt(), values[1].toInt());
+          if (_connectionMode == RobotConnectionMode.usb) {
+            _usbService.setIndicators(values[0].toInt(), values[1].toInt());
+          } else {
+            _bluetoothService.setIndicators(
+                values[0].toInt(), values[1].toInt());
+          }
         }
         break;
 
       case 'light':
         // light命令: values = [front, back], 0-255
         if (values != null && values.length >= 2) {
-          _usbService.setLights(values[0].toInt(), values[1].toInt());
+          if (_connectionMode == RobotConnectionMode.usb) {
+            _usbService.setLights(values[0].toInt(), values[1].toInt());
+          } else {
+            _bluetoothService.setLights(values[0].toInt(), values[1].toInt());
+          }
         }
         break;
 
       case 'heartbeat':
         // heartbeat命令: values = [interval_ms]
         if (values != null && values.isNotEmpty) {
-          _usbService.setHeartbeat(values[0].toInt());
+          if (_connectionMode == RobotConnectionMode.usb) {
+            _usbService.setHeartbeat(values[0].toInt());
+          } else {
+            _bluetoothService.setHeartbeat(values[0].toInt());
+          }
         }
         break;
 
@@ -344,6 +437,10 @@ class AppState extends ChangeNotifier {
 
   /// 连接到OpenBot小车（USB）
   Future<bool> connectToRobot() async {
+    if (_connectionMode != RobotConnectionMode.usb) {
+      return false;
+    }
+
     final success = await _usbService.connect();
     if (success) {
       // 设置心跳间隔（防止超时停止）
@@ -361,10 +458,55 @@ class AppState extends ChangeNotifier {
     return success;
   }
 
+  /// 连接到OpenBot小车（BLE）
+  Future<bool> connectToRobotWithBluetooth(BluetoothDevice device) async {
+    final success = await _bluetoothService.connect(device);
+    if (success) {
+      await _bluetoothService.setHeartbeat(1000);
+      _lastBluetoothTestResult = null;
+      notifyListeners();
+    }
+    return success;
+  }
+
+  /// BLE连接链路测试：发送 f 包并等待 f... 返回
+  Future<bool> testBluetoothConnection() async {
+    if (_connectionMode != RobotConnectionMode.bluetooth ||
+        !_bluetoothService.isConnected) {
+      _lastBluetoothTestResult = 'Bluetooth is not connected';
+      notifyListeners();
+      return false;
+    }
+
+    _isTestingBluetooth = true;
+    _lastBluetoothTestResult = null;
+    notifyListeners();
+
+    final response = await _bluetoothService.testConnection();
+    _isTestingBluetooth = false;
+
+    if (response == null) {
+      _lastBluetoothTestResult = 'No response from robot (timeout)';
+      notifyListeners();
+      return false;
+    }
+
+    _lastBluetoothTestResult = 'OK: $response';
+    notifyListeners();
+    return true;
+  }
+
   /// 断开OpenBot小车连接
   Future<void> disconnectFromRobot() async {
-    await _usbService.stop();
-    await _usbService.disconnect();
+    if (_connectionMode == RobotConnectionMode.usb) {
+      await _usbService.stop();
+      await _usbService.disconnect();
+    } else {
+      await _bluetoothService.stop();
+      await _bluetoothService.disconnect();
+      _lastBluetoothTestResult = null;
+    }
+    notifyListeners();
   }
 
   @override
@@ -374,11 +516,13 @@ class AppState extends ChangeNotifier {
     _commandSubscription?.cancel();
     _usbConnectionSubscription?.cancel();
     _usbSensorSubscription?.cancel();
+    _bluetoothConnectionSubscription?.cancel();
     _cameraService.dispose();
     _sensorService.dispose();
     _networkService.dispose();
     _discoveryService.dispose();
     _usbService.dispose();
+    unawaited(_bluetoothService.dispose());
     super.dispose();
   }
 }

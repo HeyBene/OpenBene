@@ -30,7 +30,7 @@ class PermissionService {
     };
   }
 
-  Future<bool> openAppSettings() async {
+  Future<bool> openSettings() async {
     return await openAppSettings();
   }
 }
