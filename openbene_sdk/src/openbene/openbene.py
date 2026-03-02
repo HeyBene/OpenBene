@@ -34,7 +34,8 @@ import socket
 import json
 import time
 import logging
-from typing import Optional, Dict, Any, Callable, Generator
+import concurrent.futures
+from typing import Optional, Dict, Any, Callable, Generator, List
 import numpy as np
 
 # 导入各模块
@@ -147,14 +148,104 @@ class OpenBene:
             logger.error(f"发现服务错误: {e}")
             return None
 
+    @staticmethod
+    def _get_local_ip() -> Optional[str]:
+        """获取本机局域网IP地址"""
+        try:
+            s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            s.connect(('8.8.8.8', 80))
+            ip = s.getsockname()[0]
+            s.close()
+            return ip
+        except Exception:
+            return None
+
+    @staticmethod
+    def _probe_port(ip: str, port: int, timeout: float = 0.3) -> Optional[str]:
+        """尝试TCP连接到指定IP:port，成功返回IP，失败返回None"""
+        try:
+            s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            s.settimeout(timeout)
+            result = s.connect_ex((ip, port))
+            s.close()
+            if result == 0:
+                return ip
+        except Exception:
+            pass
+        return None
+
+    @classmethod
+    def scan_subnet(cls, port: int = None, timeout: float = 8.0) -> Optional[Dict[str, Any]]:
+        """
+        扫描本地子网，寻找开放WebSocket端口的设备
+
+        当UDP广播被防火墙/路由器阻挡时，用TCP端口扫描代替。
+        并行扫描整个/24子网，通常3-5秒完成。
+
+        Args:
+            port: 要扫描的端口，默认8765
+            timeout: 扫描总超时
+
+        Returns:
+            发现的机器人信息字典，或 None
+        """
+        if port is None:
+            port = cls.DEFAULT_PORT
+
+        local_ip = cls._get_local_ip()
+        if not local_ip:
+            logger.warning("无法获取本机IP，跳过子网扫描")
+            return None
+
+        prefix = '.'.join(local_ip.split('.')[:3])
+        local_last = int(local_ip.split('.')[-1])
+        logger.info(f"TCP子网扫描: {prefix}.1-254 端口 {port}")
+
+        # 生成目标IP列表（排除自己和网关常用地址）
+        targets = [f"{prefix}.{i}" for i in range(1, 255) if i != local_last]
+
+        found_ip = None
+        probe_timeout = min(0.4, timeout / 4)
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=64) as pool:
+            futures = {
+                pool.submit(cls._probe_port, ip, port, probe_timeout): ip
+                for ip in targets
+            }
+            try:
+                for future in concurrent.futures.as_completed(futures, timeout=timeout):
+                    result = future.result()
+                    if result is not None:
+                        found_ip = result
+                        # 找到一个就取消剩余任务
+                        for f in futures:
+                            f.cancel()
+                        break
+            except concurrent.futures.TimeoutError:
+                pass
+
+        if found_ip:
+            robot_info = {
+                'name': 'OpenBene (TCP scan)',
+                'ip': found_ip,
+                'port': port,
+            }
+            logger.info(f"TCP扫描发现: {found_ip}:{port}")
+            return robot_info
+
+        logger.warning("TCP子网扫描未找到设备")
+        return None
+
     @classmethod
     def auto_connect(cls, timeout: float = 10.0, retries: int = 3) -> 'OpenBene':
         """
         自动发现并连接到机器人
 
+        先尝试UDP广播发现，失败后自动回退到TCP子网扫描。
+
         Args:
             timeout: 发现和连接的总超时时间（秒）
-            retries: 发现失败时的重试次数
+            retries: UDP发现失败时的重试次数
 
         Returns:
             已连接的 OpenBene 实例
@@ -162,22 +253,30 @@ class OpenBene:
         Raises:
             ConnectionError: 未找到机器人或连接失败
         """
-        discover_timeout = timeout / 2 / retries
+        # Phase 1: 先尝试 UDP 广播发现（快速）
+        udp_timeout = min(timeout * 0.3, 5.0)
         robot = None
 
-        for attempt in range(retries):
-            logger.info(f"发现尝试 {attempt + 1}/{retries}...")
-            robot = cls.discover(timeout=discover_timeout)
-            if robot is not None:
-                break
-            if attempt < retries - 1:
-                time.sleep(0.5)
+        logger.info(f"Phase 1: UDP广播发现 ({udp_timeout:.0f}秒)...")
+        robot = cls.discover(timeout=udp_timeout)
+
+        # Phase 2: UDP 失败 → TCP 子网扫描（更可靠）
+        if robot is None:
+            scan_timeout = min(timeout * 0.5, 10.0)
+            logger.info(f"Phase 2: UDP未发现，尝试TCP子网扫描 ({scan_timeout:.0f}秒)...")
+            robot = cls.scan_subnet(timeout=scan_timeout)
 
         if robot is None:
-            raise ConnectionError("未发现OpenBene机器人，请确保手机App已启动并连接到同一网络")
+            raise ConnectionError(
+                "未发现OpenBene机器人。请确保：\n"
+                "  1. 手机App已启动并点击了Start\n"
+                "  2. 手机和电脑在同一WiFi网络\n"
+                "  3. 或者使用手动输入IP连接"
+            )
 
+        connect_timeout = max(timeout * 0.2, 5.0)
         bot = cls(robot['ip'], robot['port'])
-        bot.connect(timeout=timeout / 2)
+        bot.connect(timeout=connect_timeout)
         return bot
 
     def __init__(self, ip: str, port: int = DEFAULT_PORT):
