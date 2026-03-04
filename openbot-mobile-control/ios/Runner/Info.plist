@@ -49,5 +49,7 @@
 	<string>Bluetooth is required to connect to the OpenBot robot.</string>
 	<key>NSBluetoothPeripheralUsageDescription</key>
 	<string>Bluetooth is required to communicate with the robot.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>Camera access is required for LiDAR capture to capture RGB images and depth data for 3D reconstruction.</string>
 </dict>
 </plist>
