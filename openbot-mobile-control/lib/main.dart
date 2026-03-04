@@ -4,7 +4,6 @@ import 'services/app_state.dart';
 import 'services/localization_service.dart';
 import 'screens/connection_screen.dart';
 import 'screens/control_screen.dart';
-import 'screens/lidar_capture_screen.dart';
 import 'models/connection_state.dart';
 
 void main() async {
