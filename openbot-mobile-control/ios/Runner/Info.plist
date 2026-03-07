@@ -45,6 +45,10 @@
 		<string>UIInterfaceOrientationLandscapeLeft</string>
 		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
+	<key>NSCameraUsageDescription</key>
+	<string>Camera is required to stream video from the robot.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Microphone access is required for video recording.</string>
 	<key>NSBluetoothAlwaysUsageDescription</key>
 	<string>Bluetooth is required to connect to the OpenBot robot.</string>
 	<key>NSBluetoothPeripheralUsageDescription</key>

@@ -82,6 +82,9 @@ class AppState extends ChangeNotifier {
   StreamSubscription? _usbConnectionSubscription;
   StreamSubscription? _usbSensorSubscription;
   StreamSubscription? _bluetoothConnectionSubscription;
+  StreamSubscription? _bluetoothMessageSubscription;
+  // 定期心跳计时器：每 500ms 向小车发送一次心跳，防止固件 1000ms 超时归零
+  Timer? _heartbeatTimer;
 
   // Getters
   ConnectionState get connectionState => _connectionState;
@@ -189,9 +192,105 @@ class AppState extends ChangeNotifier {
         _bluetoothService.connectionStream.listen((_) {
       notifyListeners();
     });
+
+    // 监听 BLE 传感器原始数据（ESP32 → App）
+    _bluetoothMessageSubscription =
+        _bluetoothService.messageStream.listen(_handleBluetoothMessage);
   }
 
-  /// 处理Arduino传感器数据
+  /// 建Robot心跳定时器：每 500ms 重置固件心跳计时
+  void _startHeartbeat() {
+    _heartbeatTimer?.cancel();
+    _heartbeatTimer = Timer.periodic(const Duration(milliseconds: 500), (_) {
+      if (!robotConnected) {
+        _stopHeartbeat();
+        return;
+      }
+      if (_connectionMode == RobotConnectionMode.usb) {
+        _usbService.setHeartbeat(1000);
+      } else {
+        _bluetoothService.setHeartbeat(1000);
+      }
+    });
+  }
+
+  void _stopHeartbeat() {
+    _heartbeatTimer?.cancel();
+    _heartbeatTimer = null;
+  }
+
+  /// 解析 BLE 原始字符串并路由到 _handleArduinoSensorData
+  ///
+  /// ESP32 通过 BLE TX 特征发送的行格式（与 sendData() 一致）：
+  ///   f<type>:<caps>   特征包，例如 "fRTR_520:v:i:s:b:wf:wb:"
+  ///   v<val>           电压，例如 "v11.54"
+  ///   w<l>,<r>         车速 RPM，例如 "w120.5,118.3"
+  ///   s<dist>          声呐距离，例如 "s45"
+  ///   b<id>            保险杠碰撞，例如 "blf"
+  void _handleBluetoothMessage(String raw) {
+    if (raw.isEmpty) return;
+    final header = raw[0];
+    final body = raw.length > 1 ? raw.substring(1) : '';
+
+    switch (header) {
+      case 'f':
+        // 特征包：fRTR_520:v:i:s:b:wf:wb:lf:lb:ls:
+        final colonIdx = body.indexOf(':');
+        final robotType =
+            colonIdx != -1 ? body.substring(0, colonIdx) : body;
+        final capStr =
+            colonIdx != -1 ? body.substring(colonIdx + 1) : '';
+        final caps = capStr
+            .split(':')
+            .where((s) => s.isNotEmpty)
+            .toList();
+        final featMap = {for (final c in caps) c: true};
+        _handleArduinoSensorData({
+          'type': 'features',
+          'robot_type': robotType,
+          'features': featMap,
+        });
+
+      case 'v':
+        final voltage = double.tryParse(body);
+        if (voltage != null) {
+          _handleArduinoSensorData({
+            'type': 'voltage',
+            'value': voltage,
+          });
+        }
+
+      case 'w':
+        final parts = body.split(',');
+        if (parts.length >= 2) {
+          _handleArduinoSensorData({
+            'type': 'wheel',
+            'left': double.tryParse(parts[0]) ?? 0.0,
+            'right': double.tryParse(parts[1]) ?? 0.0,
+          });
+        }
+
+      case 's':
+        final dist = int.tryParse(body);
+        if (dist != null) {
+          _handleArduinoSensorData({
+            'type': 'sonar',
+            'distance': dist,
+          });
+        }
+
+      case 'b':
+        _handleArduinoSensorData({
+          'type': 'bumper',
+          'collision_id': body,
+        });
+
+      default:
+        debugPrint('[BLE] 未知消息: $raw');
+    }
+  }
+
+  /// 处理传感器数据（USB 和 BLE 共用）
   void _handleArduinoSensorData(Map<String, dynamic> data) {
     final type = data['type'] as String?;
     if (type == null) return;
@@ -200,21 +299,45 @@ class AppState extends ChangeNotifier {
       case 'features':
         _robotType = data['robot_type'] as String?;
         _robotFeatures = Map<String, bool>.from(data['features'] ?? {});
+        // 根据车型自动设置驱动档
+        _autoSetDriveProfile(_robotType);
         notifyListeners();
-        break;
 
       case 'voltage':
       case 'wheel':
       case 'sonar':
       case 'bumper':
-        // 将Arduino传感器数据转发给PC
+        // 将传感器数据转发给PC
         _networkService.sendMessage({
           'type': 'arduino_sensor',
           'sensor_type': type,
           'data': data,
           'timestamp': DateTime.now().millisecondsSinceEpoch,
         });
-        break;
+    }
+  }
+
+  /// 根据固件上报的车型自动选择合适的驱动档，并设置传感器上报间隔
+  ///
+  /// RTR_520：520 电机静摩擦更大，需要 gain=1.2 / minStart=22%
+  /// 其余（TT、DIY 等）：使用标准档
+  void _autoSetDriveProfile(String? robotType) {
+    final target = (robotType == 'RTR_520')
+        ? RobotDriveProfile.rtr520
+        : RobotDriveProfile.standard;
+    if (_driveProfile != target) {
+      _driveProfile = target;
+      debugPrint('[AppState] 驱动档自动切换 → $target（车型=$robotType）');
+    }
+    // 收到特征包后设置各传感器间隔（USB 连接时 _robotFeatures 已更新）
+    if (_connectionMode == RobotConnectionMode.usb) {
+      if (_robotFeatures['wheel_front'] == true ||
+          _robotFeatures['wheel_back'] == true) {
+        _usbService.setWheelInterval(200);
+      }
+      if (_robotFeatures['sonar'] == true) {
+        _usbService.setSonarInterval(500);
+      }
     }
   }
 
@@ -443,17 +566,10 @@ class AppState extends ChangeNotifier {
 
     final success = await _usbService.connect();
     if (success) {
-      // 设置心跳间隔（防止超时停止）
-      await _usbService.setHeartbeat(1000);
-      // 请求传感器数据
+      // 启动心跳计时器（每 500ms 发一次，防止固件 1000ms 超时）
+      _startHeartbeat();
+      // 开启电压上报——其他传感器间隔在收到特征包后由 _onFeaturesReceived 设置
       await _usbService.setVoltageInterval(1000);
-      if (_robotFeatures['wheel_front'] == true ||
-          _robotFeatures['wheel_back'] == true) {
-        await _usbService.setWheelInterval(100);
-      }
-      if (_robotFeatures['sonar'] == true) {
-        await _usbService.setSonarInterval(100);
-      }
     }
     return success;
   }
@@ -462,8 +578,12 @@ class AppState extends ChangeNotifier {
   Future<bool> connectToRobotWithBluetooth(BluetoothDevice device) async {
     final success = await _bluetoothService.connect(device);
     if (success) {
-      await _bluetoothService.setHeartbeat(1000);
+      // 启动心跳计时器
+      _startHeartbeat();
       _lastBluetoothTestResult = null;
+      // 连接后请求特征包，触发车型检测和驱动档自动切换
+      await Future.delayed(const Duration(milliseconds: 300));
+      await _bluetoothService.requestFeatures();
       notifyListeners();
     }
     return success;
@@ -498,6 +618,7 @@ class AppState extends ChangeNotifier {
 
   /// 断开OpenBot小车连接
   Future<void> disconnectFromRobot() async {
+    _stopHeartbeat();
     if (_connectionMode == RobotConnectionMode.usb) {
       await _usbService.stop();
       await _usbService.disconnect();
@@ -506,6 +627,9 @@ class AppState extends ChangeNotifier {
       await _bluetoothService.disconnect();
       _lastBluetoothTestResult = null;
     }
+    // 断连后清除车型信息，下次连接重新检测
+    _robotType = null;
+    _robotFeatures = {};
     notifyListeners();
   }
 
@@ -517,6 +641,8 @@ class AppState extends ChangeNotifier {
     _usbConnectionSubscription?.cancel();
     _usbSensorSubscription?.cancel();
     _bluetoothConnectionSubscription?.cancel();
+    _bluetoothMessageSubscription?.cancel();
+    _stopHeartbeat();
     _cameraService.dispose();
     _sensorService.dispose();
     _networkService.dispose();

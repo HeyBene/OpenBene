@@ -15,6 +15,9 @@ class UsbService {
   bool _isConnected = false;
   String? _deviceName;
 
+  // 行缓冲区：USB 串口数据可能多条消息共一个 chunk 到达
+  String _lineBuffer = '';
+
   // Data streams
   final StreamController<Map<String, dynamic>> _sensorDataController =
       StreamController<Map<String, dynamic>>.broadcast();
@@ -113,20 +116,27 @@ class UsbService {
 
     _isConnected = false;
     _deviceName = null;
+    _lineBuffer = '';
     _connectionStateController.add(false);
 
     print('[UsbService] Disconnected');
   }
 
   /// Handle incoming data from Arduino
+  /// 正确处理多行拼接和断帧：累积到缓冲区，按 \n 切割后逐行解析
   void _onDataReceived(Uint8List data) {
     try {
-      String message = utf8.decode(data).trim();
-      if (message.isEmpty) return;
-
-      _parseMessage(message);
+      _lineBuffer += utf8.decode(data, allowMalformed: true);
+      final lines = _lineBuffer.split('\n');
+      // 最后一个元素可能是不完整的行，留在缓冲区
+      _lineBuffer = lines.last;
+      for (int i = 0; i < lines.length - 1; i++) {
+        final line = lines[i].replaceAll('\r', '').trim();
+        if (line.isNotEmpty) _parseMessage(line);
+      }
     } catch (e) {
       print('[UsbService] Parse error: $e');
+      _lineBuffer = ''; // 解析失败时清空缓冲区避免污染
     }
   }
 
