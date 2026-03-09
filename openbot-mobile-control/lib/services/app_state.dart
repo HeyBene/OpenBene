@@ -450,8 +450,12 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
     }
   }
 
-  Future<Map<String, bool>> requestPermissions() async {
+  Future<Map<String, dynamic>> requestPermissions() async {
     return await _permissionService.requestAllPermissions();
+  }
+
+  Future<bool> openPermissionSettings() async {
+    return await _permissionService.openSettings();
   }
 
   Future<bool> initializeCamera() async {

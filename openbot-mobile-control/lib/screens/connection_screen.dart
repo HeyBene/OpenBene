@@ -17,6 +17,7 @@ class ConnectionScreen extends StatefulWidget {
 class _ConnectionScreenState extends State<ConnectionScreen>
     with SingleTickerProviderStateMixin, WidgetsBindingObserver {
   bool _permissionsGranted = false;
+  bool _permissionNeedsSettings = false; // true = must open iOS Settings
   bool _isStartingStream = false;
   late AnimationController _animationController;
   late Animation<double> _fadeAnimation;
@@ -75,10 +76,11 @@ class _ConnectionScreenState extends State<ConnectionScreen>
     if (!mounted) return;
     setState(() {
       _permissionsGranted = permissions['camera'] == true;
+      _permissionNeedsSettings = permissions['cameraNeedsSettings'] == true;
     });
 
     if (!_permissionsGranted) {
-      print('[DEBUG] Camera permission not granted');
+      print('[DEBUG] Camera permission not granted (needsSettings: $_permissionNeedsSettings)');
       return;
     }
 
@@ -89,17 +91,23 @@ class _ConnectionScreenState extends State<ConnectionScreen>
 
   Future<void> _requestPermissions() async {
     final appState = context.read<AppState>();
-    final permissions = await appState.requestPermissions();
 
+    // If iOS has already denied and won't show dialog again, go to Settings
+    if (_permissionNeedsSettings) {
+      await appState.openPermissionSettings();
+      return;
+    }
+
+    final permissions = await appState.requestPermissions();
     if (!mounted) return;
     setState(() {
       _permissionsGranted = permissions['camera'] == true;
+      _permissionNeedsSettings = permissions['cameraNeedsSettings'] == true;
     });
 
     if (_permissionsGranted) {
       await appState.initializeCamera();
       if (!mounted) return;
-      // 如果服务器还没启动，再次尝试启动
       if (!appState.serverRunning) {
         await appState.startServer();
       }
@@ -172,6 +180,8 @@ class _ConnectionScreenState extends State<ConnectionScreen>
 
   Widget _buildPermissionWarning() {
     final localization = context.read<LocalizationService>();
+    // When iOS has denied and can't re-ask, guide user to Settings
+    final needsSettings = _permissionNeedsSettings;
     return Card(
       elevation: 0,
       color: Colors.orange.shade50,
@@ -200,13 +210,27 @@ class _ConnectionScreenState extends State<ConnectionScreen>
                 ),
               ],
             ),
+            if (needsSettings) ...[
+              const SizedBox(height: 8),
+              Text(
+                'Camera access was denied. Please enable it in iOS Settings → Privacy → Camera.',
+                style: TextStyle(
+                  color: Colors.orange.shade800,
+                  fontSize: 13,
+                ),
+              ),
+            ],
             const SizedBox(height: 12),
             SizedBox(
               width: double.infinity,
               child: ElevatedButton.icon(
                 onPressed: _requestPermissions,
-                icon: const Icon(Icons.refresh_rounded),
-                label: Text(localization.get('grant_permissions')),
+                icon: Icon(needsSettings
+                    ? Icons.settings_rounded
+                    : Icons.refresh_rounded),
+                label: Text(needsSettings
+                    ? 'Open Settings'
+                    : localization.get('grant_permissions')),
                 style: ElevatedButton.styleFrom(
                   padding: const EdgeInsets.all(14),
                   backgroundColor: Colors.orange.shade600,
