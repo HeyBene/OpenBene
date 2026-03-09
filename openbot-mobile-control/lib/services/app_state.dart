@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:typed_data';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/widgets.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import '../models/sensor_data.dart';
 import '../models/connection_state.dart';
@@ -40,7 +41,7 @@ class CommandLog {
   }
 }
 
-class AppState extends ChangeNotifier {
+class AppState extends ChangeNotifier with WidgetsBindingObserver {
   final CameraService _cameraService = CameraService();
   final SensorService _sensorService = SensorService();
   final NetworkService _networkService = NetworkService();
@@ -160,6 +161,7 @@ class AppState extends ChangeNotifier {
   }
 
   Future<void> initialize() async {
+    WidgetsBinding.instance.addObserver(this);
     await _sensorService.initialize();
     await _networkService.initialize();
 
@@ -633,8 +635,31 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// iOS front/background lifecycle: release camera & network when suspended,
+  /// reinitialize when resumed to prevent AVFoundation / socket crashes.
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.inactive ||
+        state == AppLifecycleState.paused) {
+      // App going to background – release camera to let iOS reclaim it
+      if (_cameraInitialized) {
+        unawaited(_cameraService.dispose());
+        _cameraInitialized = false;
+        notifyListeners();
+      }
+    } else if (state == AppLifecycleState.resumed) {
+      // App returning to foreground – camera must be re-requested
+      // ConnectionScreen will handle the re-init via its own postFrameCallback
+      // We just mark it as not initialized so the screen knows to re-init.
+      if (!_cameraInitialized) {
+        notifyListeners();
+      }
+    }
+  }
+
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _sensorDataSubscription?.cancel();
     _connectionStateSubscription?.cancel();
     _commandSubscription?.cancel();

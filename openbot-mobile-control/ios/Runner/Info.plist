@@ -53,5 +53,11 @@
 	<string>Bluetooth is required to connect to the OpenBot robot.</string>
 	<key>NSBluetoothPeripheralUsageDescription</key>
 	<string>Bluetooth is required to communicate with the robot.</string>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>Local network access is required to stream video and communicate with the OpenBot robot on your Wi-Fi network.</string>
+	<key>NSBonjourServices</key>
+	<array>
+		<string>_openbene._tcp</string>
+	</array>
 </dict>
 </plist>

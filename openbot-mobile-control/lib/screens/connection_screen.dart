@@ -15,7 +15,7 @@ class ConnectionScreen extends StatefulWidget {
 }
 
 class _ConnectionScreenState extends State<ConnectionScreen>
-    with SingleTickerProviderStateMixin {
+    with SingleTickerProviderStateMixin, WidgetsBindingObserver {
   bool _permissionsGranted = false;
   bool _isStartingStream = false;
   late AnimationController _animationController;
@@ -33,14 +33,44 @@ class _ConnectionScreenState extends State<ConnectionScreen>
       curve: Curves.easeIn,
     );
     _animationController.forward();
-    _initializeAndStartServer();
+    WidgetsBinding.instance.addObserver(this);
+    // Defer until after first frame so iOS UIKit is ready to show permission dialogs
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _initializeAndStartServer();
+    });
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _animationController.dispose();
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed && mounted) {
+      final appState = context.read<AppState>();
+      // Re-init camera if it was released when going to background
+      if (!appState.cameraInitialized && _permissionsGranted) {
+        appState.initializeCamera();
+      }
+    }
   }
 
   Future<void> _initializeAndStartServer() async {
     print('[DEBUG] Initializing and starting server...');
+    if (!mounted) return;
     final appState = context.read<AppState>();
 
-    // 1. 请求权限
+    // 1. 先启动服务器（不依赖相机权限，WebSocket服务器与相机无关）
+    print('[DEBUG] Starting server...');
+    await appState.startServer();
+    print('[DEBUG] Server started, waiting for PC connection...');
+
+    if (!mounted) return;
+
+    // 2. 请求权限（在第一帧渲染后请求，iOS才能正常弹出系统对话框）
     final permissions = await appState.requestPermissions();
     if (!mounted) return;
     setState(() {
@@ -52,14 +82,9 @@ class _ConnectionScreenState extends State<ConnectionScreen>
       return;
     }
 
-    // 2. 初始化摄像头
+    // 3. 初始化摄像头
     print('[DEBUG] Initializing camera...');
     await appState.initializeCamera();
-
-    // 3. 自动启动服务器（等待PC连接）
-    print('[DEBUG] Starting server...');
-    await appState.startServer();
-    print('[DEBUG] Server started, waiting for PC connection...');
   }
 
   Future<void> _requestPermissions() async {
@@ -74,7 +99,10 @@ class _ConnectionScreenState extends State<ConnectionScreen>
     if (_permissionsGranted) {
       await appState.initializeCamera();
       if (!mounted) return;
-      await appState.startServer();
+      // 如果服务器还没启动，再次尝试启动
+      if (!appState.serverRunning) {
+        await appState.startServer();
+      }
     }
   }
 
@@ -763,11 +791,5 @@ class _ConnectionScreenState extends State<ConnectionScreen>
         ),
       ),
     );
-  }
-
-  @override
-  void dispose() {
-    _animationController.dispose();
-    super.dispose();
   }
 }
