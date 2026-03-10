@@ -100,18 +100,38 @@ class NetworkService {
       print('[NetworkService] Starting UDP broadcast for auto-discovery...');
       await _startUdpBroadcast();
 
-      _server!.transform(WebSocketTransformer()).listen(
-        _handleNewClient,
+      // Explicit per-request handling: a non-WS probe or a failed upgrade
+      // only affects that one connection and never cancels the server stream.
+      // Previously, transform(WebSocketTransformer()) used cancelOnError=true,
+      // so the first TCP probe (from auto-discovery subnet scan) that arrived
+      // without a proper HTTP Upgrade would throw, cancel the stream, and kill
+      // the server — causing "connection refused" for all subsequent attempts.
+      _server!.listen(
+        (HttpRequest request) async {
+          if (!WebSocketTransformer.isUpgradeRequest(request)) {
+            // Non-WebSocket request (e.g. TCP health probe, browser) —
+            // respond and close without disrupting the server.
+            request.response.statusCode = HttpStatus.upgradeRequired;
+            request.response.headers.set('Upgrade', 'websocket');
+            try { await request.response.close(); } catch (_) {}
+            return;
+          }
+          try {
+            final ws = await WebSocketTransformer.upgrade(request);
+            _handleNewClient(ws);
+          } catch (e) {
+            print('[NetworkService] WebSocket upgrade failed: $e');
+          }
+        },
         onError: (error) {
-          _updateConnectionState(
-            ConnectionStatus.error,
-            message: 'Server error: $error',
-          );
+          // Log but do NOT close the server — keep accepting new connections.
+          print('[NetworkService] Server stream error (ignored): $error');
         },
         onDone: () {
           _isRunning = false;
           _updateConnectionState(ConnectionStatus.disconnected);
         },
+        cancelOnError: false, // critical: never cancel the server on one bad conn
       );
 
       return true;
