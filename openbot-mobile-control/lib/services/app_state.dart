@@ -645,16 +645,22 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.inactive ||
         state == AppLifecycleState.paused) {
-      // App going to background – release camera to let iOS reclaim it
-      if (_cameraInitialized) {
-        unawaited(_cameraService.dispose());
+      // Stop streaming flag immediately so AppNavigator switches to
+      // ConnectionScreen BEFORE the camera is disposed asynchronously.
+      // If we leave _isStreaming=true, ControlScreen stays mounted with a live
+      // CameraPreview while the controller is being torn down → AVFoundation crash.
+      final wasStreamingOrInitialized = _isStreaming || _cameraInitialized;
+      if (wasStreamingOrInitialized) {
+        _isStreaming = false;
         _cameraInitialized = false;
-        notifyListeners();
+        notifyListeners(); // triggers navigation to ConnectionScreen immediately
+        // Now it is safe to dispose the camera: ControlScreen is unmounted,
+        // CameraPreview is gone, no widget accesses the controller anymore.
+        unawaited(_cameraService.dispose());
       }
     } else if (state == AppLifecycleState.resumed) {
-      // App returning to foreground – camera must be re-requested
-      // ConnectionScreen will handle the re-init via its own postFrameCallback
-      // We just mark it as not initialized so the screen knows to re-init.
+      // App returning to foreground – camera must be re-requested.
+      // ConnectionScreen will handle the re-init via its own lifecycle observer.
       if (!_cameraInitialized) {
         notifyListeners();
       }

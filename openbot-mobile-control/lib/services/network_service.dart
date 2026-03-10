@@ -20,11 +20,7 @@ class NetworkService {
   StreamController<Map<String, dynamic>>? _commandController;
   Timer? _heartbeatTimer;
 
-  // UDP 广播相关属性
-  RawDatagramSocket? _udpSocket;
-  Timer? _broadcastTimer;
   static const int discoveryPort = 12345;
-
   static const int defaultPort = 8765;
   static const Duration _heartbeatInterval = Duration(seconds: 5);
 
@@ -307,10 +303,6 @@ class NetworkService {
     _isRunning = false;
     _stopHeartbeat();
 
-    // 停止 UDP 广播
-    print('[NetworkService] Stopping UDP broadcast...');
-    _stopUdpBroadcast();
-
     await _client?.close();
     _client = null;
     _clientAddress = null;
@@ -329,64 +321,11 @@ class NetworkService {
   }
 
   /// 启动 UDP 广播，用于自动发现
-  /// 每 2 秒向局域网广播手机的 IP 和端口
+  /// DiscoveryService 已负责向局域网广播，NetworkService 不再重复发送。
+  /// 保留此方法体为空以避免修改调用点。
   Future<void> _startUdpBroadcast() async {
-    try {
-      // 创建 UDP socket，绑定到任意可用端口
-      _udpSocket = await RawDatagramSocket.bind(InternetAddress.anyIPv4, 0);
-      _udpSocket!.broadcastEnabled = true;
-
-      // 获取本地 IP 地址
-      final localIp = await _getLocalIpAddress();
-      if (localIp == null) {
-        print('[NetworkService][UDP] Cannot get local IP, broadcast disabled');
-        return;
-      }
-
-      print('[NetworkService][UDP] Starting UDP broadcast');
-      print('[NetworkService][UDP] Broadcasting on port $discoveryPort');
-      print('[NetworkService][UDP] Local IP: $localIp, WebSocket port: $_port');
-
-      // 每 2 秒广播一次
-      _broadcastTimer = Timer.periodic(const Duration(seconds: 2), (timer) {
-        // 构造发现消息（JSON 格式）
-        final message = jsonEncode({
-          'type': 'discovery',      // 消息类型
-          'name': 'OpenBot',        // 设备名称
-          'ip': localIp,            // 手机 IP
-          'port': _port,            // WebSocket 端口（8765）
-        });
-
-        try {
-          // 发送 UDP 广播到 255.255.255.255:12345
-          final bytes = Uint8List.fromList(utf8.encode(message));
-          _udpSocket?.send(
-            bytes,
-            InternetAddress('255.255.255.255'),  // 广播地址
-            discoveryPort,                        // 目标端口 12345
-          );
-          
-          print('[NetworkService][UDP] Broadcast sent: $message');
-        } catch (e) {
-          print('[NetworkService][UDP] Broadcast send error: $e');
-        }
-      });
-
-      print('[NetworkService][UDP] UDP broadcast started successfully');
-    } catch (e) {
-      print('[NetworkService][UDP] Failed to start UDP broadcast: $e');
-    }
-  }
-
-  /// 停止 UDP 广播
-  void _stopUdpBroadcast() {
-    _broadcastTimer?.cancel();
-    _broadcastTimer = null;
-    
-    _udpSocket?.close();
-    _udpSocket = null;
-    
-    print('[NetworkService][UDP] UDP broadcast stopped');
+    // Broadcast is handled exclusively by DiscoveryService to avoid duplicate
+    // packets on the network. NetworkService only manages the WebSocket server.
   }
 
   Future<void> dispose() async {

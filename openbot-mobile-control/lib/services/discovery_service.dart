@@ -67,15 +67,9 @@ class DiscoveryService {
 
       final data = utf8.encode(message);
 
-      // 发送到全局广播地址
-      _socket!.send(
-        data,
-        InternetAddress('255.255.255.255'),
-        broadcastPort,
-      );
-
-      // 同时发送到子网广播地址（适用于热点模式）
-      // 例如：192.168.43.1 -> 192.168.43.255
+      // iOS blocks packets to 255.255.255.255 (sandbox restriction).
+      // Only use the subnet-specific broadcast address which works on both
+      // iOS and Android (e.g. 192.168.1.255, 192.168.43.255 for hotspot).
       final parts = localIp.split('.');
       if (parts.length == 4) {
         final subnetBroadcast = '${parts[0]}.${parts[1]}.${parts[2]}.255';
