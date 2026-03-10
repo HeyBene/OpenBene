@@ -9,11 +9,13 @@ class PermissionService {
     return status.isGranted;
   }
 
-  /// Returns true if the camera permission was denied and can no longer be
-  /// requested via a system dialog (user must go to Settings).
+  /// Returns true if the camera permission was permanently denied and can no
+  /// longer be requested via a system dialog (user must go to Settings).
+  /// Note: isDenied on iOS also covers "notDetermined" (never asked), so we
+  /// must NOT treat isDenied alone as permanently denied.
   Future<bool> isCameraPermanentlyDenied() async {
     final status = await Permission.camera.status;
-    return status.isPermanentlyDenied || status.isDenied;
+    return status.isPermanentlyDenied;
   }
 
   Future<bool> requestStoragePermission() async {
@@ -34,23 +36,19 @@ class PermissionService {
   /// Returns a map with 'camera' and 'cameraNeedsSettings' keys.
   /// 'cameraNeedsSettings' is true when iOS cannot show the dialog anymore.
   Future<Map<String, dynamic>> requestAllPermissions() async {
-    // Check current status first
-    final currentStatus = await Permission.camera.status;
-
-    // If already denied/permanentlyDenied, don't request again (iOS won't
-    // show the dialog) — tell the caller to open Settings instead.
-    if (currentStatus.isDenied || currentStatus.isPermanentlyDenied) {
-      return {
-        'camera': false,
-        'cameraNeedsSettings': true,
-        'storage': true,
-      };
-    }
-
+    // Always call .request() directly — no pre-check needed.
+    // On iOS, permission_handler's .request() handles all states correctly:
+    //   - notDetermined (fresh install) → shows system dialog
+    //   - denied (user tapped "Don't Allow") → returns permanentlyDenied, no dialog
+    //   - authorized → returns granted immediately
+    // Any pre-check that bails out early on .isDenied or .isPermanentlyDenied
+    // risks skipping the .request() call on the very first launch, which
+    // prevents iOS from ever registering camera usage for this app (so the
+    // toggle would never appear in Settings → Privacy → Camera).
     final cameraStatus = await Permission.camera.request();
     return {
       'camera': cameraStatus.isGranted,
-      'cameraNeedsSettings': false,
+      'cameraNeedsSettings': cameraStatus.isPermanentlyDenied,
       'storage': true,
     };
   }
