@@ -25,7 +25,6 @@ void main() async {
 
   runApp(const OpenBotApp());
 }
-}
 
 class OpenBotApp extends StatelessWidget {
   const OpenBotApp({super.key});
