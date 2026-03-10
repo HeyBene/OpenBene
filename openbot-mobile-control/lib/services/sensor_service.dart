@@ -24,13 +24,18 @@ class SensorService {
   Future<void> initialize() async {
     _sensorDataController = StreamController<SensorData>.broadcast();
 
-    // Initialize battery
-    _lastBatteryLevel = (await _battery.batteryLevel) / 100.0;
-
-    // Listen to battery changes
-    _battery.onBatteryStateChanged.listen((BatteryState state) async {
+    // battery_plus can throw PlatformException on first call on some devices.
+    try {
       _lastBatteryLevel = (await _battery.batteryLevel) / 100.0;
-    });
+      _battery.onBatteryStateChanged.listen((BatteryState state) async {
+        try {
+          _lastBatteryLevel = (await _battery.batteryLevel) / 100.0;
+        } catch (_) {}
+      });
+    } catch (e) {
+      debugPrint('[SensorService] Battery init failed: $e');
+      _lastBatteryLevel = 0.0;
+    }
   }
 
   void startListening({int intervalMs = 100}) {

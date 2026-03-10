@@ -1,3 +1,4 @@
+import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'services/app_state.dart';
@@ -8,7 +9,22 @@ import 'models/connection_state.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // Catch unhandled Flutter framework errors (e.g. widget build failures).
+  FlutterError.onError = (FlutterErrorDetails details) {
+    FlutterError.presentError(details);
+    debugPrint('[FlutterError] ${details.exceptionAsString()}');
+  };
+
+  // Catch unhandled async exceptions that escape all zones (prevents crash
+  // from fire-and-forget Futures throwing after the first frame).
+  PlatformDispatcher.instance.onError = (error, stack) {
+    debugPrint('[PlatformError] $error\n$stack');
+    return true; // handled – do not abort the isolate
+  };
+
   runApp(const OpenBotApp());
+}
 }
 
 class OpenBotApp extends StatelessWidget {
@@ -18,7 +34,15 @@ class OpenBotApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MultiProvider(
       providers: [
-        ChangeNotifierProvider(create: (_) => AppState()..initialize()),
+        ChangeNotifierProvider(create: (_) {
+          final state = AppState();
+          // initialize() is async; use catchError so any failure is logged
+          // rather than becoming an unhandled Future that aborts the isolate.
+          state.initialize().catchError((Object e, StackTrace st) {
+            debugPrint('[AppState] initialize() error: $e\n$st');
+          });
+          return state;
+        }),
         ChangeNotifierProvider(create: (_) => LocalizationService()),
       ],
       child: MaterialApp(

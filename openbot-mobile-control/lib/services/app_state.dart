@@ -42,6 +42,7 @@ class CommandLog {
 }
 
 class AppState extends ChangeNotifier with WidgetsBindingObserver {
+  bool _disposed = false;
   final CameraService _cameraService = CameraService();
   final SensorService _sensorService = SensorService();
   final NetworkService _networkService = NetworkService();
@@ -86,6 +87,12 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
   StreamSubscription? _bluetoothMessageSubscription;
   // 定期心跳计时器：每 500ms 向小车发送一次心跳，防止固件 1000ms 超时归零
   Timer? _heartbeatTimer;
+
+  /// Guard: never call notifyListeners() after dispose().
+  @override
+  void notifyListeners() {
+    if (!_disposed) super.notifyListeners();
+  }
 
   // Getters
   ConnectionState get connectionState => _connectionState;
@@ -172,6 +179,14 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
     _connectionStateSubscription =
         _networkService.connectionStateStream?.listen((state) {
       _connectionState = state;
+      // Sync _serverRunning with the actual socket state.
+      // On iOS the socket can be killed while backgrounded; NetworkService
+      // sets _isRunning=false via onDone, but AppState._serverRunning was
+      // never updated — causing the UI to claim the server is running while
+      // the port is dead and the PC gets "connection refused".
+      if (!_networkService.isRunning && _serverRunning) {
+        _serverRunning = false;
+      }
       notifyListeners();
     });
 
@@ -647,28 +662,50 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
         state == AppLifecycleState.paused) {
       // Stop streaming flag immediately so AppNavigator switches to
       // ConnectionScreen BEFORE the camera is disposed asynchronously.
-      // If we leave _isStreaming=true, ControlScreen stays mounted with a live
-      // CameraPreview while the controller is being torn down → AVFoundation crash.
       final wasStreamingOrInitialized = _isStreaming || _cameraInitialized;
       if (wasStreamingOrInitialized) {
         _isStreaming = false;
         _cameraInitialized = false;
-        notifyListeners(); // triggers navigation to ConnectionScreen immediately
-        // Now it is safe to dispose the camera: ControlScreen is unmounted,
-        // CameraPreview is gone, no widget accesses the controller anymore.
+        notifyListeners();
         unawaited(_cameraService.dispose());
       }
     } else if (state == AppLifecycleState.resumed) {
-      // App returning to foreground – camera must be re-requested.
-      // ConnectionScreen will handle the re-init via its own lifecycle observer.
-      if (!_cameraInitialized) {
-        notifyListeners();
-      }
+      // On iOS the OS may have suspended or killed the server socket while
+      // the app was backgrounded.  Always stop then restart to guarantee the
+      // port is actually listening when the user returns.
+      unawaited(_restartServerOnResume());
     }
+  }
+
+  /// Stop and restart the WebSocket server + UDP discovery broadcast.
+  /// Called every time the app resumes from background on iOS to ensure the
+  /// server socket is alive (iOS may have silently killed it).
+  Future<void> _restartServerOnResume() async {
+    // Tear down whatever state the socket is in (running, limbo, or dead).
+    _discoveryService.stopBroadcast();
+    await _networkService.stopServer();
+    _serverRunning = false;
+
+    // Refresh local IP — it may have changed if the user switched networks.
+    _localIpAddress = await _networkService.getLocalIpAddress();
+
+    // Restart server.
+    final success = await _networkService.startServer(port: 8765);
+    _serverRunning = success;
+    if (success) {
+      await _discoveryService.startBroadcast(
+        deviceName: 'OpenBene Robot',
+        wsPort: 8765,
+      );
+    }
+
+    // Camera re-init is handled by ConnectionScreen's own lifecycle observer.
+    notifyListeners();
   }
 
   @override
   void dispose() {
+    _disposed = true;
     WidgetsBinding.instance.removeObserver(this);
     _sensorDataSubscription?.cancel();
     _connectionStateSubscription?.cancel();
