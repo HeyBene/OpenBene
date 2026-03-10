@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../models/robot_connection_mode.dart';
@@ -598,6 +599,40 @@ class _ConnectionScreenState extends State<ConnectionScreen>
                 ),
             ],
           ),
+          // iOS 14+ Local Network permission reminder
+          // If the server is running but the PC still can't connect, the most
+          // common cause on iOS is that "Local Network" access was denied.
+          if (isServerRunning && !isConnected && Platform.isIOS) ...[
+            const SizedBox(height: 12),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.amber.shade50,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: Colors.amber.shade300),
+              ),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Icon(Icons.shield_outlined,
+                      size: 18, color: Colors.amber.shade800),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'iOS requires "Local Network" permission for PC to connect.\n'
+                      'If connection is refused, go to:\n'
+                      'Settings → Privacy → Local Network → enable this App',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Colors.amber.shade900,
+                        height: 1.4,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
           // 显示服务器地址信息
           if (isServerRunning && appState.localIpAddress != null) ...[
             const SizedBox(height: 12),
