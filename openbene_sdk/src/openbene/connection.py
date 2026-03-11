@@ -188,7 +188,7 @@ class WebSocketConnection:
         """
         uri = f"ws://{self.ip}:{self.port}"
         try:
-            async with websockets.connect(uri) as ws:
+            async with websockets.connect(uri, open_timeout=15) as ws:
                 self._ws = ws
                 self.connected = True
                 logger.debug(f"WebSocket已连接: {uri}")
