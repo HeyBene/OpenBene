@@ -109,10 +109,20 @@ class NetworkService {
       _server!.listen(
         (HttpRequest request) async {
           if (!WebSocketTransformer.isUpgradeRequest(request)) {
-            // Non-WebSocket request (e.g. TCP health probe, browser) —
-            // respond and close without disrupting the server.
-            request.response.statusCode = HttpStatus.upgradeRequired;
-            request.response.headers.set('Upgrade', 'websocket');
+            // HTTP GET /ping or GET / — health check so PC can verify the
+            // server is alive before attempting WebSocket upgrade.
+            if (request.method == 'GET') {
+              request.response.statusCode = HttpStatus.ok;
+              request.response.headers.contentType = ContentType.json;
+              request.response.headers.set('Access-Control-Allow-Origin', '*');
+              request.response.write(
+                '{"status":"ok","service":"OpenBene","port":$_port}',
+              );
+            } else {
+              // Non-WebSocket, non-GET request — tell client to upgrade.
+              request.response.statusCode = HttpStatus.upgradeRequired;
+              request.response.headers.set('Upgrade', 'websocket');
+            }
             try { await request.response.close(); } catch (_) {}
             return;
           }

@@ -75,6 +75,10 @@ class WebSocketConnection:
         self._ws_thread: Optional[threading.Thread] = None
         self._ws_running = False
         self._send_queue: Optional[asyncio.Queue] = None
+        # Actual exception from background thread — propagated to connect().
+        self._connect_error: Optional[Exception] = None
+        # Timeout passed to connect() — used to size websockets open_timeout.
+        self._connect_timeout: float = self.TIMEOUT
 
         # 消息回调
         self._message_callbacks: List[Callable[[Dict[str, Any]], None]] = []
@@ -94,16 +98,27 @@ class WebSocketConnection:
         """
         logger.info(f"正在连接到 {self.ip}:{self.port}...")
 
+        self._connect_error = None
+        self._connect_timeout = timeout
         self._ws_running = True
         self._ws_thread = threading.Thread(target=self._run_ws_loop, daemon=True)
         self._ws_thread.start()
 
-        # 等待连接
+        # 等待连接：优先报告背景线程捕获的真实错误，其次才是超时。
         start_time = time.time()
         while not self.connected:
+            # Background thread already failed — surface the real error immediately.
+            if self._connect_error is not None:
+                raise ConnectionError(
+                    f"连接失败 ({self.ip}:{self.port}): {self._connect_error}\n"
+                    f"  请确认: 1) 手机App已打开  2) 与PC在同一WiFi  3) IP地址正确"
+                )
             if time.time() - start_time > timeout:
                 self._ws_running = False
-                raise ConnectionError(f"连接超时: {self.ip}:{self.port}")
+                raise ConnectionError(
+                    f"连接超时 ({timeout:.0f}s): 无法连接到 {self.ip}:{self.port}\n"
+                    f"  请确认: 1) 手机App已打开  2) 与PC在同一WiFi  3) IP地址正确"
+                )
             time.sleep(0.1)
 
         logger.info(f"已连接到 {self.ip}:{self.port}")
@@ -172,6 +187,10 @@ class WebSocketConnection:
             self._ws_loop.run_until_complete(self._ws_handler())
         except Exception as e:
             logger.error(f"WebSocket循环错误: {e}")
+            # Store so connect() can surface the real error instead of just
+            # reporting a generic timeout.
+            if self._connect_error is None:
+                self._connect_error = e
         finally:
             self.connected = False
             if self._ws_loop:
@@ -188,7 +207,10 @@ class WebSocketConnection:
         """
         uri = f"ws://{self.ip}:{self.port}"
         try:
-            async with websockets.connect(uri, open_timeout=15) as ws:
+            # open_timeout is set larger than the Python-level connect() timeout
+            # so the Python timeout always fires first, giving consistent UX.
+            ws_open_timeout = self._connect_timeout + 10
+            async with websockets.connect(uri, open_timeout=ws_open_timeout) as ws:
                 self._ws = ws
                 self.connected = True
                 logger.debug(f"WebSocket已连接: {uri}")
