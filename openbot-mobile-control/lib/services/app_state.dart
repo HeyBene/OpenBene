@@ -670,10 +670,15 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
         unawaited(_cameraService.dispose());
       }
     } else if (state == AppLifecycleState.resumed) {
-      // On iOS the OS may have suspended or killed the server socket while
-      // the app was backgrounded.  Always stop then restart to guarantee the
-      // port is actually listening when the user returns.
-      unawaited(_restartServerOnResume());
+      // Only restart if the server socket actually died while backgrounded.
+      // Unconditional restart caused a 300-500 ms gap on every screen-unlock
+      // which made the PC's WebSocket handshake time out even though TCP was
+      // accepted.
+      if (!_networkService.isRunning) {
+        unawaited(_restartServerOnResume());
+      } else {
+        notifyListeners();
+      }
     }
   }
 
