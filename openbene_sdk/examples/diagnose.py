@@ -119,7 +119,7 @@ def step3_websocket(ip: str, port: int) -> bool:
         async def _test():
             uri = f"ws://{ip}:{port}"
             try:
-                async with websockets.connect(uri, open_timeout=TIMEOUT + 2) as ws:
+                async with websockets.connect(uri, open_timeout=TIMEOUT + 2, proxy=None) as ws:
                     result["ok"] = True
                     _ok("WebSocket handshake succeeded!")
                     # Wait up to 8s for the first message (heartbeat / status)

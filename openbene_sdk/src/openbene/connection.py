@@ -210,7 +210,16 @@ class WebSocketConnection:
             # open_timeout is set larger than the Python-level connect() timeout
             # so the Python timeout always fires first, giving consistent UX.
             ws_open_timeout = self._connect_timeout + 10
-            async with websockets.connect(uri, open_timeout=ws_open_timeout) as ws:
+            # proxy=None: bypass any system proxy (e.g. Clash/V2Ray on Windows).
+            # compression=None: disable permessage-deflate extension — Dart's
+            # WebSocketTransformer silently drops the connection when it can't
+            # negotiate the extension, leaving the client to time out.
+            async with websockets.connect(
+                uri,
+                open_timeout=ws_open_timeout,
+                proxy=None,
+                compression=None,
+            ) as ws:
                 self._ws = ws
                 self.connected = True
                 logger.debug(f"WebSocket已连接: {uri}")

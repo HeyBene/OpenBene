@@ -186,6 +186,14 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
       // the port is dead and the PC gets "connection refused".
       if (!_networkService.isRunning && _serverRunning) {
         _serverRunning = false;
+        // Race-condition fix: onDone sometimes fires *after* the
+        // AppLifecycle.resumed event, so _restartServerOnResume() already
+        // ran with isRunning==true and skipped the restart.  Retry here
+        // whenever the socket dies while the app is in the foreground.
+        final lifecycle = WidgetsBinding.instance.lifecycleState;
+        if (lifecycle == AppLifecycleState.resumed) {
+          unawaited(_restartServerOnResume());
+        }
       }
       notifyListeners();
     });

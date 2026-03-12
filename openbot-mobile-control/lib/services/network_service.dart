@@ -88,7 +88,10 @@ class NetworkService {
     _port = port;
 
     try {
-      _server = await HttpServer.bind('0.0.0.0', _port);
+      // Use InternetAddress.anyIPv4 explicitly — passing the string '0.0.0.0'
+      // on iOS can resolve through getaddrinfo which may return an IPv6
+      // socket, silently rejecting all incoming IPv4 connections (RST).
+      _server = await HttpServer.bind(InternetAddress.anyIPv4, _port);
       _isRunning = true;
 
       _updateConnectionState(
@@ -131,6 +134,14 @@ class NetworkService {
             _handleNewClient(ws);
           } catch (e) {
             print('[NetworkService] WebSocket upgrade failed: $e');
+            // Send an error response so the PC client fails immediately
+            // instead of waiting for open_timeout (which would look like a
+            // hang to the user).  Silently swallow any send error — the
+            // client may have already disconnected.
+            try {
+              request.response.statusCode = HttpStatus.internalServerError;
+              await request.response.close();
+            } catch (_) {}
           }
         },
         onError: (error) {
