@@ -177,7 +177,7 @@ class _ConnectionScreenState extends State<ConnectionScreen>
         ),
         const SizedBox(height: 4),
         Text(
-          'v1.0.7 build 2026-03-12',
+          'v1.0.8 build 2026-03-12',
           style: TextStyle(
             fontSize: 11,
             color: Colors.blue.shade300,
