@@ -1,7 +1,17 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
+import 'package:flutter/foundation.dart';
 import 'package:usb_serial/usb_serial.dart';
+
+// usb_serial has no iOS implementation — any call to its platform channel on
+// iOS throws MissingPluginException and crashes the app.  Guard every method
+// with this constant so the compiler eliminates the usb_serial calls entirely
+// in iOS builds.
+const bool _usbSupported = !kIsWeb &&
+    (defaultTargetPlatform == TargetPlatform.android ||
+        defaultTargetPlatform == TargetPlatform.windows ||
+        defaultTargetPlatform == TargetPlatform.linux);
 
 /// OpenBot USB Serial Service
 ///
@@ -42,11 +52,13 @@ class UsbService {
 
   /// List available USB devices
   Future<List<UsbDevice>> listDevices() async {
+    if (!_usbSupported) return [];
     return await UsbSerial.listDevices();
   }
 
   /// Connect to a USB device
   Future<bool> connect({UsbDevice? device}) async {
+    if (!_usbSupported) return false;
     try {
       // Get list of devices if none specified
       List<UsbDevice> devices = await UsbSerial.listDevices();
@@ -247,7 +259,7 @@ class UsbService {
 
   /// Send raw command to Arduino
   Future<void> sendRaw(String command) async {
-    if (!_isConnected || _port == null) return;
+    if (!_usbSupported || !_isConnected || _port == null) return;
 
     try {
       await _port!.write(Uint8List.fromList(utf8.encode('$command\n')));
