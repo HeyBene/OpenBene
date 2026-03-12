@@ -161,17 +161,25 @@ class OpenBene:
             return None
 
     @staticmethod
-    def _probe_port(ip: str, port: int, timeout: float = 0.3) -> Optional[str]:
-        """尝试TCP连接到指定IP:port，成功返回IP，失败返回None"""
+    def _probe_port(ip: str, port: int, timeout: float = 0.5) -> Optional[str]:
+        """尝试TCP连接并发送HTTP GET，确认是OpenBene服务器。
+
+        只做原始TCP connect会向Dart HttpServer注入大量无效连接，
+        占满accept队列导致后续WebSocket握手超时。
+        改为发送一个HTTP GET /ping，读取响应头后立即关闭。
+        """
         try:
             s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             s.settimeout(timeout)
-            # Use connect() not connect_ex(): on Windows connect_ex() with
-            # settimeout returns 10035 (WSAEWOULDBLOCK) immediately for
-            # in-progress connects, so every open port looks closed.
             s.connect((ip, port))
+            # Send minimal HTTP probe
+            s.sendall(b"GET /ping HTTP/1.0\r\nHost: " + ip.encode() + b"\r\n\r\n")
+            # Read up to 256 bytes — enough for the status line
+            data = s.recv(256)
             s.close()
-            return ip
+            # Accept 200 OK or 426 Upgrade Required — both mean our server
+            if b"200" in data or b"426" in data or b"OpenBene" in data:
+                return ip
         except Exception:
             pass
         return None
@@ -207,9 +215,12 @@ class OpenBene:
         targets = [f"{prefix}.{i}" for i in range(1, 255) if i != local_last]
 
         found_ip = None
-        probe_timeout = min(0.4, timeout / 4)
+        probe_timeout = min(0.8, timeout / 3)
 
-        with concurrent.futures.ThreadPoolExecutor(max_workers=64) as pool:
+        # Use fewer workers: flooding the phone with 64 simultaneous probe
+        # connections overwhelms Dart HttpServer's accept queue and blocks
+        # the real WebSocket upgrade that comes right after.
+        with concurrent.futures.ThreadPoolExecutor(max_workers=20) as pool:
             futures = {
                 pool.submit(cls._probe_port, ip, port, probe_timeout): ip
                 for ip in targets

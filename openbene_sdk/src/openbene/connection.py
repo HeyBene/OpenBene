@@ -115,6 +115,13 @@ class WebSocketConnection:
                 )
             if time.time() - start_time > timeout:
                 self._ws_running = False
+                # Give the background websockets coroutine a moment to notice
+                # the flag and exit cleanly; if it doesn't, the daemon thread
+                # will be killed when the process ends, but we cancel its loop
+                # immediately so it doesn't hold a half-open TCP connection to
+                # the phone (which would clog the server's accept queue).
+                if self._ws_loop and self._ws_loop.is_running():
+                    self._ws_loop.call_soon_threadsafe(self._ws_loop.stop)
                 raise ConnectionError(
                     f"连接超时 ({timeout:.0f}s): 无法连接到 {self.ip}:{self.port}\n"
                     f"  请确认: 1) 手机App已打开  2) 与PC在同一WiFi  3) IP地址正确"
