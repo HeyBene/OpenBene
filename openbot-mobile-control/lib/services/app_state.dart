@@ -498,17 +498,21 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
 
   /// 启动WebSocket服务器
   Future<bool> startServer({int port = 8765}) async {
-    final success = await _networkService.startServer(port: port);
-    _serverRunning = success;
-
-    // 启动UDP广播发现服务
-    if (success) {
-      await _discoveryService.startBroadcast(
-        deviceName: 'OpenBene Robot',
-        wsPort: port,
-      );
+    // iOS 14+ fix: Local Network permission must be "activated" for each
+    // app session by sending an outbound local-network packet BEFORE the
+    // server socket is bound. If we bind first, iOS silently drops all
+    // incoming TCP SYN packets even when the permission shows ON in Settings.
+    // Start UDP broadcast now, wait briefly, THEN bind the server socket.
+    await _discoveryService.startBroadcast(
+      deviceName: 'OpenBene Robot',
+      wsPort: port,
+    );
+    if (!kIsWeb && defaultTargetPlatform == TargetPlatform.iOS) {
+      await Future.delayed(const Duration(milliseconds: 600));
     }
 
+    final success = await _networkService.startServer(port: port);
+    _serverRunning = success;
     notifyListeners();
     return success;
   }
@@ -702,17 +706,18 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
     // Refresh local IP — it may have changed if the user switched networks.
     _localIpAddress = await _networkService.getLocalIpAddress();
 
-    // Restart server.
-    final success = await _networkService.startServer(port: 8765);
-    _serverRunning = success;
-    if (success) {
-      await _discoveryService.startBroadcast(
-        deviceName: 'OpenBene Robot',
-        wsPort: 8765,
-      );
+    // Same order as startServer(): broadcast first to activate iOS Local
+    // Network permission, then bind the server socket.
+    await _discoveryService.startBroadcast(
+      deviceName: 'OpenBene Robot',
+      wsPort: 8765,
+    );
+    if (!kIsWeb && defaultTargetPlatform == TargetPlatform.iOS) {
+      await Future.delayed(const Duration(milliseconds: 600));
     }
 
-    // Camera re-init is handled by ConnectionScreen's own lifecycle observer.
+    final success = await _networkService.startServer(port: 8765);
+    _serverRunning = success;
     notifyListeners();
   }
 

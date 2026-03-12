@@ -93,6 +93,7 @@ class NetworkService {
       // socket, silently rejecting all incoming IPv4 connections (RST).
       _server = await HttpServer.bind(InternetAddress.anyIPv4, _port);
       _isRunning = true;
+      print('[NetworkService] Server bound to ${_server!.address.address}:${_server!.port}');
 
       _updateConnectionState(
         ConnectionStatus.connecting,
@@ -111,6 +112,9 @@ class NetworkService {
       // the server — causing "connection refused" for all subsequent attempts.
       _server!.listen(
         (HttpRequest request) async {
+          final remote =
+              request.connectionInfo?.remoteAddress?.address ?? 'unknown';
+          print('[NetworkService] ← connection from $remote ${request.method} ${request.uri.path}');
           if (!WebSocketTransformer.isUpgradeRequest(request)) {
             // HTTP GET /ping or GET / — health check so PC can verify the
             // server is alive before attempting WebSocket upgrade.
