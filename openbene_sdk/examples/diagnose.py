@@ -36,16 +36,18 @@ def step1_tcp(ip: str, port: int) -> bool:
     try:
         s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         s.settimeout(TIMEOUT)
-        result = s.connect_ex((ip, port))
+        # Use connect() not connect_ex(): on Windows connect_ex() with
+        # settimeout returns 10035 (WSAEWOULDBLOCK) for in-progress connects
+        # and never waits, giving a false-negative for open ports.
+        s.connect((ip, port))
         s.close()
-        if result == 0:
-            _ok("TCP connection accepted")
-            return True
-        else:
-            _fail(f"TCP connect_ex returned {result} (errno)")
-            _info("→ Phone App is NOT listening on this port.")
-            _info("  Check: App is open, server started, IP is correct.")
-            return False
+        _ok("TCP connection accepted")
+        return True
+    except ConnectionRefusedError:
+        _fail("TCP connection refused — port is closed")
+        _info("→ Phone App is NOT listening on this port.")
+        _info("  Check: App is open, server started, IP is correct.")
+        return False
     except socket.timeout:
         _fail("TCP connection timed out")
         _info("→ Phone not reachable. Same WiFi? Correct IP?")
@@ -119,7 +121,7 @@ def step3_websocket(ip: str, port: int) -> bool:
         async def _test():
             uri = f"ws://{ip}:{port}"
             try:
-                async with websockets.connect(uri, open_timeout=TIMEOUT + 2, proxy=None) as ws:
+                async with websockets.connect(uri, open_timeout=TIMEOUT + 2, proxy=None, compression=None) as ws:
                     result["ok"] = True
                     _ok("WebSocket handshake succeeded!")
                     # Wait up to 8s for the first message (heartbeat / status)

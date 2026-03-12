@@ -166,10 +166,12 @@ class OpenBene:
         try:
             s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             s.settimeout(timeout)
-            result = s.connect_ex((ip, port))
+            # Use connect() not connect_ex(): on Windows connect_ex() with
+            # settimeout returns 10035 (WSAEWOULDBLOCK) immediately for
+            # in-progress connects, so every open port looks closed.
+            s.connect((ip, port))
             s.close()
-            if result == 0:
-                return ip
+            return ip
         except Exception:
             pass
         return None
