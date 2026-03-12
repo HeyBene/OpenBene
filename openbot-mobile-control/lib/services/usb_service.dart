@@ -6,9 +6,9 @@ import 'package:usb_serial/usb_serial.dart';
 
 // usb_serial has no iOS implementation — any call to its platform channel on
 // iOS throws MissingPluginException and crashes the app.  Guard every method
-// with this constant so the compiler eliminates the usb_serial calls entirely
-// in iOS builds.
-const bool _usbSupported = !kIsWeb &&
+// with this getter so UsbService becomes a no-op on iOS/macOS/web.
+bool get _usbSupported =>
+    !kIsWeb &&
     (defaultTargetPlatform == TargetPlatform.android ||
         defaultTargetPlatform == TargetPlatform.windows ||
         defaultTargetPlatform == TargetPlatform.linux);
