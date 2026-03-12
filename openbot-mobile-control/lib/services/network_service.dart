@@ -61,24 +61,43 @@ class NetworkService {
   }
 
   /// 获取本机IP地址（内部方法）
+  ///
+  /// Prefers WiFi / hotspot interfaces (en*, wlan*, ap*, bridge*) over
+  /// cellular data interfaces (rmnet*, pdp_ip*, ccmni*, utun*, tun*).
+  /// This matters on Android when the phone is both a hotspot provider and
+  /// running the app: the cellular interface has an unreachable carrier IP
+  /// while the hotspot interface has the LAN-reachable gateway IP.
   Future<String?> _getLocalIpAddress() async {
     try {
       final interfaces = await NetworkInterface.list(
         type: InternetAddressType.IPv4,
         includeLinkLocal: false,
       );
-      for (var interface in interfaces) {
-        for (var addr in interface.addresses) {
-          // 过滤掉回环地址
-          if (!addr.address.startsWith('127.')) {
-            return addr.address;
+      // Interfaces that carry cellular/VPN traffic — deprioritised.
+      bool _isCellular(String name) {
+        final n = name.toLowerCase();
+        return n.startsWith('rmnet') ||
+            n.startsWith('pdp_ip') ||
+            n.startsWith('ccmni') ||
+            n.startsWith('utun') ||
+            n.startsWith('tun');
+      }
+      String? preferred;
+      String? fallback;
+      for (final iface in interfaces) {
+        for (final addr in iface.addresses) {
+          if (addr.address.startsWith('127.')) continue;
+          if (_isCellular(iface.name)) {
+            fallback ??= addr.address;
+          } else {
+            preferred ??= addr.address;
           }
         }
       }
+      return preferred ?? fallback;
     } catch (e) {
-      // 忽略错误
+      return null;
     }
-    return null;
   }
 
   Future<void> initialize() async {
@@ -109,10 +128,19 @@ class NetworkService {
           type: InternetAddressType.IPv4,
           includeLinkLocal: false,
         );
+        bool isCellular(String name) {
+          final n = name.toLowerCase();
+          return n.startsWith('rmnet') ||
+              n.startsWith('pdp_ip') ||
+              n.startsWith('ccmni') ||
+              n.startsWith('utun') ||
+              n.startsWith('tun');
+        }
         for (final iface in ifaces) {
           for (final addr in iface.addresses) {
             if (!addr.address.startsWith('127.')) {
-              _allLocalIps.add('${iface.name}  ${addr.address}');
+              final tag = isCellular(iface.name) ? '${iface.name}(cellular)' : iface.name;
+              _allLocalIps.add('$tag  ${addr.address}');
               print('[NetworkService] Interface ${iface.name}: ${addr.address}');
             }
           }

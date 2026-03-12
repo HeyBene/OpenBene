@@ -85,19 +85,34 @@ class DiscoveryService {
   }
 
   /// 获取本机IP地址
+  /// Same cellular-skip logic as NetworkService._getLocalIpAddress().
   Future<String?> _getLocalIpAddress() async {
     try {
       final interfaces = await NetworkInterface.list(
         type: InternetAddressType.IPv4,
         includeLinkLocal: false,
       );
-      for (var interface in interfaces) {
-        for (var addr in interface.addresses) {
-          if (!addr.address.startsWith('127.')) {
-            return addr.address;
+      bool isCellular(String name) {
+        final n = name.toLowerCase();
+        return n.startsWith('rmnet') ||
+            n.startsWith('pdp_ip') ||
+            n.startsWith('ccmni') ||
+            n.startsWith('utun') ||
+            n.startsWith('tun');
+      }
+      String? preferred;
+      String? fallback;
+      for (final iface in interfaces) {
+        for (final addr in iface.addresses) {
+          if (addr.address.startsWith('127.')) continue;
+          if (isCellular(iface.name)) {
+            fallback ??= addr.address;
+          } else {
+            preferred ??= addr.address;
           }
         }
       }
+      return preferred ?? fallback;
     } catch (e) {
       // 忽略错误
     }
