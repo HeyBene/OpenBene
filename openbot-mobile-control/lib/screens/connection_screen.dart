@@ -175,6 +175,16 @@ class _ConnectionScreenState extends State<ConnectionScreen>
           ),
           textAlign: TextAlign.center,
         ),
+        const SizedBox(height: 4),
+        Text(
+          'v1.0.7 build 2026-03-12',
+          style: TextStyle(
+            fontSize: 11,
+            color: Colors.blue.shade300,
+            fontWeight: FontWeight.w500,
+          ),
+          textAlign: TextAlign.center,
+        ),
       ],
     );
   }
