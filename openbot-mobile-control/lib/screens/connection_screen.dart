@@ -609,36 +609,31 @@ class _ConnectionScreenState extends State<ConnectionScreen>
                 ),
             ],
           ),
-          // iOS 14+ Local Network permission reminder
-          // Only shown when the server is waiting AND the PC has never
-          // connected yet (first-launch hint). Once a PC connects once,
-          // this disappears and never comes back for that session.
-          // NOTE: this is a one-time hint only — it does NOT mean the
-          // permission is missing. If you already granted it, ignore this.
+          // One-time info hint shown before first PC connection on iOS.
+          // This is NOT an error — it does not detect permission status.
           if (isServerRunning && !isConnected && Platform.isIOS &&
               appState.commandsReceived == 0) ...[
             const SizedBox(height: 12),
             Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: Colors.amber.shade50,
+                color: Colors.blue.shade50,
                 borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: Colors.amber.shade300),
+                border: Border.all(color: Colors.blue.shade200),
               ),
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Icon(Icons.shield_outlined,
-                      size: 18, color: Colors.amber.shade800),
+                  Icon(Icons.info_outline,
+                      size: 18, color: Colors.blue.shade600),
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(
-                      'iOS requires "Local Network" permission for PC to connect.\n'
-                      'If connection is refused, go to:\n'
-                      'Settings → Privacy → Local Network → enable this App',
+                      'Tip: If the PC cannot connect, check that "Local Network" permission is enabled in Settings → Privacy → Local Network.\n'
+                      'If it is already enabled, you can ignore this message.',
                       style: TextStyle(
                         fontSize: 12,
-                        color: Colors.amber.shade900,
+                        color: Colors.blue.shade700,
                         height: 1.4,
                       ),
                     ),
