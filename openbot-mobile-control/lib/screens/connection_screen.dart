@@ -600,9 +600,13 @@ class _ConnectionScreenState extends State<ConnectionScreen>
             ],
           ),
           // iOS 14+ Local Network permission reminder
-          // If the server is running but the PC still can't connect, the most
-          // common cause on iOS is that "Local Network" access was denied.
-          if (isServerRunning && !isConnected && Platform.isIOS) ...[
+          // Only shown when the server is waiting AND the PC has never
+          // connected yet (first-launch hint). Once a PC connects once,
+          // this disappears and never comes back for that session.
+          // NOTE: this is a one-time hint only — it does NOT mean the
+          // permission is missing. If you already granted it, ignore this.
+          if (isServerRunning && !isConnected && Platform.isIOS &&
+              appState.commandsReceived == 0) ...[
             const SizedBox(height: 12),
             Container(
               padding: const EdgeInsets.all(12),
