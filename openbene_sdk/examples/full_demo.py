@@ -86,7 +86,7 @@ def connect_bot() -> OpenBene:
             print("    Phase 1: Listening for UDP broadcast (~5s)")
             print("    Phase 2: TCP subnet scan if UDP fails (~8s)")
             try:
-                bot = OpenBene.auto_connect(timeout=30.0)
+                bot = OpenBene.auto_connect(timeout=60.0)
                 print(f"  OK  Connected -> {bot.ip}:{bot.port}\n")
                 return bot
             except Exception as e:
@@ -98,7 +98,7 @@ def connect_bot() -> OpenBene:
                 continue
             try:
                 bot = OpenBene(ip)
-                bot.connect(timeout=10.0)
+                bot.connect(timeout=30.0)
                 print(f"  OK  Connected -> {bot.ip}:{bot.port}\n")
                 return bot
             except Exception as e:

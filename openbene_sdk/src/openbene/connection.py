@@ -52,7 +52,7 @@ class WebSocketConnection:
     """
 
     DEFAULT_PORT = 8765
-    TIMEOUT = 5.0
+    TIMEOUT = 20.0
 
     def __init__(self, ip: str, port: int = DEFAULT_PORT):
         """

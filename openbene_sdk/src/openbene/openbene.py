@@ -88,10 +88,10 @@ class OpenBene:
 
     DEFAULT_PORT = 8765
     DISCOVERY_PORT = 12345
-    TIMEOUT = 5.0
+    TIMEOUT = 20.0
 
     @staticmethod
-    def discover(timeout: float = 5.0) -> Optional[Dict[str, Any]]:
+    def discover(timeout: float = 8.0) -> Optional[Dict[str, Any]]:
         """
         自动发现网络中的OpenBene机器人
 
@@ -161,7 +161,7 @@ class OpenBene:
             return None
 
     @staticmethod
-    def _probe_port(ip: str, port: int, timeout: float = 0.5) -> Optional[str]:
+    def _probe_port(ip: str, port: int, timeout: float = 1.5) -> Optional[str]:
         """尝试TCP连接并发送HTTP GET，确认是OpenBene服务器。
 
         只做原始TCP connect会向Dart HttpServer注入大量无效连接，
@@ -185,7 +185,7 @@ class OpenBene:
         return None
 
     @classmethod
-    def scan_subnet(cls, port: int = None, timeout: float = 8.0) -> Optional[Dict[str, Any]]:
+    def scan_subnet(cls, port: int = None, timeout: float = 15.0) -> Optional[Dict[str, Any]]:
         """
         扫描本地子网，寻找开放WebSocket端口的设备
 
@@ -215,7 +215,7 @@ class OpenBene:
         targets = [f"{prefix}.{i}" for i in range(1, 255) if i != local_last]
 
         found_ip = None
-        probe_timeout = min(0.8, timeout / 3)
+        probe_timeout = min(1.5, timeout / 3)
 
         # Use fewer workers: flooding the phone with 64 simultaneous probe
         # connections overwhelms Dart HttpServer's accept queue and blocks
@@ -250,7 +250,7 @@ class OpenBene:
         return None
 
     @classmethod
-    def auto_connect(cls, timeout: float = 10.0, retries: int = 3) -> 'OpenBene':
+    def auto_connect(cls, timeout: float = 60.0, retries: int = 3) -> 'OpenBene':
         """
         自动发现并连接到机器人
 
@@ -267,7 +267,7 @@ class OpenBene:
             ConnectionError: 未找到机器人或连接失败
         """
         # Phase 1: 先尝试 UDP 广播发现（快速）
-        udp_timeout = min(timeout * 0.3, 5.0)
+        udp_timeout = min(timeout * 0.15, 8.0)
         robot = None
 
         logger.info(f"Phase 1: UDP广播发现 ({udp_timeout:.0f}秒)...")
