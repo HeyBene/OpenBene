@@ -642,8 +642,111 @@ class _ConnectionScreenState extends State<ConnectionScreen>
               ),
             ),
           ],
-          // 显示服务器地址信息
-          if (isServerRunning && appState.localIpAddress != null) ...[
+          // ── Server diagnostics ─────────────────────────────────────────
+          // Show a red error card if the server failed to bind.
+          Builder(builder: (context) {
+            final ns = appState.networkService;
+            final error = ns.serverStartError;
+            final ips = ns.allLocalIps;
+            if (!isServerRunning && error != null) {
+              return Padding(
+                padding: const EdgeInsets.only(top: 12),
+                child: Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.red.shade50,
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: Colors.red.shade300),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Icon(Icons.error_outline,
+                              size: 16, color: Colors.red.shade700),
+                          const SizedBox(width: 6),
+                          Text('Server failed to start',
+                              style: TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.red.shade700)),
+                        ],
+                      ),
+                      const SizedBox(height: 6),
+                      SelectableText(
+                        error,
+                        style: TextStyle(
+                            fontSize: 11,
+                            fontFamily: 'monospace',
+                            color: Colors.red.shade800),
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            }
+            if (isServerRunning && ips.isNotEmpty) {
+              return Padding(
+                padding: const EdgeInsets.only(top: 12),
+                child: Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.grey.shade100,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Icon(Icons.wifi,
+                              size: 16, color: Colors.grey.shade700),
+                          const SizedBox(width: 8),
+                          Text('Server Address  (port ${appState.serverPort})',
+                              style: TextStyle(
+                                  fontSize: 12,
+                                  color: Colors.grey.shade700,
+                                  fontWeight: FontWeight.w500)),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      // Show every detected interface so hotspot IP is visible.
+                      ...ips.map((entry) {
+                        final parts = entry.split('  ');
+                        final ifaceName =
+                            parts.length >= 1 ? parts[0] : entry;
+                        final ip = parts.length >= 2 ? parts[1] : entry;
+                        return Padding(
+                          padding: const EdgeInsets.only(bottom: 4),
+                          child: Row(
+                            children: [
+                              Text('$ifaceName  ',
+                                  style: TextStyle(
+                                      fontSize: 11,
+                                      color: Colors.grey.shade500,
+                                      fontFamily: 'monospace')),
+                              SelectableText(
+                                'ws://$ip:${appState.serverPort}',
+                                style: TextStyle(
+                                    fontSize: 13,
+                                    fontFamily: 'monospace',
+                                    color: Colors.blue.shade800,
+                                    fontWeight: FontWeight.w600),
+                              ),
+                            ],
+                          ),
+                        );
+                      }),
+                    ],
+                  ),
+                ),
+              );
+            }
+            return const SizedBox.shrink();
+          }),
+          // (old server address card replaced by Builder above)
+          if (false && isServerRunning && appState.localIpAddress != null) ...[
             const SizedBox(height: 12),
             Container(
               padding: const EdgeInsets.all(12),

@@ -28,6 +28,10 @@ class NetworkService {
   bool _isRunning = false;
   String? _clientAddress;
 
+  // Diagnostic fields — populated during startServer(), visible in UI.
+  List<String> _allLocalIps = [];     // "ifaceName:IP" for every non-loopback v4 address
+  String? _serverStartError;           // non-null if HttpServer.bind() threw
+
   // 统计数据
   int _framesSent = 0;
   int _sensorUpdatesSent = 0;
@@ -44,6 +48,8 @@ class NetworkService {
   bool get isRunning => _isRunning;
   bool get hasClient => _client != null;
   String? get clientAddress => _clientAddress;
+  List<String> get allLocalIps => List.unmodifiable(_allLocalIps);
+  String? get serverStartError => _serverStartError;
   int get framesSent => _framesSent;
   int get sensorUpdatesSent => _sensorUpdatesSent;
   int get commandsReceived => _commandsReceived;
@@ -93,7 +99,25 @@ class NetworkService {
       // socket, silently rejecting all incoming IPv4 connections (RST).
       _server = await HttpServer.bind(InternetAddress.anyIPv4, _port);
       _isRunning = true;
+      _serverStartError = null;
       print('[NetworkService] Server bound to ${_server!.address.address}:${_server!.port}');
+
+      // Enumerate every IPv4 interface so the UI can show them all.
+      _allLocalIps = [];
+      try {
+        final ifaces = await NetworkInterface.list(
+          type: InternetAddressType.IPv4,
+          includeLinkLocal: false,
+        );
+        for (final iface in ifaces) {
+          for (final addr in iface.addresses) {
+            if (!addr.address.startsWith('127.')) {
+              _allLocalIps.add('${iface.name}  ${addr.address}');
+              print('[NetworkService] Interface ${iface.name}: ${addr.address}');
+            }
+          }
+        }
+      } catch (_) {}
 
       _updateConnectionState(
         ConnectionStatus.connecting,
@@ -161,10 +185,12 @@ class NetworkService {
 
       return true;
     } catch (e) {
+      _serverStartError = e.toString();
       _updateConnectionState(
         ConnectionStatus.error,
         message: 'Failed to start server: $e',
       );
+      print('[NetworkService] startServer FAILED: $e');
       return false;
     }
   }
@@ -346,6 +372,8 @@ class NetworkService {
   /// 停止服务器
   Future<void> stopServer() async {
     _isRunning = false;
+    _allLocalIps = [];
+    _serverStartError = null;
     _stopHeartbeat();
 
     await _client?.close();
