@@ -3,6 +3,7 @@ import 'dart:typed_data';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart' hide ConnectionState;
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
+import 'package:http/http.dart' as http;
 import '../models/sensor_data.dart';
 import '../models/connection_state.dart';
 import '../models/robot_connection_mode.dart';
@@ -498,6 +499,10 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
 
   /// 启动WebSocket服务器
   Future<bool> startServer({int port = 8765}) async {
+    if (!kIsWeb && defaultTargetPlatform == TargetPlatform.iOS) {
+      await _warmUpIosNetworkAccess();
+    }
+
     // iOS 14+ fix: Local Network permission must be "activated" for each
     // app session by sending an outbound local-network packet BEFORE the
     // server socket is bound. If we bind first, iOS silently drops all
@@ -706,6 +711,10 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
     // Refresh local IP — it may have changed if the user switched networks.
     _localIpAddress = await _networkService.getLocalIpAddress();
 
+    if (!kIsWeb && defaultTargetPlatform == TargetPlatform.iOS) {
+      await _warmUpIosNetworkAccess();
+    }
+
     // Same order as startServer(): broadcast first to activate iOS Local
     // Network permission, then bind the server socket.
     await _discoveryService.startBroadcast(
@@ -719,6 +728,32 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
     final success = await _networkService.startServer(port: 8765);
     _serverRunning = success;
     notifyListeners();
+  }
+
+  /// iOS network warm-up.
+  ///
+  /// Some devices/regions delay network entitlement prompts until the app
+  /// attempts a normal outbound request. We don't depend on success here;
+  /// the purpose is to trigger the OS permission path before LAN socket work.
+  Future<void> _warmUpIosNetworkAccess() async {
+    const urls = <String>[
+      'https://captive.apple.com/hotspot-detect.html',
+      'https://www.baidu.com',
+      'https://www.apple.com',
+    ];
+
+    for (final raw in urls) {
+      try {
+        final uri = Uri.parse(raw);
+        final resp = await http.get(uri).timeout(
+          const Duration(seconds: 3),
+        );
+        print('[AppState] iOS network warm-up ${uri.host}: ${resp.statusCode}');
+        return;
+      } catch (e) {
+        print('[AppState] iOS network warm-up failed for $raw: $e');
+      }
+    }
   }
 
   @override
