@@ -60,83 +60,77 @@ pip install websockets opencv-python numpy pynput
 
 ### Quick Start for Beginners
 
-#### Step 1: Preparation
+This section is terminal-first and follows a practical user flow:
+install app -> connect from PC -> control movement -> stream video -> collect data.
 
-1. **Hardware**
-   - OpenBot robot (assembled)
-   - Android phone (with OpenBene App installed)
-   - Computer (Python 3.8+ installed)
+#### Step 1: Prepare phone and network
 
-2. **Network**
-   - Ensure phone and computer are on **the same WiFi network**
+1. Install latest mobile app from `../openbot-mobile-control/releases/`.
+2. Open app and keep it on the connection page.
+3. Confirm it shows `Waiting for PC...` and `Server Address: ws://<phone_ip>:8765`.
+4. Ensure phone and PC are on the same LAN.
 
-3. **Start Phone App**
-   - Open OpenBene App
-   - Tap "Start Server"
-   - Note the **IP address** shown on screen (e.g., `192.168.1.100`)
-
-#### Step 2: Test Connection
-
-Open terminal on your computer, navigate to SDK directory:
+#### Step 2: Install SDK on PC
 
 ```bash
 cd OpenBene/openbene_sdk
+pip install -e .
 ```
 
-Start Python:
+#### Step 3: Run the all-in-one demo (`full_demo.py`)
 
 ```bash
-python
+cd examples
+python full_demo.py
 ```
 
-Enter the following code to test connection (replace IP with your phone's address):
+Inside `full_demo.py`:
+1. Choose auto-discover first.
+2. If auto-discover fails, choose manual IP and enter `<phone_ip>` shown by app.
+3. Use the menu to test movement, video, sensors, and recording.
 
-```python
-from openbene import OpenBene
+#### Step 4: Run feature-specific scripts
 
-# Create connection (replace with your phone IP)
-bot = OpenBene("192.168.1.100")
+Movement:
 
-# Connect to phone
-bot.connect()
-
-# If you see "Connected", it worked!
-print(bot.connected)  # Should output True
+```bash
+python basic_control.py
+python interactive_control.py
+python keyboard_drive.py
 ```
 
-#### Step 3: Control Robot Movement
+Video:
 
-```python
-# Move forward for 2 seconds
-bot.forward(0.5)
-import time
-time.sleep(2)
-
-# Stop
-bot.stop()
-
-# Turn left for 1 second
-bot.turn_left(0.5)
-time.sleep(1)
-bot.stop()
-
-# Disconnect
-bot.disconnect()
+```bash
+python video_display.py
+python video_recording_demo.py
 ```
 
-#### Step 4: Realtime Keyboard Control (Recommended)
+Data collection:
 
-The most intuitive way to control - use keyboard like playing a game:
-
-```python
-from openbene import OpenBene
-
-bot = OpenBene("192.168.1.100")
-bot.connect()
-
-# Start realtime control
-bot.realtime_control()
+```bash
+python data_collection.py
 ```
+
+Diagnostics and discovery:
+
+```bash
+python test_udp_discovery.py
+python diagnose.py <phone_ip>
+```
+
+#### Step 5: Connection troubleshooting
+
+Windows quick port test:
+
+```powershell
+Test-NetConnection -ComputerName <phone_ip> -Port 8765
+```
+
+If ping works but TCP fails:
+- disable VPN/proxy/TUN temporarily
+- switch away from isolated hotspot/enterprise WiFi
+- use the app-displayed `Server Address` as ground truth
 
 **Keyboard Controls:**
 
@@ -300,7 +294,8 @@ bot.recorder.start("./data")
 | Method | Description |
 |--------|-------------|
 | `OpenBene(ip, port=8765)` | Create controller instance |
-| `connect(timeout=5.0)` | Connect to phone |
+| `OpenBene.auto_connect(timeout=60.0)` | Auto-discover + connect |
+| `connect(timeout=30.0)` | Connect to phone by manual IP |
 | `disconnect()` | Disconnect |
 | `connected` | Property: connection status |
 

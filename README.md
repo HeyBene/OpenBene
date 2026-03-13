@@ -5,7 +5,7 @@
 > **请从 [`openbot-mobile-control/releases/`](openbot-mobile-control/releases/) 文件夹下载最新 APK！**  
 > **Download latest APK from [`openbot-mobile-control/releases/`](openbot-mobile-control/releases/) folder!**
 > 
-> 最新版本 / Latest: **v1.0.6** (支持 UDP 自动发现 / UDP auto-discovery support)
+> 最新版本 / Latest: **v1.0.8+9** (iOS local network fixes + improved diagnostics)
 
 ---
 
@@ -23,55 +23,112 @@
 
 ## 🚀 快速开始 / Quick Start
 
-### 1️⃣ 下载并安装手机 App / Download & Install Mobile App
+这部分按真实使用顺序写，目标是新用户 10 分钟内跑通:
+- 手机安装并启动 App
+- PC 端运行 `full_demo.py`
+- 控制运动、查看视频、采集数据
 
-**✅ 正确下载位置 / Correct Download Location:**
+### 1️⃣ 手机端安装 App
 
-访问: [`openbot-mobile-control/releases/`](openbot-mobile-control/releases/)
+1. 打开 `openbot-mobile-control/releases/`
+2. Android 下载并安装最新 APK（当前 `v1.0.8+9`）
+3. 打开 App，授权相机权限
+4. 确认界面显示:
+- `Waiting for PC...`
+- `Server Address: ws://<手机IP>:8765`
 
-下载文件: `openbot-mobile-control-v1.0.6-with-discovery.apk`
+注意:
+- iOS 目前需要从源码运行 `openbot-mobile-control`（Xcode/Flutter），不是直接安装 APK
+- 后续在 PC 端连接时，请以 App 显示的 `Server Address` 为准
 
-**❌ 请勿从其他地方下载！/ Do NOT download from elsewhere!**
+### 2️⃣ PC 端安装 SDK
 
-### 2️⃣ 安装 Python SDK / Install Python SDK
+PowerShell:
+
+```powershell
+cd openbene_sdk
+pip install -e .
+```
+
+macOS/Linux Terminal:
 
 ```bash
 cd openbene_sdk
 pip install -e .
 ```
 
-### 3️⃣ 自动连接（推荐）/ Auto-Connect (Recommended)
+### 3️⃣ 先跑完整示例（推荐）
 
-```python
-from openbene import OpenBene
+PowerShell:
 
-# 自动发现并连接（无需输入 IP）
-bot = OpenBene.auto_connect()
-
-print(f"✓ Connected to {bot.ip}")
-
-# 控制小车
-bot.forward(0.5)
-import time
-time.sleep(2)
-bot.stop()
-
-bot.disconnect()
+```powershell
+cd openbene_sdk\examples
+python full_demo.py
 ```
 
-### 4️⃣ 验证 App 版本 / Verify App Version
+macOS/Linux Terminal:
 
-**正确版本界面：**
-- ✅ "Server Address: ws://192.168.x.x:8765"
-- ✅ "Waiting for PC..."
-- ✅ 显示手机 IP（不是输入框）
+```bash
+cd openbene_sdk/examples
+python full_demo.py
+```
 
-**错误版本界面：**
-- ❌ "PC IP Address" 输入框
-- ❌ "Connection Settings"
-- ❌ "Enter your PC's IP address"
+`full_demo.py` 会引导你选择:
+- 手动输入手机 IP 连接
+- 自动发现连接（UDP + 子网扫描）
 
-**如果看到错误界面，请重新下载并安装正确版本。**
+连上后可在菜单里体验:
+- 小车运动控制
+- 视频流接收
+- 传感器读取
+- 数据采集与保存
+
+### 4️⃣ 按功能单独运行示例
+
+运动控制:
+
+```bash
+python basic_control.py
+python interactive_control.py
+```
+
+视频传输:
+
+```bash
+python video_display.py
+python video_recording_demo.py
+```
+
+数据采集:
+
+```bash
+python data_collection.py
+```
+
+自动发现与诊断:
+
+```bash
+python test_udp_discovery.py
+python diagnose.py <phone_ip>
+```
+
+### 5️⃣ 常见失败场景（必须看）
+
+1. 先检查端口是否可达（Windows）:
+
+```powershell
+Test-NetConnection -ComputerName <phone_ip> -Port 8765
+```
+
+2. 若 `PingSucceeded=True` 且 `TcpTestSucceeded=False`:
+- 关闭 VPN/代理/TUN（例如 Clash）再试
+- 更换不会隔离客户端的 WiFi/热点
+
+3. iOS 需要确认:
+- `Settings -> Privacy & Security -> Local Network -> OpenBene = ON`
+
+4. 手机有多网卡时:
+- 不要凭感觉输入 IP，始终使用 App 页面显示的 `Server Address`
 
 ---
 
@@ -95,7 +152,7 @@ PC (Python) → WebSocket → Phone App → USB → Arduino → Motors
 
 Visit: [`openbot-mobile-control/releases/`](openbot-mobile-control/releases/)
 
-Download: `openbot-mobile-control-v1.0.6-with-discovery.apk`
+Download: `openbot-mobile-control-v1.0.8+9.apk` (see `openbot-mobile-control/releases/`)
 
 **❌ Do NOT download from elsewhere!**
 
@@ -125,12 +182,20 @@ bot.stop()
 bot.disconnect()
 ```
 
+If auto-discovery fails, run diagnostics first:
+
+```bash
+cd openbene_sdk/examples
+python diagnose.py <phone_ip>
+```
+
 #### 4. Verify App Version
 
 **Correct Version UI:**
 - ✅ "Server Address: ws://192.168.x.x:8765"
 - ✅ "Waiting for PC..."
 - ✅ Shows phone IP (not an input field)
+- ✅ Version text: `v1.0.8 build 2026-03-12`
 
 **Wrong Version UI:**
 - ❌ "PC IP Address" input field
@@ -138,6 +203,22 @@ bot.disconnect()
 - ❌ "Enter your PC's IP address"
 
 **If you see the wrong UI, please re-download and install the correct version.**
+
+#### 5. Quick Troubleshooting
+
+1. Ensure phone and PC are on the same subnet.
+2. On Windows, test the server port first:
+
+```powershell
+Test-NetConnection -ComputerName <phone_ip> -Port 8765
+```
+
+3. If `PingSucceeded=True` but `TcpTestSucceeded=False`:
+  - Disable VPN/Proxy/TUN (for example Clash) and retry
+  - Avoid enterprise WiFi or hotspot networks that isolate clients
+4. On iOS, confirm permission:
+  - Settings -> Privacy & Security -> Local Network -> OpenBene = ON
+5. When multiple network interfaces exist, always use the App's displayed `Server Address`.
 
 ---
 

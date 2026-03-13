@@ -3,7 +3,7 @@
 > 📱 **下载最新 APK**: [`releases/`](releases/) 文件夹  
 > 📱 **Download APK**: [`releases/`](releases/) folder
 
-[![Version](https://img.shields.io/badge/version-1.0.6-blue.svg)](releases/)
+[![Version](https://img.shields.io/badge/version-1.0.8+9-blue.svg)](releases/)
 [![Flutter](https://img.shields.io/badge/Flutter-3.0+-02569B.svg)](https://flutter.dev/)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
@@ -14,8 +14,8 @@
 **请确保从 [`releases/`](releases/) 文件夹下载 APK！**  
 **Make sure to download APK from [`releases/`](releases/) folder!**
 
-**当前版本 / Current Version:** v1.0.6  
-**主要功能 / Key Feature:** ✅ UDP 自动发现支持 / UDP Auto-Discovery Support
+**当前版本 / Current Version:** v1.0.8+9  
+**主要功能 / Key Feature:** ✅ iOS Local Network fixes + UDP auto-discovery + interface diagnostics
 
 ---
 
@@ -36,35 +36,72 @@
 
 ## 🚀 快速开始 / Quick Start
 
-### 1. 安装 APK / Install APK
+### 1. 安装 App / Install App
 
-从 [`releases/`](releases/) 下载最新 APK 并安装到手机。
+Android:
+1. 从 [`releases/`](releases/) 下载最新 APK（当前 `v1.0.8+9`）
+2. 安装并打开 App
+3. 授予相机权限
 
-Download latest APK from [`releases/`](releases/) and install on phone.
+iOS:
+1. 使用 `flutter run` 或 Xcode 从源码运行此目录工程
+2. 首次运行后在系统设置确认 Local Network 权限为 ON
 
-### 2. 使用自动发现 / Use Auto-Discovery
+### 2. 手机端准备 / Phone-side checklist
 
-手机和电脑连接到同一 WiFi 后：  
-After connecting phone and PC to same WiFi:
+保持 App 在连接页，确认可见:
+- `Waiting for PC...`
+- `Server Address: ws://<phone_ip>:8765`
 
-**手机端 / Phone:**
-1. 打开 App / Open app
-2. 授予相机权限 / Grant camera permission
-3. 看到 "Waiting for PC..." 状态 / See "Waiting for PC..." status
+注意:
+- PC 连接时请使用此处显示的地址/IP
+- 不要手动猜 IP
 
-**电脑端 / PC:**
-```python
-from openbene import OpenBene
+### 3. PC 端连接（推荐先跑 `full_demo.py`）
 
-# 自动发现并连接 / Auto-discover and connect
-bot = OpenBene.auto_connect()
-print(f"✓ Connected to {bot.ip}")
+PowerShell:
 
-# 控制 / Control
-bot.forward(0.5)
+```powershell
+cd ..\openbene_sdk
+pip install -e .
+cd examples
+python full_demo.py
 ```
 
-**完成！/ Done!** 🎉
+macOS/Linux Terminal:
+
+```bash
+cd ../openbene_sdk
+pip install -e .
+cd examples
+python full_demo.py
+```
+
+`full_demo.py` 会引导你:
+1. 自动发现连接
+2. 失败后手动输入手机 IP
+3. 菜单式测试控制、视频、传感器、录制
+
+### 4. 按功能运行（PC）
+
+```bash
+python basic_control.py
+python interactive_control.py
+python video_display.py
+python video_recording_demo.py
+python data_collection.py
+```
+
+### 5. 连接失败排查 / Troubleshooting
+
+```powershell
+Test-NetConnection -ComputerName <phone_ip> -Port 8765
+```
+
+若 `PingSucceeded=True` 但 `TcpTestSucceeded=False`:
+- 关闭 VPN/代理/TUN 后重试
+- 更换 WiFi/热点（部分网络会隔离客户端）
+- iOS 检查 Local Network 权限
 
 ---
 
