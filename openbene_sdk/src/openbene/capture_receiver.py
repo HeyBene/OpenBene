@@ -1,0 +1,179 @@
+#!/usr/bin/env python3
+"""
+PC-side WebSocket receiver for OpenBene LiDAR Capture.
+
+Receives frames from the iOS app over WebSocket and writes a
+Nerfstudio-compatible dataset to disk.
+
+Usage:
+    python capture_receiver.py --output ./captured_data/room1 --port 8765
+"""
+
+import asyncio
+import json
+import argparse
+import sys
+from pathlib import Path
+from datetime import datetime
+
+try:
+    import websockets
+except ImportError:
+    print("Missing dependency: pip install websockets")
+    sys.exit(1)
+
+
+class CaptureReceiver:
+    """Receives frames over WebSocket and writes Nerfstudio dataset."""
+
+    def __init__(self, output_dir: Path):
+        self.output_dir = output_dir
+        self.images_dir = output_dir / "images"
+        self.depth_dir = output_dir / "depth"
+        self.frames = []
+        self.global_intrinsics = None
+        self.frame_count = 0
+        self._pending_metadata = None
+        self._expecting = "metadata"  # state machine: metadata -> image -> depth (optional)
+
+    def _ensure_dirs(self):
+        self.images_dir.mkdir(parents=True, exist_ok=True)
+        self.depth_dir.mkdir(parents=True, exist_ok=True)
+
+    async def handle_connection(self, websocket):
+        remote = websocket.remote_address
+        print(f"[+] iOS device connected: {remote[0]}:{remote[1]}")
+
+        # Send connected acknowledgment
+        await websocket.send(json.dumps({"status": "connected"}))
+
+        self._ensure_dirs()
+
+        try:
+            async for message in websocket:
+                await self._process_message(message)
+        except websockets.exceptions.ConnectionClosed:
+            print(f"[-] Connection closed: {remote[0]}:{remote[1]}")
+
+        # Auto-finalize if we have frames but didn't get explicit session_end
+        if self.frames and not (self.output_dir / "transforms.json").exists():
+            print("[*] Auto-finalizing session...")
+            self._write_transforms()
+
+    async def _process_message(self, message):
+        if isinstance(message, str):
+            data = json.loads(message)
+            msg_type = data.get("type", "")
+
+            if msg_type == "frame":
+                self._pending_metadata = data
+                self._expecting = "image"
+
+                # Capture global intrinsics from first frame
+                if self.global_intrinsics is None:
+                    self.global_intrinsics = {
+                        "w": data["w"],
+                        "h": data["h"],
+                        "fl_x": data["fl_x"],
+                        "fl_y": data["fl_y"],
+                        "cx": data["cx"],
+                        "cy": data["cy"],
+                    }
+
+            elif msg_type == "session_end":
+                self._expecting = "manifest"
+
+        elif isinstance(message, bytes):
+            if self._expecting == "image":
+                self._save_image(message)
+                if self._pending_metadata and self._pending_metadata.get("has_depth"):
+                    self._expecting = "depth"
+                else:
+                    self._finalize_frame()
+
+            elif self._expecting == "depth":
+                self._save_depth(message)
+                self._finalize_frame()
+
+            elif self._expecting == "manifest":
+                # Received full manifest from iOS — write it directly
+                manifest_path = self.output_dir / "transforms.json"
+                manifest_path.write_bytes(message)
+                print(f"[*] Received manifest from device, saved to {manifest_path}")
+
+    def _save_image(self, jpeg_data: bytes):
+        frame_name = f"{self._pending_metadata['index']:06d}.jpg"
+        path = self.images_dir / frame_name
+        path.write_bytes(jpeg_data)
+
+    def _save_depth(self, png_data: bytes):
+        frame_name = f"{self._pending_metadata['index']:06d}.png"
+        path = self.depth_dir / frame_name
+        path.write_bytes(png_data)
+
+    def _finalize_frame(self):
+        meta = self._pending_metadata
+        if meta is None:
+            return
+
+        frame_name = f"{meta['index']:06d}"
+        frame_entry = {
+            "file_path": f"images/{frame_name}.jpg",
+            "transform_matrix": meta["transform_matrix"],
+            "timestamp": meta.get("timestamp", 0),
+        }
+        if meta.get("has_depth"):
+            frame_entry["depth_file_path"] = f"depth/{frame_name}.png"
+
+        self.frames.append(frame_entry)
+        self.frame_count += 1
+        print(f"  Frame {self.frame_count} received (index={meta['index']})")
+
+        self._pending_metadata = None
+        self._expecting = "metadata"
+
+    def _write_transforms(self):
+        manifest = dict(self.global_intrinsics or {})
+        manifest["depth_scale"] = 1000.0
+        manifest["depth_unit"] = "millimeters"
+        manifest["coordinate_convention"] = "opengl"
+        manifest["frames"] = self.frames
+
+        transforms_path = self.output_dir / "transforms.json"
+        transforms_path.write_text(json.dumps(manifest, indent=2))
+        print(f"[*] Wrote transforms.json ({len(self.frames)} frames) to {transforms_path}")
+
+
+async def main(output_dir: Path, host: str, port: int):
+    receiver = CaptureReceiver(output_dir)
+
+    print(f"[*] OpenBene Capture Receiver")
+    print(f"[*] Listening on ws://{host}:{port}")
+    print(f"[*] Output directory: {output_dir}")
+    print(f"[*] Waiting for iOS device to connect...")
+    print()
+
+    async with websockets.serve(receiver.handle_connection, host, port):
+        await asyncio.Future()  # run forever
+
+
+def parse_args():
+    parser = argparse.ArgumentParser(description="OpenBene LiDAR Capture Receiver")
+    parser.add_argument(
+        "--output", "-o",
+        type=str,
+        default=f"./captured_data/session_{datetime.now().strftime('%Y%m%d_%H%M%S')}",
+        help="Output directory for the Nerfstudio dataset",
+    )
+    parser.add_argument("--host", type=str, default="0.0.0.0", help="Listen address")
+    parser.add_argument("--port", "-p", type=int, default=8765, help="Listen port")
+    return parser.parse_args()
+
+
+if __name__ == "__main__":
+    args = parse_args()
+    output_dir = Path(args.output)
+    try:
+        asyncio.run(main(output_dir, args.host, args.port))
+    except KeyboardInterrupt:
+        print("\n[*] Receiver stopped.")

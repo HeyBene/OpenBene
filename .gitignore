@@ -50,6 +50,12 @@ openbot-mobile-control/macos/
 openbot-mobile-control/windows/
 openbot-mobile-control/web/
 
+# Xcode (LiDAR capture iOS app)
+openbene-lidar-capture-ios/**/*.xcodeproj/xcuserdata/
+openbene-lidar-capture-ios/**/*.xcworkspace/xcuserdata/
+openbene-lidar-capture-ios/**/DerivedData/
+openbene-lidar-capture-ios/**/*.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/
+
 # IDE
 .vscode/
 .idea/
