@@ -2,7 +2,8 @@ import Foundation
 import ARKit
 import Combine
 
-/// Manages the ARSession lifecycle for LiDAR capture.
+/// 采集会话管理器。
+/// 负责 ARSession 生命周期、帧筛选、本地写盘，以及后续上传回调。
 final class CaptureSessionManager: NSObject, ObservableObject {
 
     // MARK: - Published state
@@ -20,7 +21,8 @@ final class CaptureSessionManager: NSObject, ObservableObject {
     private var datasetWriter: NerfstudioDatasetWriter?
     private let acceptancePolicy = FrameAcceptancePolicy()
 
-    /// Callback invoked for each accepted frame (for upload / dual-write).
+    /// 每当一帧被接收后触发。
+    /// 当前给上传层预留，形成“本地写盘 + 网络上传”的双写能力。
     var onFrameAccepted: ((CaptureFrameRecord) -> Void)?
 
     override init() {
@@ -34,7 +36,7 @@ final class CaptureSessionManager: NSObject, ObservableObject {
     func startSession() {
         let config = ARWorldTrackingConfiguration()
 
-        // Enable LiDAR depth if available
+        // 有 LiDAR 时启用深度语义；无 LiDAR 时仍允许 RGB-only 测试模式。
         if DeviceCapabilities.isLiDARAvailable {
             config.frameSemantics.insert(.sceneDepth)
         }
@@ -70,19 +72,19 @@ final class CaptureSessionManager: NSObject, ObservableObject {
         datasetWriter = nil
     }
 
-    // MARK: - Frame processing (called from ARSessionDelegate)
+    // MARK: - Frame processing
 
     private func processFrame(_ frame: ARFrame) {
         guard isCapturing else { return }
         guard acceptancePolicy.shouldAccept(frame: frame) else { return }
 
-        // Build frame record
+        // 统一把 ARFrame 转成中间记录结构，便于本地写盘和上传共用。
         let record = CaptureFrameRecord(frame: frame, index: frameCount, depthAvailable: depthAvailable)
 
-        // Write locally
+        // 本地优先落盘，保证即使网络断开也能保留数据。
         datasetWriter?.writeFrame(record)
 
-        // Notify transport layer (for WebSocket upload)
+        // 后续可选上传。
         onFrameAccepted?(record)
 
         frameCount += 1
@@ -94,7 +96,6 @@ final class CaptureSessionManager: NSObject, ObservableObject {
 extension CaptureSessionManager: ARSessionDelegate {
 
     func session(_ session: ARSession, didUpdate frame: ARFrame) {
-        // Update tracking state on main thread
         let state = frame.camera.trackingState
         DispatchQueue.main.async { [weak self] in
             self?.trackingState = state

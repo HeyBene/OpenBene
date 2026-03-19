@@ -8,7 +8,7 @@ struct RootView: View {
         NavigationView {
             VStack(spacing: 20) {
 
-                // Device capabilities
+                // 设备能力卡片
                 GroupBox(label: Text("Device")) {
                     VStack(alignment: .leading, spacing: 8) {
                         HStack {
@@ -32,7 +32,7 @@ struct RootView: View {
                     .padding(.vertical, 4)
                 }
 
-                // Tracking state
+                // 跟踪状态卡片
                 GroupBox(label: Text("Tracking")) {
                     HStack {
                         Circle()
@@ -44,7 +44,7 @@ struct RootView: View {
                     .padding(.vertical, 4)
                 }
 
-                // Capture status
+                // 采集状态卡片
                 if captureManager.isCapturing {
                     GroupBox(label: Text("Capture")) {
                         VStack(alignment: .leading, spacing: 8) {
@@ -67,7 +67,7 @@ struct RootView: View {
 
                 Spacer()
 
-                // Controls
+                // 控制按钮
                 VStack(spacing: 12) {
                     if !captureManager.isSessionRunning {
                         Button(action: { captureManager.startSession() }) {

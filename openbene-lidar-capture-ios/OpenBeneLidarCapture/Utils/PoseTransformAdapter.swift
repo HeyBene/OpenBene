@@ -1,29 +1,20 @@
 import Foundation
 import simd
 
-/// Converts ARKit camera transform to Nerfstudio/NeRF convention.
-///
-/// ARKit: right-handed, camera looks along +Z (in camera local frame, but
-/// the transform_matrix from ARKit is camera-to-world).
-///
-/// Nerfstudio (OpenGL convention): camera looks along -Z in camera space.
-/// The standard fix is to flip Y and Z axes of the camera-local frame:
-///   column 1 (Y) negated, column 2 (Z) negated.
-///
-/// This produces a camera-to-world matrix in OpenGL/NeRF convention.
+/// 位姿适配器。
+/// 用来把 ARKit 相机坐标系转换成 Nerfstudio / OpenGL 更常见的相机约定。
 enum PoseTransformAdapter {
 
-    /// Convert an ARKit camera-to-world transform to Nerfstudio convention.
-    /// Returns a 4x4 matrix as [[Float]] (row-major, for JSON serialization).
+    /// 将 ARKit 的 camera-to-world 矩阵转换为 Nerfstudio 约定。
+    /// 返回值使用 [[Float]]，便于直接写入 JSON。
     static func arkitToNerfstudio(_ arTransform: simd_float4x4) -> [[Float]] {
-        // ARKit simd_float4x4 is column-major.
-        // We need to negate columns 1 and 2 (Y and Z) to go from
-        // ARKit camera convention to OpenGL/NeRF camera convention.
+        // ARKit 是列主序矩阵。
+        // 这里对相机局部坐标的 Y、Z 轴取反，统一到 OpenGL/NeRF 常见约定。
         var m = arTransform
-        m.columns.1 = -m.columns.1  // negate Y
-        m.columns.2 = -m.columns.2  // negate Z
+        m.columns.1 = -m.columns.1
+        m.columns.2 = -m.columns.2
 
-        // Convert to row-major [[Float]] for JSON
+        // 转成按行输出的二维数组，便于 JSON 序列化。
         return [
             [m.columns.0.x, m.columns.1.x, m.columns.2.x, m.columns.3.x],
             [m.columns.0.y, m.columns.1.y, m.columns.2.y, m.columns.3.y],

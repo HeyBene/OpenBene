@@ -2,12 +2,13 @@ import Foundation
 import ARKit
 import CoreVideo
 
-/// A single captured frame's data, ready for writing/uploading.
+/// 单帧采集记录。
+/// 这是本地写盘和网络上传共用的中间数据结构。
 struct CaptureFrameRecord {
     let index: Int
     let timestamp: TimeInterval
 
-    // Camera intrinsics
+    // 相机内参
     let flX: Float
     let flY: Float
     let cx: Float
@@ -15,13 +16,13 @@ struct CaptureFrameRecord {
     let width: Int
     let height: Int
 
-    // Camera-to-world 4x4 transform (column-major from ARKit)
+    // 相机位姿。ARKit 给的是 camera-to-world 变换矩阵。
     let transformMatrix: simd_float4x4
 
-    // RGB pixel buffer
+    // 原始 RGB 图像缓冲区。
     let pixelBuffer: CVPixelBuffer
 
-    // Depth (nil on non-LiDAR devices)
+    // 深度图。无 LiDAR 设备时为 nil。
     let depthBuffer: CVPixelBuffer?
     let depthWidth: Int
     let depthHeight: Int
@@ -40,9 +41,9 @@ struct CaptureFrameRecord {
         self.height = Int(imageResolution.height)
 
         self.transformMatrix = frame.camera.transform
-
         self.pixelBuffer = frame.capturedImage
 
+        // 当前先直接使用 sceneDepth，后续如果需要更平滑的数据可切到 smoothedSceneDepth。
         if depthAvailable, let sceneDepth = frame.sceneDepth {
             self.depthBuffer = sceneDepth.depthMap
             self.depthWidth = CVPixelBufferGetWidth(sceneDepth.depthMap)

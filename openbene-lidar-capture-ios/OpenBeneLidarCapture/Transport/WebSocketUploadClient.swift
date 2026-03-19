@@ -1,17 +1,15 @@
 import Foundation
 import UIKit
 import CoreVideo
+import ImageIO
+import UniformTypeIdentifiers
 
-/// Uploads accepted capture frames to a PC receiver over WebSocket.
+/// WebSocket 上传客户端。
+/// 负责把已接收的帧镜像上传到 PC 端接收器。
 ///
-/// Protocol design:
-/// - Text messages: JSON control/metadata
-/// - Binary messages: image/depth payloads
-///
-/// Frame upload sequence:
-/// 1. Text: JSON frame metadata (index, pose, intrinsics, has_depth, sizes)
-/// 2. Binary: JPEG image data
-/// 3. Binary: 16-bit depth PNG data (only if depth available)
+/// 协议约定：
+/// - 文本消息：JSON 元数据 / 控制消息
+/// - 二进制消息：RGB 图像和深度图内容
 final class WebSocketUploadClient: NSObject, UploadClient, ObservableObject {
 
     @Published var isConnected: Bool = false
@@ -50,25 +48,25 @@ final class WebSocketUploadClient: NSObject, UploadClient, ObservableObject {
         uploadQueue.async { [weak self] in
             guard let self = self else { return }
 
-            // 1. Send JSON metadata
+            // 1. 先发一条 JSON 元数据，告诉接收端这一帧的结构信息。
             let metadata = self.buildFrameMetadata(record)
-            if let jsonData = try? JSONSerialization.data(withJSONObject: metadata) {
-                let msg = URLSessionWebSocketTask.Message.string(String(data: jsonData, encoding: .utf8) ?? "")
+            if let jsonData = try? JSONSerialization.data(withJSONObject: metadata),
+               let jsonString = String(data: jsonData, encoding: .utf8) {
+                let msg = URLSessionWebSocketTask.Message.string(jsonString)
                 ws.send(msg) { _ in }
             }
 
-            // 2. Send JPEG image as binary
+            // 2. 再发 RGB 图像。当前先压成 JPEG 以减小体积。
             if let jpegData = self.encodeRGBAsJPEG(record.pixelBuffer) {
                 let msg = URLSessionWebSocketTask.Message.data(jpegData)
                 ws.send(msg) { _ in }
             }
 
-            // 3. Send depth as binary (if available)
-            if let depthBuf = record.depthBuffer {
-                if let depthData = self.encodeDepthAsPNGData(depthBuf) {
-                    let msg = URLSessionWebSocketTask.Message.data(depthData)
-                    ws.send(msg) { _ in }
-                }
+            // 3. 如果有深度图，再追加发送 16 位 PNG。
+            if let depthBuf = record.depthBuffer,
+               let depthData = self.encodeDepthAsPNGData(depthBuf) {
+                let msg = URLSessionWebSocketTask.Message.data(depthData)
+                ws.send(msg) { _ in }
             }
 
             DispatchQueue.main.async {
@@ -80,8 +78,9 @@ final class WebSocketUploadClient: NSObject, UploadClient, ObservableObject {
     func sendSessionFinalized(manifest: Data) {
         guard let ws = webSocket else { return }
         let control: [String: Any] = ["type": "session_end", "manifest_size": manifest.count]
-        if let jsonData = try? JSONSerialization.data(withJSONObject: control) {
-            let msg = URLSessionWebSocketTask.Message.string(String(data: jsonData, encoding: .utf8) ?? "")
+        if let jsonData = try? JSONSerialization.data(withJSONObject: control),
+           let jsonString = String(data: jsonData, encoding: .utf8) {
+            let msg = URLSessionWebSocketTask.Message.string(jsonString)
             ws.send(msg) { _ in }
         }
         let msg = URLSessionWebSocketTask.Message.data(manifest)
@@ -143,14 +142,22 @@ final class WebSocketUploadClient: NSObject, UploadClient, ObservableObject {
         return uint16Data.withUnsafeMutableBytes { rawBuffer -> Data? in
             guard let context = CGContext(
                 data: rawBuffer.baseAddress,
-                width: width, height: height,
-                bitsPerComponent: 16, bytesPerRow: bytesPerRow,
-                space: colorSpace, bitmapInfo: bitmapInfo.rawValue
+                width: width,
+                height: height,
+                bitsPerComponent: 16,
+                bytesPerRow: bytesPerRow,
+                space: colorSpace,
+                bitmapInfo: bitmapInfo.rawValue
             ) else { return nil }
 
             guard let cgImage = context.makeImage() else { return nil }
             let mutableData = NSMutableData()
-            guard let destination = CGImageDestinationCreateWithData(mutableData as CFMutableData, "public.png" as CFString, 1, nil) else { return nil }
+            guard let destination = CGImageDestinationCreateWithData(
+                mutableData as CFMutableData,
+                UTType.png.identifier as CFString,
+                1,
+                nil
+            ) else { return nil }
             CGImageDestinationAddImage(destination, cgImage, nil)
             guard CGImageDestinationFinalize(destination) else { return nil }
             return mutableData as Data

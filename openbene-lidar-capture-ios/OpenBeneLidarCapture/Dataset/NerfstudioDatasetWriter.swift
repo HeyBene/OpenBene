@@ -2,20 +2,11 @@ import Foundation
 import UIKit
 import CoreVideo
 import Accelerate
+import ImageIO
+import UniformTypeIdentifiers
 
-/// Writes captured frames to a Nerfstudio-compatible dataset directory.
-///
-/// Output structure:
-/// ```
-/// session_xxx/
-///   transforms.json
-///   images/
-///     000000.jpg
-///     000001.jpg
-///   depth/          (only if LiDAR available)
-///     000000.png
-///     000001.png
-/// ```
+/// Nerfstudio 数据集写入器。
+/// 负责把采集到的帧落盘成 images/、depth/、transforms.json 结构。
 final class NerfstudioDatasetWriter {
 
     private let outputDirectory: URL
@@ -23,8 +14,7 @@ final class NerfstudioDatasetWriter {
     private let depthDirectory: URL
     private let depthAvailable: Bool
 
-    /// Depth scale: depth_in_meters * depthScale = stored_uint16_value.
-    /// Using 1000 means millimeters stored as uint16.
+    /// 深度缩放：米 × 1000 后写入 uint16，对应毫米。
     private let depthScale: Float = 1000.0
 
     private var frames: [[String: Any]] = []
@@ -51,7 +41,7 @@ final class NerfstudioDatasetWriter {
     }
 
     func writeFrame(_ record: CaptureFrameRecord) {
-        // Capture intrinsics from first frame
+        // 全局内参先取第一帧，后续默认保持一致。
         if globalIntrinsics == nil {
             globalIntrinsics = [
                 "w": record.width,
@@ -78,12 +68,11 @@ final class NerfstudioDatasetWriter {
 
         frames.append(frameEntry)
 
-        // Write image and depth on background queue
         let pixelBuffer = record.pixelBuffer
         let depthBuffer = record.depthBuffer
 
         writeQueue.async { [self] in
-            // Write RGB as JPEG
+            // RGB 当前先写 JPEG，减小体积，后续如有需要可切 PNG。
             if let rgbImage = self.imageFromPixelBuffer(pixelBuffer) {
                 let jpegURL = imagesDirectory.appendingPathComponent("\(frameName).jpg")
                 if let jpegData = rgbImage.jpegData(compressionQuality: 0.9) {
@@ -91,7 +80,7 @@ final class NerfstudioDatasetWriter {
                 }
             }
 
-            // Write depth as 16-bit PNG
+            // 深度写成 16 位 PNG，单位为毫米。
             if let depthBuf = depthBuffer {
                 let depthURL = depthDirectory.appendingPathComponent("\(frameName).png")
                 self.writeDepthAsPNG(depthBuf, to: depthURL)
@@ -123,7 +112,8 @@ final class NerfstudioDatasetWriter {
         return UIImage(cgImage: cgImage)
     }
 
-    /// Write a float32 depth CVPixelBuffer as a 16-bit PNG (millimeters).
+    /// 将 float32 深度图写成 16 位 PNG。
+    /// 输入单位：米；输出单位：毫米。
     private func writeDepthAsPNG(_ depthBuffer: CVPixelBuffer, to url: URL) {
         CVPixelBufferLockBaseAddress(depthBuffer, .readOnly)
         defer { CVPixelBufferUnlockBaseAddress(depthBuffer, .readOnly) }
@@ -135,7 +125,6 @@ final class NerfstudioDatasetWriter {
         let floatPointer = baseAddress.assumingMemoryBound(to: Float.self)
         let pixelCount = width * height
 
-        // Convert float32 meters → uint16 millimeters
         var uint16Data = [UInt16](repeating: 0, count: pixelCount)
         for i in 0..<pixelCount {
             let meters = floatPointer[i]
@@ -145,7 +134,6 @@ final class NerfstudioDatasetWriter {
             }
         }
 
-        // Create 16-bit grayscale CGImage and write as PNG
         let bytesPerRow = width * MemoryLayout<UInt16>.size
         let colorSpace = CGColorSpaceCreateDeviceGray()
         let bitmapInfo: CGBitmapInfo = [.byteOrder16Little]
@@ -162,7 +150,12 @@ final class NerfstudioDatasetWriter {
             ) else { return }
 
             guard let cgImage = context.makeImage() else { return }
-            guard let destination = CGImageDestinationCreateWithURL(url as CFURL, kUTTypePNG, 1, nil) else { return }
+            guard let destination = CGImageDestinationCreateWithURL(
+                url as CFURL,
+                UTType.png.identifier as CFString,
+                1,
+                nil
+            ) else { return }
             CGImageDestinationAddImage(destination, cgImage, nil)
             CGImageDestinationFinalize(destination)
         }

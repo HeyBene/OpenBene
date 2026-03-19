@@ -1,18 +1,18 @@
 import Foundation
 import ARKit
 
-/// Controls whether a given ARFrame should be accepted for capture.
-/// Reduces redundancy, blur, and low-quality frames.
+/// 帧接收策略。
+/// 作用是过滤掉过密、模糊或跟踪状态差的帧，减少冗余数据。
 final class FrameAcceptancePolicy {
 
-    /// Minimum translation (meters) between accepted frames.
+    /// 两帧之间的最小平移距离（米）。
     var minTranslationDelta: Float = 0.05  // 5cm
 
-    /// Minimum rotation (radians) between accepted frames.
-    var minRotationDelta: Float = 0.087  // ~5 degrees
+    /// 两帧之间的最小旋转角度（弧度）。
+    var minRotationDelta: Float = 0.087  // 约 5 度
 
-    /// Minimum time interval (seconds) between accepted frames.
-    var minTimeInterval: TimeInterval = 0.2  // 5 FPS max
+    /// 两帧之间的最小时间间隔（秒）。
+    var minTimeInterval: TimeInterval = 0.2  // 最多约 5 FPS
 
     private var lastAcceptedPose: simd_float4x4?
     private var lastAcceptedTime: TimeInterval = 0
@@ -22,29 +22,29 @@ final class FrameAcceptancePolicy {
         lastAcceptedTime = 0
     }
 
-    /// Returns true if this frame should be saved.
+    /// 返回当前 ARFrame 是否应该被保存。
     func shouldAccept(frame: ARFrame) -> Bool {
-        // Must be tracking normally
+        // 先要求 AR 跟踪状态正常。
         guard frame.camera.trackingState == .normal else { return false }
 
         let currentTime = frame.timestamp
         let currentPose = frame.camera.transform
 
-        // Always accept first frame
+        // 第一帧直接收下。
         guard let lastPose = lastAcceptedPose else {
             accept(pose: currentPose, time: currentTime)
             return true
         }
 
-        // Time gate
+        // 时间门限：避免采得太密。
         guard (currentTime - lastAcceptedTime) >= minTimeInterval else { return false }
 
-        // Translation delta
+        // 平移变化量。
         let lastPos = SIMD3<Float>(lastPose.columns.3.x, lastPose.columns.3.y, lastPose.columns.3.z)
         let curPos = SIMD3<Float>(currentPose.columns.3.x, currentPose.columns.3.y, currentPose.columns.3.z)
         let translationDelta = simd_length(curPos - lastPos)
 
-        // Rotation delta (approximate via rotation matrix difference)
+        // 旋转变化量：用相对旋转矩阵近似计算角度。
         let lastRot = simd_float3x3(
             SIMD3(lastPose.columns.0.x, lastPose.columns.0.y, lastPose.columns.0.z),
             SIMD3(lastPose.columns.1.x, lastPose.columns.1.y, lastPose.columns.1.z),
@@ -60,7 +60,7 @@ final class FrameAcceptancePolicy {
         let cosAngle = (trace - 1.0) / 2.0
         let rotationDelta = acos(min(max(cosAngle, -1.0), 1.0))
 
-        // Accept if either translation or rotation exceeds threshold
+        // 平移或旋转任一超过门限，即接受该帧。
         if translationDelta >= minTranslationDelta || rotationDelta >= minRotationDelta {
             accept(pose: currentPose, time: currentTime)
             return true
