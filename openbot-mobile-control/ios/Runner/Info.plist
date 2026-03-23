@@ -26,6 +26,20 @@
 	<string>$(FLUTTER_BUILD_NUMBER)</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+	<key>NSBluetoothAlwaysUsageDescription</key>
+	<string>Bluetooth is required to connect to the OpenBot robot.</string>
+	<key>NSBluetoothPeripheralUsageDescription</key>
+	<string>Bluetooth is required to communicate with the robot.</string>
+	<key>NSBonjourServices</key>
+	<array>
+		<string>_openbene._tcp</string>
+	</array>
+	<key>NSCameraUsageDescription</key>
+	<string>Camera is required to stream video from the robot.</string>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>Local network access is required to stream video and communicate with the OpenBot robot on your Wi-Fi network.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Microphone access is required for video recording.</string>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
 	<key>UILaunchStoryboardName</key>
@@ -44,20 +58,6 @@
 		<string>UIInterfaceOrientationPortraitUpsideDown</string>
 		<string>UIInterfaceOrientationLandscapeLeft</string>
 		<string>UIInterfaceOrientationLandscapeRight</string>
-	</array>
-	<key>NSCameraUsageDescription</key>
-	<string>Camera is required to stream video from the robot.</string>
-	<key>NSMicrophoneUsageDescription</key>
-	<string>Microphone access is required for video recording.</string>
-	<key>NSBluetoothAlwaysUsageDescription</key>
-	<string>Bluetooth is required to connect to the OpenBot robot.</string>
-	<key>NSBluetoothPeripheralUsageDescription</key>
-	<string>Bluetooth is required to communicate with the robot.</string>
-	<key>NSLocalNetworkUsageDescription</key>
-	<string>Local network access is required to stream video and communicate with the OpenBot robot on your Wi-Fi network.</string>
-	<key>NSBonjourServices</key>
-	<array>
-		<string>_openbene._tcp</string>
 	</array>
 </dict>
 </plist>
