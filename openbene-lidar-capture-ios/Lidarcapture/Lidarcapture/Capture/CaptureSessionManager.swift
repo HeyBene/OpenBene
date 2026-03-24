@@ -22,15 +22,10 @@ struct CaptureSessionSummary {
     let frameCount: Int
     let depthRecorded: Bool
     let duration: TimeInterval
+    let qualityReport: CaptureQualityReport
 
     var qualityHint: String {
-        if frameCount < 20 {
-            return "帧数偏少，建议补采"
-        }
-        if !depthRecorded {
-            return "当前为 RGB-only，可先做基础重建验证"
-        }
-        return "本次采集可用于重建验证"
+        qualityReport.recommendation
     }
 }
 
@@ -52,6 +47,8 @@ final class CaptureSessionManager: NSObject, ObservableObject {
     @Published var lastErrorMessage: String?
     @Published var captureMode: CaptureMode = .manual
     @Published var lastCaptureFeedback: String = "等待开始"
+    @Published var liveAdvisoryText: String = "请先启动会话"
+    @Published var liveAdvisoryLevel: CaptureAdvisoryLevel = .holdStill
 
     // MARK: - Internal
 
@@ -63,6 +60,13 @@ final class CaptureSessionManager: NSObject, ObservableObject {
     private var captureStartDate: Date?
     private var captureTimer: Timer?
     private var currentFrame: ARFrame?
+    private var totalObservedFrameCount: Int = 0
+    private var trackingNormalFrameCount: Int = 0
+    private var previousObservedPose: simd_float4x4?
+    private var maxAdjacentTranslationJumpMeters: Float = 0
+    private var maxAdjacentRotationJumpDegrees: Float = 0
+    private var suspiciousJumpCount: Int = 0
+    private var severeJumpCount: Int = 0
 
     var workflowPhase: CaptureWorkflowPhase {
         if !DeviceCapabilities.isARWorldTrackingAvailable {
@@ -136,6 +140,12 @@ final class CaptureSessionManager: NSObject, ObservableObject {
     /// Callback invoked for each accepted frame (for upload / dual-write).
     var onFrameAccepted: ((CaptureFrameRecord) -> Void)?
 
+    /// Callback invoked when a capture session starts.
+    var onCaptureStarted: ((String, Bool) -> Void)?
+
+    /// Callback invoked when a capture session ends.
+    var onCaptureFinished: (() -> Void)?
+
     override init() {
         super.init()
         session.delegate = self
@@ -187,10 +197,12 @@ final class CaptureSessionManager: NSObject, ObservableObject {
         frameCount = 0
         captureDuration = 0
         acceptancePolicy.reset()
+        resetQualityDiagnostics()
         captureStartDate = Date()
         lastCaptureFeedback = captureMode == .manual ? "对准目标后按主按钮采样" : "自动采集中"
         startCaptureTimer()
         isCapturing = true
+        onCaptureStarted?(name, depthAvailable)
     }
 
     func stopCapture() {
@@ -204,13 +216,15 @@ final class CaptureSessionManager: NSObject, ObservableObject {
         captureDuration = duration
         captureStartDate = nil
         lastCaptureFeedback = "本轮采集已结束"
+        onCaptureFinished?()
 
         if let sessionName = lastSessionName {
             lastSessionSummary = CaptureSessionSummary(
                 sessionName: sessionName,
                 frameCount: frameCount,
                 depthRecorded: depthAvailable,
-                duration: duration
+                duration: duration,
+                qualityReport: buildQualityReport()
             )
         }
     }
@@ -284,6 +298,7 @@ final class CaptureSessionManager: NSObject, ObservableObject {
 
     private func processFrame(_ frame: ARFrame) {
         currentFrame = frame
+        updateDiagnostics(with: frame)
 
         guard isCapturing else { return }
         guard captureMode == .auto else { return }
@@ -305,6 +320,146 @@ final class CaptureSessionManager: NSObject, ObservableObject {
             guard let self, let captureStartDate = self.captureStartDate else { return }
             self.captureDuration = Date().timeIntervalSince(captureStartDate)
         }
+    }
+
+    private func resetQualityDiagnostics() {
+        totalObservedFrameCount = 0
+        trackingNormalFrameCount = 0
+        previousObservedPose = nil
+        maxAdjacentTranslationJumpMeters = 0
+        maxAdjacentRotationJumpDegrees = 0
+        suspiciousJumpCount = 0
+        severeJumpCount = 0
+        liveAdvisoryText = "请先停稳，再开始采集"
+        liveAdvisoryLevel = .holdStill
+    }
+
+    private func updateDiagnostics(with frame: ARFrame) {
+        guard isCapturing else { return }
+
+        totalObservedFrameCount += 1
+        let tracking = frame.camera.trackingState
+        if tracking == .normal {
+            trackingNormalFrameCount += 1
+        }
+
+        guard let previousObservedPose else {
+            self.previousObservedPose = frame.camera.transform
+            updateLiveAdvisory(for: tracking, deltaMetrics: nil)
+            return
+        }
+
+        let delta = Self.poseDeltaMetrics(from: previousObservedPose, to: frame.camera.transform)
+        maxAdjacentTranslationJumpMeters = max(maxAdjacentTranslationJumpMeters, delta.translationMeters)
+        maxAdjacentRotationJumpDegrees = max(maxAdjacentRotationJumpDegrees, delta.rotationDegrees)
+
+        switch delta.severity {
+        case .suspicious:
+            suspiciousJumpCount += 1
+        case .severe:
+            severeJumpCount += 1
+        case .none:
+            break
+        }
+
+        self.previousObservedPose = frame.camera.transform
+        updateLiveAdvisory(for: tracking, deltaMetrics: delta)
+    }
+
+    private func updateLiveAdvisory(for tracking: ARCamera.TrackingState, deltaMetrics: PoseDeltaMetrics?) {
+        guard tracking == .normal else {
+            liveAdvisoryText = "跟踪不稳定"
+            liveAdvisoryLevel = .trackingUnstable
+            return
+        }
+
+        if let deltaMetrics {
+            switch deltaMetrics.severity {
+            case .severe:
+                liveAdvisoryText = "移动过快"
+                liveAdvisoryLevel = .movingTooFast
+                return
+            case .suspicious:
+                liveAdvisoryText = "请停稳"
+                liveAdvisoryLevel = .holdStill
+                return
+            case .none:
+                if deltaMetrics.translationMeters < 0.01 && deltaMetrics.rotationDegrees < 2 {
+                    liveAdvisoryText = "请停稳"
+                    liveAdvisoryLevel = .holdStill
+                    return
+                }
+            }
+        }
+
+        liveAdvisoryText = "可采样"
+        liveAdvisoryLevel = .good
+    }
+
+    private func buildQualityReport() -> CaptureQualityReport {
+        let trackingNormalRatio = totalObservedFrameCount > 0
+            ? Float(trackingNormalFrameCount) / Float(totalObservedFrameCount)
+            : 0
+
+        let recommendation: String
+        if frameCount < 20 {
+            recommendation = "建议补采：有效帧偏少"
+        } else if trackingNormalRatio < 0.7 {
+            recommendation = "建议重采：跟踪稳定性不足"
+        } else if severeJumpCount >= 3 {
+            recommendation = "建议重采：存在明显位姿跳变"
+        } else if suspiciousJumpCount >= 8 {
+            recommendation = "建议谨慎使用：运动不够平稳"
+        } else {
+            recommendation = "可用于基础重建验证"
+        }
+
+        return CaptureQualityReport(
+            acceptedFrameCount: frameCount,
+            trackingNormalRatio: trackingNormalRatio,
+            maxAdjacentTranslationJumpMeters: maxAdjacentTranslationJumpMeters,
+            maxAdjacentRotationJumpDegrees: maxAdjacentRotationJumpDegrees,
+            suspiciousJumpCount: suspiciousJumpCount,
+            severeJumpCount: severeJumpCount,
+            recommendation: recommendation
+        )
+    }
+
+    private static func poseDeltaMetrics(from previousPose: simd_float4x4, to currentPose: simd_float4x4) -> PoseDeltaMetrics {
+        let previousPosition = SIMD3<Float>(previousPose.columns.3.x, previousPose.columns.3.y, previousPose.columns.3.z)
+        let currentPosition = SIMD3<Float>(currentPose.columns.3.x, currentPose.columns.3.y, currentPose.columns.3.z)
+        let translationMeters = simd_length(currentPosition - previousPosition)
+
+        let previousRotation = simd_float3x3(
+            SIMD3(previousPose.columns.0.x, previousPose.columns.0.y, previousPose.columns.0.z),
+            SIMD3(previousPose.columns.1.x, previousPose.columns.1.y, previousPose.columns.1.z),
+            SIMD3(previousPose.columns.2.x, previousPose.columns.2.y, previousPose.columns.2.z)
+        )
+        let currentRotation = simd_float3x3(
+            SIMD3(currentPose.columns.0.x, currentPose.columns.0.y, currentPose.columns.0.z),
+            SIMD3(currentPose.columns.1.x, currentPose.columns.1.y, currentPose.columns.1.z),
+            SIMD3(currentPose.columns.2.x, currentPose.columns.2.y, currentPose.columns.2.z)
+        )
+        let relativeRotation = previousRotation.transpose * currentRotation
+        let trace = relativeRotation.columns.0.x + relativeRotation.columns.1.y + relativeRotation.columns.2.z
+        let cosAngle = (trace - 1.0) / 2.0
+        let rotationRadians = acos(min(max(cosAngle, -1.0), 1.0))
+        let rotationDegrees = rotationRadians * 180.0 / .pi
+
+        let severity: PoseJumpSeverity
+        if translationMeters > 0.15 || rotationDegrees > 20 {
+            severity = .severe
+        } else if translationMeters > 0.08 || rotationDegrees > 12 {
+            severity = .suspicious
+        } else {
+            severity = .none
+        }
+
+        return PoseDeltaMetrics(
+            translationMeters: translationMeters,
+            rotationDegrees: rotationDegrees,
+            severity: severity
+        )
     }
 
     private func stopCaptureTimer() {

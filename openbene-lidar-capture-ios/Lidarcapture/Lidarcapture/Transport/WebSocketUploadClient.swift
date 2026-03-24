@@ -44,31 +44,37 @@ final class WebSocketUploadClient: NSObject, UploadClient, ObservableObject {
         }
     }
 
+    func startSession(_ session: CaptureUploadSessionDescriptor) {
+        guard let ws = webSocket else { return }
+        let payload: [String: Any] = [
+            "type": "session_start",
+            "session_id": session.sessionID,
+            "session_name": session.sessionName,
+            "session_mode": session.sessionMode.rawValue,
+            "depth_enabled": session.depthEnabled,
+            "started_at": session.startedAt
+        ]
+        sendJSON(payload, over: ws)
+    }
+
     func sendFrame(_ record: CaptureFrameRecord) {
         guard let ws = webSocket else { return }
 
         uploadQueue.async { [weak self] in
             guard let self = self else { return }
 
-            // 1. Send JSON metadata
             let metadata = self.buildFrameMetadata(record)
-            if let jsonData = try? JSONSerialization.data(withJSONObject: metadata) {
-                let msg = URLSessionWebSocketTask.Message.string(String(data: jsonData, encoding: .utf8) ?? "")
-                ws.send(msg) { _ in }
-            }
+            self.sendJSON(metadata, over: ws)
 
-            // 2. Send JPEG image as binary
             if let jpegData = self.encodeRGBAsJPEG(record.pixelBuffer) {
                 let msg = URLSessionWebSocketTask.Message.data(jpegData)
                 ws.send(msg) { _ in }
             }
 
-            // 3. Send depth as binary (if available)
-            if let depthBuf = record.depthBuffer {
-                if let depthData = self.encodeDepthAsPNGData(depthBuf) {
-                    let msg = URLSessionWebSocketTask.Message.data(depthData)
-                    ws.send(msg) { _ in }
-                }
+            if let depthBuf = record.depthBuffer,
+               let depthData = self.encodeDepthAsPNGData(depthBuf) {
+                let msg = URLSessionWebSocketTask.Message.data(depthData)
+                ws.send(msg) { _ in }
             }
 
             DispatchQueue.main.async {
@@ -77,18 +83,30 @@ final class WebSocketUploadClient: NSObject, UploadClient, ObservableObject {
         }
     }
 
-    func sendSessionFinalized(manifest: Data) {
+    func sendSessionFinalized(manifest: Data, session: CaptureUploadSessionDescriptor?) {
         guard let ws = webSocket else { return }
-        let control: [String: Any] = ["type": "session_end", "manifest_size": manifest.count]
-        if let jsonData = try? JSONSerialization.data(withJSONObject: control) {
-            let msg = URLSessionWebSocketTask.Message.string(String(data: jsonData, encoding: .utf8) ?? "")
-            ws.send(msg) { _ in }
+        var control: [String: Any] = [
+            "type": "session_end",
+            "manifest_size": manifest.count
+        ]
+        if let session {
+            control["session_id"] = session.sessionID
+            control["session_name"] = session.sessionName
+            control["session_mode"] = session.sessionMode.rawValue
         }
+        sendJSON(control, over: ws)
         let msg = URLSessionWebSocketTask.Message.data(manifest)
         ws.send(msg) { _ in }
     }
 
     // MARK: - Private helpers
+
+    private func sendJSON(_ payload: [String: Any], over webSocket: URLSessionWebSocketTask) {
+        guard let jsonData = try? JSONSerialization.data(withJSONObject: payload),
+              let jsonString = String(data: jsonData, encoding: .utf8) else { return }
+        let msg = URLSessionWebSocketTask.Message.string(jsonString)
+        webSocket.send(msg) { _ in }
+    }
 
     private func buildFrameMetadata(_ record: CaptureFrameRecord) -> [String: Any] {
         let transform = PoseTransformAdapter.arkitToNerfstudio(record.transformMatrix)
@@ -163,10 +181,22 @@ final class WebSocketUploadClient: NSObject, UploadClient, ObservableObject {
             case .success(let message):
                 switch message {
                 case .string(let text):
-                    if text.contains("\"connected\"") {
+                    if let data = text.data(using: .utf8),
+                       let payload = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                       let status = payload["status"] as? String {
                         DispatchQueue.main.async {
-                            self?.isConnected = true
-                            self?.statusMessage = "Connected"
+                            self?.isConnected = status == "connected" || self?.isConnected == true
+                            switch status {
+                            case "connected":
+                                self?.statusMessage = "已连接接收端"
+                            case "session_started":
+                                self?.statusMessage = "会话已开始上传"
+                            case "session_ending":
+                                let receivedFrames = payload["received_frames"] as? Int ?? 0
+                                self?.statusMessage = "接收端结束会话，已收 \(receivedFrames) 帧"
+                            default:
+                                self?.statusMessage = status
+                            }
                         }
                     }
                 default:

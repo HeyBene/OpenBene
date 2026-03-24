@@ -4,9 +4,14 @@ import UIKit
 
 struct RootView: View {
     @StateObject private var captureManager = CaptureSessionManager()
+    @StateObject private var uploadCoordinator = CaptureUploadCoordinator(uploadClient: WebSocketUploadClient())
+    @AppStorage("capture.receiverURL") private var receiverURLString = "ws://127.0.0.1:8765"
+    @AppStorage("capture.sessionMode") private var sessionModeRawValue = CaptureSessionUploadMode.mapping.rawValue
     @State private var selectedStage = "Capture"
     @State private var shareURL: URL?
     @State private var isSharePresented = false
+    @State private var isConnectionConfigExpanded = false
+    @State private var receiverValidationMessage: String?
 
     private let stages = ["Prepare", "Capture", "Result"]
 
@@ -33,6 +38,22 @@ struct RootView: View {
                 ShareSheet(activityItems: [shareURL])
             }
         }
+        .onAppear {
+            connectToConfiguredReceiver()
+            captureManager.onFrameAccepted = { record in
+                uploadCoordinator.sendFrame(record)
+            }
+            captureManager.onCaptureStarted = { sessionName, depthEnabled in
+                uploadCoordinator.beginSession(
+                    sessionName: sessionName,
+                    mode: currentSessionMode,
+                    depthEnabled: depthEnabled
+                )
+            }
+            captureManager.onCaptureFinished = {
+                uploadCoordinator.finishSession()
+            }
+        }
     }
 
     private var previewBackground: some View {
@@ -53,6 +74,10 @@ struct RootView: View {
                 .padding(.top, 10)
                 .padding(.bottom, 150)
         }
+    }
+
+    private var currentSessionMode: CaptureSessionUploadMode {
+        CaptureSessionUploadMode(rawValue: sessionModeRawValue) ?? .mapping
     }
 
     private var previewPlaceholder: some View {
@@ -93,11 +118,16 @@ struct RootView: View {
                 Text(captureManager.captureMode == .manual ? "手动" : "自动")
                     .font(.caption.weight(.bold))
                     .foregroundColor(.white.opacity(0.9))
+
+                Text(currentSessionMode == .mapping ? "建图" : "定位")
+                    .font(.caption.weight(.bold))
+                    .foregroundColor(.yellow)
             }
 
             HStack(spacing: 8) {
                 compactHudPill(systemImage: trackingSymbol, text: shortTrackingLabel)
                 compactHudPill(systemImage: captureManager.depthAvailable ? "cube.transparent" : "photo", text: captureManager.depthAvailable ? "LiDAR" : "RGB")
+                compactHudPill(systemImage: uploadCoordinator.isConnected ? "antenna.radiowaves.left.and.right" : "wifi.slash", text: uploadCoordinator.isConnected ? "已连接" : "未连接")
                 compactHudPill(systemImage: "circle.grid.2x2.fill", text: "\(captureManager.frameCount)")
             }
         }
@@ -106,10 +136,14 @@ struct RootView: View {
     }
 
     private var liveCaptureHud: some View {
-        HStack(spacing: 12) {
-            liveStat(title: "帧数", value: "\(captureManager.frameCount)")
-            liveStat(title: "深度", value: captureManager.depthAvailable ? "开" : "RGB")
-            liveStat(title: "时长", value: captureManager.formattedDuration)
+        VStack(spacing: 10) {
+            HStack(spacing: 12) {
+                liveStat(title: "帧数", value: "\(captureManager.frameCount)")
+                liveStat(title: "深度", value: captureManager.depthAvailable ? "开" : "RGB")
+                liveStat(title: "时长", value: captureManager.formattedDuration)
+            }
+
+            qualityAdvisoryPill
         }
         .padding(.bottom, 14)
     }
@@ -161,6 +195,7 @@ struct RootView: View {
                 .foregroundColor(.white)
 
             stageStrip
+            sessionModeStrip
             captureModeStrip
 
             HStack(alignment: .center) {
@@ -183,12 +218,16 @@ struct RootView: View {
                 .font(.caption)
                 .foregroundColor(.white.opacity(0.62))
 
+            connectionCard
+
             DisclosureGroup {
                 VStack(spacing: 10) {
                     diagnosticsRow(title: "ARKit", value: DeviceCapabilities.isARWorldTrackingAvailable ? "OK" : "N/A")
                     diagnosticsRow(title: "LiDAR", value: DeviceCapabilities.isLiDARAvailable ? "OK" : "N/A")
                     diagnosticsRow(title: "Tracking", value: captureManager.trackingStateDescription)
+                    diagnosticsRow(title: "Advisory", value: captureManager.liveAdvisoryText)
                     diagnosticsRow(title: "Workflow", value: workflowLabel)
+                    diagnosticsRow(title: "Session", value: currentSessionMode == .mapping ? "建图" : "定位")
                     diagnosticsRow(title: "Mode", value: captureManager.captureMode.rawValue)
                     diagnosticsRow(title: "Hint", value: captureManager.statusHint)
                 }
@@ -236,6 +275,13 @@ struct RootView: View {
         HStack(spacing: 10) {
             captureModeChip(.manual)
             captureModeChip(.auto)
+        }
+    }
+
+    private var sessionModeStrip: some View {
+        HStack(spacing: 10) {
+            sessionModeChip(.mapping, title: "建图")
+            sessionModeChip(.localization, title: "定位")
         }
     }
 
@@ -299,6 +345,19 @@ struct RootView: View {
             }
     }
 
+    private func sessionModeChip(_ mode: CaptureSessionUploadMode, title: String) -> some View {
+        Text(title)
+            .font(.caption.weight(currentSessionMode == mode ? .bold : .medium))
+            .foregroundColor(currentSessionMode == mode ? .black : .white.opacity(0.75))
+            .padding(.horizontal, 14)
+            .padding(.vertical, 8)
+            .background(currentSessionMode == mode ? Color.green : Color.white.opacity(0.08))
+            .clipShape(Capsule())
+            .onTapGesture {
+                sessionModeRawValue = mode.rawValue
+            }
+    }
+
     private func modeToggleButton(mode: CaptureMode) -> some View {
         Button(action: {
             captureManager.setCaptureMode(mode)
@@ -317,8 +376,103 @@ struct RootView: View {
         }
     }
 
+    private var connectionCard: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Button(action: {
+                withAnimation(.easeInOut(duration: 0.2)) {
+                    isConnectionConfigExpanded.toggle()
+                }
+            }) {
+                HStack {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("实时连接")
+                            .font(.caption.weight(.medium))
+                            .foregroundColor(.white.opacity(0.65))
+                        Text(uploadCoordinator.statusMessage)
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundColor(.white)
+                        if let receiverValidationMessage {
+                            Text(receiverValidationMessage)
+                                .font(.caption)
+                                .foregroundColor(.orange)
+                        }
+                    }
+                    Spacer()
+                    Text(uploadCoordinator.isConnected ? "在线" : "离线")
+                        .font(.caption.weight(.bold))
+                        .foregroundColor(uploadCoordinator.isConnected ? .green : .orange)
+                    Image(systemName: isConnectionConfigExpanded ? "chevron.up" : "chevron.down")
+                        .font(.caption.weight(.bold))
+                        .foregroundColor(.white.opacity(0.7))
+                }
+            }
+
+            if isConnectionConfigExpanded {
+                VStack(alignment: .leading, spacing: 10) {
+                    TextField("ws://192.168.x.x:8765", text: $receiverURLString)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                        .font(.caption.monospaced())
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 10)
+                        .background(Color.white.opacity(0.08))
+                        .foregroundColor(.white)
+                        .clipShape(RoundedRectangle(cornerRadius: 12))
+
+                    Text("先在 PC 上启动 receiver，再连接同一 Wi‑Fi 下的 ws://<PC-IP>:8765")
+                        .font(.caption2)
+                        .foregroundColor(.white.opacity(0.62))
+
+                    if let receiverURL = uploadCoordinator.receiverURL {
+                        Text("当前目标：\(receiverURL.absoluteString)")
+                            .font(.caption2.monospaced())
+                            .foregroundColor(.white.opacity(0.72))
+                            .lineLimit(2)
+                    }
+
+                    HStack(spacing: 10) {
+                        Button(uploadCoordinator.isConnected ? "重新连接" : "连接") {
+                            connectToConfiguredReceiver()
+                        }
+                        .font(.caption.weight(.semibold))
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 8)
+                        .background(Color.yellow)
+                        .foregroundColor(.black)
+                        .clipShape(Capsule())
+
+                        Button("断开") {
+                            uploadCoordinator.disconnect()
+                        }
+                        .font(.caption.weight(.semibold))
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 8)
+                        .background(Color.white.opacity(0.12))
+                        .foregroundColor(.white)
+                        .clipShape(Capsule())
+                    }
+                }
+            }
+        }
+        .padding(14)
+        .background(
+            RoundedRectangle(cornerRadius: 18)
+                .fill(Color.white.opacity(0.08))
+        )
+    }
+
+    private var qualityAdvisoryPill: some View {
+        Text(captureManager.liveAdvisoryText)
+            .font(.caption.weight(.semibold))
+            .foregroundColor(advisoryForeground)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+            .background(advisoryBackground)
+            .clipShape(Capsule())
+    }
+
     private func summaryCard(_ summary: CaptureSessionSummary) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 10) {
             Text("最近一次")
                 .font(.caption.weight(.medium))
                 .foregroundColor(.white.opacity(0.65))
@@ -343,12 +497,46 @@ struct RootView: View {
                 .font(.caption.monospacedDigit())
                 .foregroundColor(.white.opacity(0.78))
             }
+
+            qualityReportGrid(summary.qualityReport)
         }
         .padding(14)
         .background(
             RoundedRectangle(cornerRadius: 18)
                 .fill(Color.white.opacity(0.08))
         )
+    }
+
+    private func qualityReportGrid(_ report: CaptureQualityReport) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 12) {
+                qualityMetric(title: "正常跟踪", value: String(format: "%.0f%%", report.trackingNormalRatio * 100))
+                qualityMetric(title: "最大平移", value: String(format: "%.2fm", report.maxAdjacentTranslationJumpMeters))
+                qualityMetric(title: "最大旋转", value: String(format: "%.1f°", report.maxAdjacentRotationJumpDegrees))
+            }
+
+            HStack(spacing: 12) {
+                qualityMetric(title: "可疑跳变", value: "\(report.suspiciousJumpCount)")
+                qualityMetric(title: "严重跳变", value: "\(report.severeJumpCount)")
+                qualityMetric(title: "有效帧", value: "\(report.acceptedFrameCount)")
+            }
+
+            Text(report.recommendation)
+                .font(.footnote.weight(.semibold))
+                .foregroundColor(.white)
+        }
+    }
+
+    private func qualityMetric(title: String, value: String) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(title)
+                .font(.caption2)
+                .foregroundColor(.white.opacity(0.55))
+            Text(value)
+                .font(.caption.weight(.semibold))
+                .foregroundColor(.white)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private func outputLocationCard(_ url: URL) -> some View {
@@ -444,6 +632,30 @@ struct RootView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
+    private var advisoryForeground: Color {
+        switch captureManager.liveAdvisoryLevel {
+        case .good:
+            return .black
+        case .holdStill:
+            return .black
+        case .trackingUnstable, .movingTooFast:
+            return .white
+        }
+    }
+
+    private var advisoryBackground: Color {
+        switch captureManager.liveAdvisoryLevel {
+        case .good:
+            return .green
+        case .holdStill:
+            return .yellow
+        case .trackingUnstable:
+            return .orange
+        case .movingTooFast:
+            return .red
+        }
+    }
+
     private var primaryButtonFill: Color {
         if captureManager.captureMode == .manual {
             return .white
@@ -452,6 +664,18 @@ struct RootView: View {
     }
 
     private var primaryButtonLabel: String {
+        if currentSessionMode == .localization {
+            switch captureManager.workflowPhase {
+            case .idle, .unsupported, .error:
+                return "主按钮：启动定位会话"
+            case .preparing, .ready:
+                return captureManager.captureMode == .manual ? "主按钮：发送一帧定位样本" : "主按钮：开始连续发送定位流"
+            case .capturing:
+                return captureManager.captureMode == .manual ? "主按钮：继续发送定位样本 · 右侧：结束" : "主按钮：停止连续定位流"
+            case .completed:
+                return "主按钮：开始新的定位会话"
+            }
+        }
         switch captureManager.workflowPhase {
         case .idle, .unsupported, .error:
             return "主按钮：启动会话"
@@ -465,6 +689,12 @@ struct RootView: View {
     }
 
     private var primaryStatusText: String {
+        if currentSessionMode == .localization {
+            if uploadCoordinator.isConnected {
+                return "定位模式已就绪"
+            }
+            return "定位模式等待连接接收端"
+        }
         switch captureManager.workflowPhase {
         case .unsupported:
             return "当前设备暂时不适合这一路径"
@@ -503,6 +733,9 @@ struct RootView: View {
     }
 
     private var softStatusTitle: String {
+        if currentSessionMode == .localization {
+            return uploadCoordinator.isConnected ? "定位流将发送到当前接收端" : "先连接接收端，再开始定位流"
+        }
         switch captureManager.workflowPhase {
         case .unsupported:
             return "当前设备不支持 AR 采集"
@@ -522,6 +755,9 @@ struct RootView: View {
     }
 
     private var softStatusTag: String {
+        if currentSessionMode == .localization {
+            return uploadCoordinator.isConnected ? "定位就绪" : "等待连接"
+        }
         switch captureManager.workflowPhase {
         case .unsupported:
             return "当前不可用"
@@ -541,6 +777,9 @@ struct RootView: View {
     }
 
     private var softHint: String {
+        if currentSessionMode == .localization {
+            return "连接后将持续发送定位流到 PC，后续用于地图内重定位"
+        }
         switch captureManager.workflowPhase {
         case .unsupported:
             return "需要支持 AR 世界跟踪的设备"
@@ -560,6 +799,9 @@ struct RootView: View {
     }
 
     private var readinessAccent: Color {
+        if currentSessionMode == .localization {
+            return uploadCoordinator.isConnected ? .blue : .yellow
+        }
         switch captureManager.workflowPhase {
         case .unsupported, .error:
             return .orange
@@ -592,6 +834,19 @@ struct RootView: View {
         case .notAvailable:
             return "xmark.octagon"
         }
+    }
+
+    private func connectToConfiguredReceiver() {
+        let trimmed = receiverURLString.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let url = URL(string: trimmed),
+              let scheme = url.scheme,
+              scheme == "ws" || scheme == "wss",
+              url.host != nil else {
+            receiverValidationMessage = "地址格式应为 ws://主机:端口"
+            return
+        }
+        receiverValidationMessage = nil
+        uploadCoordinator.connect(to: url)
     }
 
     private func format(duration: TimeInterval) -> String {
