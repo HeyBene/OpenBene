@@ -34,8 +34,9 @@ class CaptureReceiver:
         self.global_intrinsics = None
         self.frame_count = 0
         self._pending_metadata = None
-        self._expecting = "metadata"  # state machine: metadata -> image -> depth (optional)
+        self._expecting = "metadata"  # metadata -> image -> depth(optional) -> manifest(optional pointcloud)
         self.session_info = None
+        self._pending_pointcloud = None
 
     def _ensure_dirs(self):
         self.images_dir.mkdir(parents=True, exist_ok=True)
@@ -49,6 +50,7 @@ class CaptureReceiver:
             "status": "connected",
             "receiver_state": "ready",
             "output_dir": str(self.output_dir),
+            "capabilities": ["session_manifest", "pointcloud_v1"],
         }))
 
         self._ensure_dirs()
@@ -107,6 +109,13 @@ class CaptureReceiver:
                     "received_frames": self.frame_count,
                 }))
 
+            elif msg_type == "pointcloud_start":
+                self._pending_pointcloud = data
+                self._expecting = "pointcloud"
+                print(
+                    f"[*] Point cloud incoming: file={data.get('file_name')} points={data.get('point_count')} bytes={data.get('byte_count')}"
+                )
+
         elif isinstance(message, bytes):
             if self._expecting == "image":
                 self._save_image(message)
@@ -130,6 +139,22 @@ class CaptureReceiver:
                     print(f"    mode: {self.session_info.get('session_mode')}")
                     print(f"    session_id: {self.session_info.get('session_id')}")
                 print(f"    output: {self.output_dir}")
+                self._expecting = "metadata"
+
+            elif self._expecting == "pointcloud":
+                info = self._pending_pointcloud or {}
+                file_name = info.get("file_name") or "fused_pointcloud.ply"
+                pointcloud_path = self.output_dir / file_name
+                pointcloud_path.write_bytes(message)
+                point_count = info.get("point_count") or 0
+                print(f"[*] Received point cloud, saved to {pointcloud_path}")
+                self._pending_pointcloud = None
+                self._expecting = "metadata"
+                await websocket.send(json.dumps({
+                    "status": "pointcloud_received",
+                    "point_count": point_count,
+                    "file_name": file_name,
+                }))
 
     def _save_image(self, jpeg_data: bytes):
         frame_name = f"{self._pending_metadata['index']:06d}.jpg"

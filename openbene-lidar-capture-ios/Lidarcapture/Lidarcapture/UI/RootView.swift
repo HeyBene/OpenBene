@@ -7,13 +7,11 @@ struct RootView: View {
     @StateObject private var uploadCoordinator = CaptureUploadCoordinator(uploadClient: WebSocketUploadClient())
     @AppStorage("capture.receiverURL") private var receiverURLString = "ws://127.0.0.1:8765"
     @AppStorage("capture.sessionMode") private var sessionModeRawValue = CaptureSessionUploadMode.mapping.rawValue
-    @State private var selectedStage = "Capture"
     @State private var shareURL: URL?
     @State private var isSharePresented = false
     @State private var isConnectionConfigExpanded = false
     @State private var receiverValidationMessage: String?
 
-    private let stages = ["Prepare", "Capture", "Result"]
 
     var body: some View {
         NavigationView {
@@ -24,7 +22,6 @@ struct RootView: View {
                 VStack(spacing: 0) {
                     topOverlay
                     Spacer()
-                    readinessBar
                     if captureManager.isCapturing {
                         liveCaptureHud
                     }
@@ -50,8 +47,8 @@ struct RootView: View {
                     depthEnabled: depthEnabled
                 )
             }
-            captureManager.onCaptureFinished = {
-                uploadCoordinator.finishSession()
+            captureManager.onCaptureFinished = { manifest, pointCloud in
+                uploadCoordinator.finishSession(manifest: manifest ?? Data(), pointCloud: pointCloud)
             }
         }
     }
@@ -128,6 +125,7 @@ struct RootView: View {
                 compactHudPill(systemImage: trackingSymbol, text: shortTrackingLabel)
                 compactHudPill(systemImage: captureManager.depthAvailable ? "cube.transparent" : "photo", text: captureManager.depthAvailable ? "LiDAR" : "RGB")
                 compactHudPill(systemImage: uploadCoordinator.isConnected ? "antenna.radiowaves.left.and.right" : "wifi.slash", text: uploadCoordinator.isConnected ? "已连接" : "未连接")
+                compactHudPill(systemImage: uploadCoordinator.supportsPointCloudUpload ? "point.3.connected.trianglepath.dotted" : "point.3.filled.connected.trianglepath.dotted", text: uploadCoordinator.supportsPointCloudUpload ? "点云" : "无点云")
                 compactHudPill(systemImage: "circle.grid.2x2.fill", text: "\(captureManager.frameCount)")
             }
         }
@@ -148,37 +146,7 @@ struct RootView: View {
         .padding(.bottom, 14)
     }
 
-    private var readinessBar: some View {
-        VStack(spacing: 8) {
-            HStack {
-                Text(softStatusTitle)
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundColor(.white)
-                Spacer()
-                Text(softStatusTag)
-                    .font(.caption2.weight(.bold))
-                    .foregroundColor(readinessAccent)
-            }
 
-            HStack(spacing: 12) {
-                readinessMetric(title: "跟踪", value: shortTrackingLabel)
-                readinessMetric(title: "帧数", value: "\(captureManager.frameCount)")
-                readinessMetric(title: "深度", value: captureManager.depthAvailable ? "开" : "RGB")
-            }
-        }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 11)
-        .background(
-            RoundedRectangle(cornerRadius: 18)
-                .fill(Color.black.opacity(0.28))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 18)
-                        .stroke(Color.white.opacity(0.08), lineWidth: 1)
-                )
-        )
-        .padding(.horizontal, 12)
-        .padding(.bottom, 12)
-    }
 
     private var bottomControlPanel: some View {
         VStack(spacing: 14) {
@@ -190,23 +158,25 @@ struct RootView: View {
                 outputLocationCard(outputURL)
             }
 
+            if let pointCloudStatus = captureManager.pointCloudUploadStatus {
+                pointCloudStatusCard(pointCloudStatus)
+            }
+
             Text(primaryStatusText)
                 .font(.headline.weight(.semibold))
                 .foregroundColor(.white)
 
-            stageStrip
-            sessionModeStrip
-            captureModeStrip
+            Text(softStatusTitle)
+                .font(.caption)
+                .foregroundColor(.white.opacity(0.7))
+                .multilineTextAlignment(.center)
+
+            modeAndSessionStrip
 
             HStack(alignment: .center) {
-                modeToggleButton(mode: .manual)
-
                 Spacer()
-
                 shutterButton
-
                 Spacer()
-
                 finishButton
             }
 
@@ -257,31 +227,12 @@ struct RootView: View {
         )
     }
 
-    private var stageStrip: some View {
-        HStack(spacing: 24) {
-            ForEach(stages, id: \.self) { stage in
-                Text(stage.uppercased())
-                    .font(.caption.weight(selectedStage == stage ? .bold : .medium))
-                    .foregroundColor(selectedStage == stage ? .yellow : .white.opacity(stage == "Capture" ? 0.58 : 0.34))
-                    .scaleEffect(selectedStage == stage ? 1.02 : 1)
-                    .onTapGesture {
-                        selectedStage = stage
-                    }
-            }
-        }
-    }
-
-    private var captureModeStrip: some View {
-        HStack(spacing: 10) {
-            captureModeChip(.manual)
-            captureModeChip(.auto)
-        }
-    }
-
-    private var sessionModeStrip: some View {
+    private var modeAndSessionStrip: some View {
         HStack(spacing: 10) {
             sessionModeChip(.mapping, title: "建图")
             sessionModeChip(.localization, title: "定位")
+            captureModeChip(.manual)
+            captureModeChip(.auto)
         }
     }
 
@@ -358,23 +309,6 @@ struct RootView: View {
             }
     }
 
-    private func modeToggleButton(mode: CaptureMode) -> some View {
-        Button(action: {
-            captureManager.setCaptureMode(mode)
-        }) {
-            VStack(spacing: 6) {
-                Image(systemName: mode == .manual ? "hand.tap.fill" : "waveform.path.badge.plus")
-                    .font(.system(size: 18, weight: .semibold))
-                    .foregroundColor(captureManager.captureMode == mode ? .black : .white)
-                    .frame(width: 42, height: 42)
-                    .background(captureManager.captureMode == mode ? Color.yellow : Color.white.opacity(0.10))
-                    .clipShape(Circle())
-                Text(mode == .manual ? "手动" : "自动")
-                    .font(.caption2)
-                    .foregroundColor(.white.opacity(0.68))
-            }
-        }
-    }
 
     private var connectionCard: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -391,10 +325,11 @@ struct RootView: View {
                         Text(uploadCoordinator.statusMessage)
                             .font(.subheadline.weight(.semibold))
                             .foregroundColor(.white)
-                        if let receiverValidationMessage {
-                            Text(receiverValidationMessage)
-                                .font(.caption)
-                                .foregroundColor(.orange)
+                        if let receiverURL = uploadCoordinator.receiverURL {
+                            Text(receiverURL.absoluteString)
+                                .font(.caption2.monospaced())
+                                .foregroundColor(.white.opacity(0.62))
+                                .lineLimit(1)
                         }
                     }
                     Spacer()
@@ -409,6 +344,12 @@ struct RootView: View {
 
             if isConnectionConfigExpanded {
                 VStack(alignment: .leading, spacing: 10) {
+                    if let receiverValidationMessage {
+                        Text(receiverValidationMessage)
+                            .font(.caption)
+                            .foregroundColor(.orange)
+                    }
+
                     TextField("ws://192.168.x.x:8765", text: $receiverURLString)
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
@@ -508,21 +449,21 @@ struct RootView: View {
     }
 
     private func qualityReportGrid(_ report: CaptureQualityReport) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 12) {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 10) {
                 qualityMetric(title: "正常跟踪", value: String(format: "%.0f%%", report.trackingNormalRatio * 100))
-                qualityMetric(title: "最大平移", value: String(format: "%.2fm", report.maxAdjacentTranslationJumpMeters))
-                qualityMetric(title: "最大旋转", value: String(format: "%.1f°", report.maxAdjacentRotationJumpDegrees))
+                qualityMetric(title: "平移", value: String(format: "%.2fm", report.maxAdjacentTranslationJumpMeters))
+                qualityMetric(title: "旋转", value: String(format: "%.1f°", report.maxAdjacentRotationJumpDegrees))
             }
 
-            HStack(spacing: 12) {
-                qualityMetric(title: "可疑跳变", value: "\(report.suspiciousJumpCount)")
-                qualityMetric(title: "严重跳变", value: "\(report.severeJumpCount)")
+            HStack(spacing: 10) {
+                qualityMetric(title: "可疑", value: "\(report.suspiciousJumpCount)")
+                qualityMetric(title: "严重", value: "\(report.severeJumpCount)")
                 qualityMetric(title: "有效帧", value: "\(report.acceptedFrameCount)")
             }
 
             Text(report.recommendation)
-                .font(.footnote.weight(.semibold))
+                .font(.caption.weight(.semibold))
                 .foregroundColor(.white)
         }
     }
@@ -549,11 +490,6 @@ struct RootView: View {
                 .font(.subheadline.weight(.semibold))
                 .foregroundColor(.white)
 
-            Text(url.path)
-                .font(.caption)
-                .foregroundColor(.white.opacity(0.72))
-                .lineLimit(3)
-
             HStack(spacing: 10) {
                 Button("分享导出") {
                     shareURL = url
@@ -566,10 +502,32 @@ struct RootView: View {
                 .foregroundColor(.black)
                 .clipShape(Capsule())
 
-                Text("结束后可分享到“文件”或 AirDrop")
+                Text("可导出到“文件”或 AirDrop")
                     .font(.caption2)
                     .foregroundColor(.white.opacity(0.62))
             }
+        }
+        .padding(14)
+        .background(
+            RoundedRectangle(cornerRadius: 18)
+                .fill(Color.white.opacity(0.08))
+        )
+    }
+
+    private func pointCloudStatusCard(_ status: String) -> some View {
+        HStack(spacing: 10) {
+            Image(systemName: "point.3.connected.trianglepath.dotted")
+                .font(.headline)
+                .foregroundColor(.yellow)
+            VStack(alignment: .leading, spacing: 4) {
+                Text("轻量点云")
+                    .font(.caption.weight(.medium))
+                    .foregroundColor(.white.opacity(0.65))
+                Text(status)
+                    .font(.footnote)
+                    .foregroundColor(.white)
+            }
+            Spacer()
         }
         .padding(14)
         .background(

@@ -101,8 +101,9 @@ final class NerfstudioDatasetWriter {
         }
     }
 
-    func finalizeSession() {
-        writeQueue.async { [self] in
+    func finalizeSession() -> Data? {
+        var manifestData: Data?
+        writeQueue.sync { [self] in
             var manifest: [String: Any] = globalIntrinsics ?? [:]
             manifest["depth_scale"] = depthScale
             manifest["depth_unit"] = "millimeters"
@@ -112,8 +113,10 @@ final class NerfstudioDatasetWriter {
             let jsonURL = outputDirectory.appendingPathComponent("transforms.json")
             if let jsonData = try? JSONSerialization.data(withJSONObject: manifest, options: [.prettyPrinted, .sortedKeys]) {
                 try? jsonData.write(to: jsonURL)
+                manifestData = jsonData
             }
         }
+        return manifestData
     }
 
     // MARK: - Image conversion helpers
@@ -159,6 +162,7 @@ final class NerfstudioDatasetWriter {
                 height: height,
                 bitsPerComponent: 16,
                 bytesPerRow: bytesPerRow,
+
                 space: colorSpace,
                 bitmapInfo: bitmapInfo.rawValue
             ) else { return }

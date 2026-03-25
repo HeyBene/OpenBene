@@ -2,7 +2,27 @@
 
 ## 当前目标
 - 主线目标：让 iPhone 成为 OpenBene 的空间采集端，先完成 **Nerfstudio 风格数据采集与重建验证**。
-- 当前阶段：**修通 iOS 工程编译，确保采集端基础链路可运行**。
+- 当前阶段：**采集端基础链路已跑通，正在把无线传输链和重建验证链同时稳定下来**。
+
+## 当前交接结论（Windows 接手前必看）
+- iOS 真机采集链已跑通：可以稳定导出 `images/`、`depth/`、`transforms.json`，并已在 Mac 上完成 AirDrop 后的 Nerfstudio 读取、训练、点云 sanity check、以及一次成功的渲染出图链打通。
+- 无线 WebSocket 链已完成一次完整成功闭环：iPhone -> receiver -> `images/ + depth/ + transforms.json + fused_pointcloud.ply`。说明基础无线数据链已经打通，但仍建议在 Windows 端至少再连续验证 2~3 轮稳定性后，再完全依赖无线流作为训练输入。
+- 新增了第一版“会话结束后上传轻量融合点云”的 side-channel：不会破坏现有逐帧 RGB/depth/manifest 上传协议，只在 receiver 声明支持 `pointcloud_v1` 时，额外上传 `fused_pointcloud.ply`。
+- 现在推荐的机器分工是：**Mac 负责 iPhone app 与真机采集验证；Windows RTX 5060 负责 Nerfstudio 正式训练与后续建图/定位研究。**
+
+## 已踩过的关键坑（请避免重复）
+- 只改真实源码目录：`openbene-lidar-capture-ios/Lidarcapture/Lidarcapture/`。仓库里的 `openbene-lidar-capture-ios/OpenBeneLidarCapture/` 不是当前 Xcode 实际使用的源码目录。
+- Nerfstudio 在当前环境下训练很慢，Mac M4 只能做小规模 sanity check，不建议作为正式长训主力机。
+- `ns-render` 在当前 Python / PyTorch 2.6 环境下，直接读取 Nerfstudio checkpoint 会被 `torch.load(weights_only=True)` 的默认安全策略拦住；需要显式以受信任本地 checkpoint 的方式关闭 `weights_only` 才能渲染成功。
+- 早期 session 里出现过 `images/depth/transforms` 数量不一致的问题；当前已知一份更健康的样本是 `session_1774409566`，它的 pose 统计明显更稳定，适合作为 Windows 端继续训练验证的起点。
+- 点云 sanity check 很有用，但它是**辅助诊断层**，不是最终地图真相；主数据资产仍然是 `RGB + depth + pose + intrinsics`。
+
+## Windows 端下一步建议
+1. `git pull`
+2. 继续以 `openbene-lidar-capture-ios/Lidarcapture/Lidarcapture/` 为唯一 iOS 源码目录
+3. 先复现/确认无线 receiver 连续多轮稳定接收
+4. 以 `session_1774409566` 为基线数据集，在 RTX 5060 上继续正式训练与新视角/更长步数验证
+5. 如继续扩展无线点云链，优先保持“session-end pointcloud side-channel”方案，不要先改成逐帧点云流
 
 ## 当前结论
 - 当前不优先上 ROS。

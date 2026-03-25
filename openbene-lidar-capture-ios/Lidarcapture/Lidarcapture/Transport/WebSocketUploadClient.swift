@@ -17,6 +17,7 @@ final class WebSocketUploadClient: NSObject, UploadClient, ObservableObject {
     @Published var isConnected: Bool = false
     @Published var statusMessage: String = "Not connected"
     @Published var uploadedFrameCount: Int = 0
+    @Published var supportsPointCloudUpload: Bool = false
 
     private var webSocket: URLSessionWebSocketTask?
     private var urlSession: URLSession?
@@ -40,6 +41,7 @@ final class WebSocketUploadClient: NSObject, UploadClient, ObservableObject {
         webSocket = nil
         DispatchQueue.main.async {
             self.isConnected = false
+            self.supportsPointCloudUpload = false
             self.statusMessage = "Disconnected"
         }
     }
@@ -83,7 +85,7 @@ final class WebSocketUploadClient: NSObject, UploadClient, ObservableObject {
         }
     }
 
-    func sendSessionFinalized(manifest: Data, session: CaptureUploadSessionDescriptor?) {
+    func sendSessionFinalized(manifest: Data, session: CaptureUploadSessionDescriptor?, pointCloud: CaptureSessionPointCloudArtifact?) {
         guard let ws = webSocket else { return }
         var control: [String: Any] = [
             "type": "session_end",
@@ -97,6 +99,22 @@ final class WebSocketUploadClient: NSObject, UploadClient, ObservableObject {
         sendJSON(control, over: ws)
         let msg = URLSessionWebSocketTask.Message.data(manifest)
         ws.send(msg) { _ in }
+
+        guard supportsPointCloudUpload, let pointCloud else { return }
+        var pointCloudControl: [String: Any] = [
+            "type": "pointcloud_start",
+            "file_name": pointCloud.fileName,
+            "format": pointCloud.format,
+            "coordinate_convention": pointCloud.coordinateConvention,
+            "point_count": pointCloud.pointCount,
+            "byte_count": pointCloud.data.count
+        ]
+        if let session {
+            pointCloudControl["session_id"] = session.sessionID
+        }
+        sendJSON(pointCloudControl, over: ws)
+        let pointCloudMessage = URLSessionWebSocketTask.Message.data(pointCloud.data)
+        ws.send(pointCloudMessage) { _ in }
     }
 
     // MARK: - Private helpers
@@ -186,14 +204,20 @@ final class WebSocketUploadClient: NSObject, UploadClient, ObservableObject {
                        let status = payload["status"] as? String {
                         DispatchQueue.main.async {
                             self?.isConnected = status == "connected" || self?.isConnected == true
+                            if let capabilities = payload["capabilities"] as? [String] {
+                                self?.supportsPointCloudUpload = capabilities.contains("pointcloud_v1")
+                            }
                             switch status {
                             case "connected":
-                                self?.statusMessage = "已连接接收端"
+                                self?.statusMessage = (self?.supportsPointCloudUpload == true) ? "已连接接收端（支持点云）" : "已连接接收端"
                             case "session_started":
                                 self?.statusMessage = "会话已开始上传"
                             case "session_ending":
                                 let receivedFrames = payload["received_frames"] as? Int ?? 0
                                 self?.statusMessage = "接收端结束会话，已收 \(receivedFrames) 帧"
+                            case "pointcloud_received":
+                                let receivedPoints = payload["point_count"] as? Int ?? 0
+                                self?.statusMessage = "点云已上传（\(receivedPoints) 点）"
                             default:
                                 self?.statusMessage = status
                             }
@@ -206,6 +230,7 @@ final class WebSocketUploadClient: NSObject, UploadClient, ObservableObject {
             case .failure:
                 DispatchQueue.main.async {
                     self?.isConnected = false
+                    self?.supportsPointCloudUpload = false
                     self?.statusMessage = "Connection lost"
                 }
             }

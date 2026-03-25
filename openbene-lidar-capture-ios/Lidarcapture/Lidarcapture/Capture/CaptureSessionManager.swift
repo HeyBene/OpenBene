@@ -49,6 +49,7 @@ final class CaptureSessionManager: NSObject, ObservableObject {
     @Published var lastCaptureFeedback: String = "等待开始"
     @Published var liveAdvisoryText: String = "请先启动会话"
     @Published var liveAdvisoryLevel: CaptureAdvisoryLevel = .holdStill
+    @Published var pointCloudUploadStatus: String?
 
     // MARK: - Internal
 
@@ -57,6 +58,7 @@ final class CaptureSessionManager: NSObject, ObservableObject {
 
     private var datasetWriter: NerfstudioDatasetWriter?
     private let acceptancePolicy = FrameAcceptancePolicy()
+    private let pointCloudAccumulator = LightweightPointCloudAccumulator()
     private var captureStartDate: Date?
     private var captureTimer: Timer?
     private var currentFrame: ARFrame?
@@ -144,7 +146,7 @@ final class CaptureSessionManager: NSObject, ObservableObject {
     var onCaptureStarted: ((String, Bool) -> Void)?
 
     /// Callback invoked when a capture session ends.
-    var onCaptureFinished: (() -> Void)?
+    var onCaptureFinished: ((Data?, CaptureSessionPointCloudArtifact?) -> Void)?
 
     override init() {
         super.init()
@@ -197,6 +199,8 @@ final class CaptureSessionManager: NSObject, ObservableObject {
         frameCount = 0
         captureDuration = 0
         acceptancePolicy.reset()
+        pointCloudAccumulator.reset()
+        pointCloudUploadStatus = nil
         resetQualityDiagnostics()
         captureStartDate = Date()
         lastCaptureFeedback = captureMode == .manual ? "对准目标后按主按钮采样" : "自动采集中"
@@ -209,14 +213,20 @@ final class CaptureSessionManager: NSObject, ObservableObject {
         guard isCapturing else { return }
         isCapturing = false
         stopCaptureTimer()
-        datasetWriter?.finalizeSession()
+        let manifestData = datasetWriter?.finalizeSession()
+        let pointCloudArtifact = pointCloudAccumulator.makePLYArtifact()
         datasetWriter = nil
 
         let duration = Date().timeIntervalSince(captureStartDate ?? Date())
         captureDuration = duration
         captureStartDate = nil
         lastCaptureFeedback = "本轮采集已结束"
-        onCaptureFinished?()
+        if let pointCloudArtifact {
+            pointCloudUploadStatus = "已生成 \(pointCloudArtifact.pointCount) 点轻量点云"
+        } else {
+            pointCloudUploadStatus = "未生成点云"
+        }
+        onCaptureFinished?(manifestData, pointCloudArtifact)
 
         if let sessionName = lastSessionName {
             lastSessionSummary = CaptureSessionSummary(
@@ -310,6 +320,7 @@ final class CaptureSessionManager: NSObject, ObservableObject {
     private func writeFrame(_ frame: ARFrame) {
         let record = CaptureFrameRecord(frame: frame, index: frameCount, depthAvailable: depthAvailable)
         datasetWriter?.writeFrame(record)
+        pointCloudAccumulator.ingest(record)
         onFrameAccepted?(record)
         frameCount += 1
     }

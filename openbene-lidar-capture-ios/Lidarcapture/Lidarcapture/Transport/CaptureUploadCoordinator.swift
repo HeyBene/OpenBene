@@ -18,6 +18,10 @@ final class CaptureUploadCoordinator: ObservableObject {
         uploadClient.statusMessage
     }
 
+    var supportsPointCloudUpload: Bool {
+        uploadClient.supportsPointCloudUpload
+    }
+
     func connect(to url: URL) {
         receiverURL = url
         uploadClient.connect(to: url)
@@ -45,9 +49,9 @@ final class CaptureUploadCoordinator: ObservableObject {
         uploadClient.sendFrame(record)
     }
 
-    func finishSession(manifest: Data = Data()) {
+    func finishSession(manifest: Data = Data(), pointCloud: CaptureSessionPointCloudArtifact? = nil) {
         guard let activeSession else { return }
-        uploadClient.sendSessionFinalized(manifest: manifest, session: activeSession)
+        uploadClient.sendSessionFinalized(manifest: manifest, session: activeSession, pointCloud: pointCloud)
         self.activeSession = nil
     }
 }
