@@ -126,7 +126,6 @@ struct RootView: View {
                 compactHudPill(systemImage: captureManager.depthAvailable ? "cube.transparent" : "photo", text: captureManager.depthAvailable ? "LiDAR" : "RGB")
                 compactHudPill(systemImage: uploadCoordinator.isConnected ? "antenna.radiowaves.left.and.right" : "wifi.slash", text: uploadCoordinator.isConnected ? "已连接" : "未连接")
                 compactHudPill(systemImage: uploadCoordinator.supportsPointCloudUpload ? "point.3.connected.trianglepath.dotted" : "point.3.filled.connected.trianglepath.dotted", text: uploadCoordinator.supportsPointCloudUpload ? "点云" : "无点云")
-                compactHudPill(systemImage: "circle.grid.2x2.fill", text: "\(captureManager.frameCount)")
             }
         }
         .padding(.horizontal, 16)
@@ -155,11 +154,7 @@ struct RootView: View {
             }
 
             if let outputURL = captureManager.lastSessionDirectoryURL {
-                outputLocationCard(outputURL)
-            }
-
-            if let pointCloudStatus = captureManager.pointCloudUploadStatus {
-                pointCloudStatusCard(pointCloudStatus)
+                outputLocationCard(outputURL, summary: captureManager.lastSessionSummary)
             }
 
             Text(primaryStatusText)
@@ -426,6 +421,11 @@ struct RootView: View {
                     Text(summary.qualityHint)
                         .font(.footnote)
                         .foregroundColor(.white.opacity(0.78))
+                    if let pointCloudStatus = captureManager.pointCloudUploadStatus {
+                        Text(pointCloudStatus)
+                            .font(.caption2)
+                            .foregroundColor(.white.opacity(0.62))
+                    }
                 }
 
                 Spacer()
@@ -480,8 +480,11 @@ struct RootView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
-    private func outputLocationCard(_ url: URL) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
+    private func outputLocationCard(_ url: URL, summary: CaptureSessionSummary?) -> some View {
+        let pointCloudURL = url.appendingPathComponent("fused_pointcloud.ply")
+        let pointCloudExists = FileManager.default.fileExists(atPath: pointCloudURL.path)
+
+        return VStack(alignment: .leading, spacing: 8) {
             Text("数据位置")
                 .font(.caption.weight(.medium))
                 .foregroundColor(.white.opacity(0.65))
@@ -489,6 +492,16 @@ struct RootView: View {
             Text(url.lastPathComponent)
                 .font(.subheadline.weight(.semibold))
                 .foregroundColor(.white)
+
+            if let summary {
+                Text(summary.qualityReport.recommendation)
+                    .font(.caption)
+                    .foregroundColor(.white.opacity(0.78))
+            }
+
+            Text(pointCloudExists ? "点云文件：fused_pointcloud.ply" : "点云文件：未生成")
+                .font(.caption2.monospaced())
+                .foregroundColor(.white.opacity(0.62))
 
             HStack(spacing: 10) {
                 Button("分享导出") {
@@ -514,27 +527,6 @@ struct RootView: View {
         )
     }
 
-    private func pointCloudStatusCard(_ status: String) -> some View {
-        HStack(spacing: 10) {
-            Image(systemName: "point.3.connected.trianglepath.dotted")
-                .font(.headline)
-                .foregroundColor(.yellow)
-            VStack(alignment: .leading, spacing: 4) {
-                Text("轻量点云")
-                    .font(.caption.weight(.medium))
-                    .foregroundColor(.white.opacity(0.65))
-                Text(status)
-                    .font(.footnote)
-                    .foregroundColor(.white)
-            }
-            Spacer()
-        }
-        .padding(14)
-        .background(
-            RoundedRectangle(cornerRadius: 18)
-                .fill(Color.white.opacity(0.08))
-        )
-    }
 
     private func diagnosticsRow(title: String, value: String) -> some View {
         HStack {

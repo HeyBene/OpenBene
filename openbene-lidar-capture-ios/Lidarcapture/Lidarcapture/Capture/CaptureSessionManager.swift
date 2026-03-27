@@ -215,6 +215,10 @@ final class CaptureSessionManager: NSObject, ObservableObject {
         stopCaptureTimer()
         let manifestData = datasetWriter?.finalizeSession()
         let pointCloudArtifact = pointCloudAccumulator.makePLYArtifact()
+        if let pointCloudArtifact, let sessionURL = lastSessionDirectoryURL {
+            let pointCloudURL = sessionURL.appendingPathComponent(pointCloudArtifact.fileName)
+            try? pointCloudArtifact.data.write(to: pointCloudURL)
+        }
         datasetWriter = nil
 
         let duration = Date().timeIntervalSince(captureStartDate ?? Date())
