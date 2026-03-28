@@ -413,6 +413,8 @@ struct RootView: View {
                 .font(.caption.weight(.medium))
                 .foregroundColor(.white.opacity(0.65))
 
+            qualityGateBanner(summary)
+
             HStack {
                 VStack(alignment: .leading, spacing: 4) {
                     Text(summary.sessionName)
@@ -448,6 +450,32 @@ struct RootView: View {
         )
     }
 
+    private func qualityGateBanner(_ summary: CaptureSessionSummary) -> some View {
+        HStack(alignment: .center, spacing: 10) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(summary.gateTitle)
+                    .font(.caption.weight(.bold))
+                    .foregroundColor(qualityGateForeground(summary.qualityReport.gateDecision))
+                Text(summary.gateHint)
+                    .font(.caption2)
+                    .foregroundColor(qualityGateForeground(summary.qualityReport.gateDecision).opacity(0.85))
+            }
+
+            Spacer()
+
+            Text(gateBadgeText(summary.qualityReport.gateDecision))
+                .font(.caption2.weight(.bold))
+                .foregroundColor(qualityGateForeground(summary.qualityReport.gateDecision))
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+                .background(qualityGateForeground(summary.qualityReport.gateDecision).opacity(0.16))
+                .clipShape(Capsule())
+        }
+        .padding(12)
+        .background(qualityGateBackground(summary.qualityReport.gateDecision))
+        .clipShape(RoundedRectangle(cornerRadius: 14))
+    }
+
     private func qualityReportGrid(_ report: CaptureQualityReport) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 10) {
@@ -465,6 +493,10 @@ struct RootView: View {
             Text(report.recommendation)
                 .font(.caption.weight(.semibold))
                 .foregroundColor(.white)
+
+            Text(report.gateDecision.actionHint)
+                .font(.caption2)
+                .foregroundColor(.white.opacity(0.72))
         }
     }
 
@@ -494,7 +526,7 @@ struct RootView: View {
                 .foregroundColor(.white)
 
             if let summary {
-                Text(summary.qualityReport.recommendation)
+                Text("\(summary.gateTitle) · \(summary.qualityReport.recommendation)")
                     .font(.caption)
                     .foregroundColor(.white.opacity(0.78))
             }
@@ -603,6 +635,39 @@ struct RootView: View {
             return .orange
         case .movingTooFast:
             return .red
+        }
+    }
+
+    private func qualityGateBackground(_ decision: CaptureQualityGateDecision) -> Color {
+        switch decision {
+        case .keep:
+            return Color.green.opacity(0.18)
+        case .retry:
+            return Color.yellow.opacity(0.18)
+        case .reject:
+            return Color.red.opacity(0.2)
+        }
+    }
+
+    private func qualityGateForeground(_ decision: CaptureQualityGateDecision) -> Color {
+        switch decision {
+        case .keep:
+            return Color.green
+        case .retry:
+            return Color.yellow
+        case .reject:
+            return Color.red
+        }
+    }
+
+    private func gateBadgeText(_ decision: CaptureQualityGateDecision) -> String {
+        switch decision {
+        case .keep:
+            return "KEEP"
+        case .retry:
+            return "RETRY"
+        case .reject:
+            return "REJECT"
         }
     }
 

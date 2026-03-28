@@ -27,6 +27,14 @@ struct CaptureSessionSummary {
     var qualityHint: String {
         qualityReport.recommendation
     }
+
+    var gateTitle: String {
+        qualityReport.gateDecision.title
+    }
+
+    var gateHint: String {
+        qualityReport.gateDecision.actionHint
+    }
 }
 
 /// Manages the ARSession lifecycle for LiDAR capture.
@@ -416,16 +424,22 @@ final class CaptureSessionManager: NSObject, ObservableObject {
             ? Float(trackingNormalFrameCount) / Float(totalObservedFrameCount)
             : 0
 
+        let gateDecision: CaptureQualityGateDecision
         let recommendation: String
         if frameCount < 20 {
+            gateDecision = .retry
             recommendation = "建议补采：有效帧偏少"
         } else if trackingNormalRatio < 0.7 {
+            gateDecision = .reject
             recommendation = "建议重采：跟踪稳定性不足"
         } else if severeJumpCount >= 3 {
+            gateDecision = .reject
             recommendation = "建议重采：存在明显位姿跳变"
         } else if suspiciousJumpCount >= 8 {
+            gateDecision = .retry
             recommendation = "建议谨慎使用：运动不够平稳"
         } else {
+            gateDecision = .keep
             recommendation = "可用于基础重建验证"
         }
 
@@ -436,6 +450,7 @@ final class CaptureSessionManager: NSObject, ObservableObject {
             maxAdjacentRotationJumpDegrees: maxAdjacentRotationJumpDegrees,
             suspiciousJumpCount: suspiciousJumpCount,
             severeJumpCount: severeJumpCount,
+            gateDecision: gateDecision,
             recommendation: recommendation
         )
     }
