@@ -140,6 +140,52 @@
 
 等编译跑通后，规划并执行一次目录结构统一。
 
+## Windows 新机器交接 SOP（WSL2 Ubuntu + ROS2 Humble）
+
+适用场景：把项目交给另一台 Windows 电脑，后续在该机器上继续完成 ROS2 bridge、回放验证和后续建图/定位研究。
+
+### 目标机器角色
+- Windows 主机：代码托管、数据落盘、必要时运行 receiver
+- WSL2 Ubuntu：ROS2 Humble 与 Python bridge 主要运行环境
+- iPhone：继续作为采集端
+
+### 推荐最小安装项
+1. Windows 11
+2. Git for Windows
+3. WSL2 + Ubuntu 22.04
+4. Python 3.10（Ubuntu 内）
+5. ROS2 Humble（Ubuntu 内）
+
+### 交接后的目录建议
+- Windows 仓库根目录：按接手人习惯放置，但建议避免中文路径
+- WSL2 内仓库路径：建议重新 clone 到 Linux 文件系统，例如：`~/OpenBene_git`
+- 会话数据目录建议单独保留，例如：`~/openbene_sessions/`
+
+不要把 ROS2 主运行环境长期放在 `/mnt/c/...` 下，避免 Python/文件监听/IO 性能与权限问题。
+
+### 首次交接后的最小流程
+1. 在 Windows 安装 Git 并完成仓库拉取
+2. 在 WSL2 Ubuntu 22.04 中安装 ROS2 Humble
+3. 在 WSL2 中重新 clone 本仓库
+4. 在 WSL2 中安装 `openbene_sdk` 所需 Python 依赖
+5. 用一份已知健康 session 先跑 replay bridge
+6. 确认 `ros2 topic list`、`ros2 topic echo /openbene/camera/pose` 正常
+
+### 已知推荐基线数据
+- `session_1774409566`
+
+它适合作为 Windows/WSL2 新机器上的第一份 replay 验证数据，用于先确认 bridge/ROS2 topic 是否正常，再继续做更复杂实验。
+
+### 本次交接建议优先补充/核对的内容
+- 安装与依赖：见 `docs/ROS2_BRIDGE_V1.md`
+- ROS2 bridge 入口：`openbene_sdk/src/openbene/session_ros2_bridge.py`
+- live bridge scaffold：`openbene_sdk/src/openbene/live_ros2_bridge.py`
+
+### 交接时必须口头确认的事项
+- 当前主线仍然是“先 session replay，再 live bridge”，不是直接切到整套实时 ROS2 在线系统
+- iOS 真正有效源码目录仍然只有：`openbene-lidar-capture-ios/Lidarcapture/Lidarcapture/`
+- `captured_data/`、`outputs/` 这类目录更像实验/产物目录，不默认作为长期源码资产提交
+
 ## 备注
 - 以后提交时，不再添加 Claude co-author 信息。
 - 以后代码里的注释尽量保持简洁中文，方便后续理解。
