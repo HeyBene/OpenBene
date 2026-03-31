@@ -399,6 +399,7 @@
 				DEVELOPMENT_TEAM = 3TUB82S6DD;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_NSBonjourServices = "_openbene-capture._tcp";
 				INFOPLIST_KEY_NSCameraUsageDescription = "Camera access is required for AR tracking and LiDAR/RGB data capture.";
 				INFOPLIST_KEY_NSLocalNetworkUsageDescription = "Local network access is used to upload captured datasets to your PC when enabled.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
@@ -430,6 +431,7 @@
 				DEVELOPMENT_TEAM = 3TUB82S6DD;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_NSBonjourServices = "_openbene-capture._tcp";
 				INFOPLIST_KEY_NSCameraUsageDescription = "Camera access is required for AR tracking and LiDAR/RGB data capture.";
 				INFOPLIST_KEY_NSLocalNetworkUsageDescription = "Local network access is used to upload captured datasets to your PC when enabled.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;

@@ -12,7 +12,7 @@ Usage:
 import asyncio
 import json
 import argparse
-import sys
+import socket
 from pathlib import Path
 from datetime import datetime
 
@@ -21,6 +21,13 @@ try:
 except ImportError:
     print("Missing dependency: pip install websockets")
     sys.exit(1)
+
+try:
+    from zeroconf import IPVersion, ServiceInfo, Zeroconf
+except ImportError:
+    Zeroconf = None
+    ServiceInfo = None
+    IPVersion = None
 
 
 class CaptureReceiver:
@@ -38,6 +45,8 @@ class CaptureReceiver:
         self._expecting = "metadata"  # metadata -> image -> depth(optional) -> manifest(optional pointcloud)
         self.session_info = None
         self._pending_pointcloud = None
+        self.service_info = None
+        self.zeroconf = None
 
     def _configure_output_dirs(self, output_dir: Path):
         self.output_dir = output_dir
@@ -73,7 +82,7 @@ class CaptureReceiver:
             "status": "connected",
             "receiver_state": "ready",
             "output_dir": str(self.output_dir),
-            "capabilities": ["session_manifest", "pointcloud_v1"],
+            "capabilities": ["session_manifest", "pointcloud_v1", "live_localization_v1"],
         }))
 
         self._ensure_dirs()
@@ -114,6 +123,9 @@ class CaptureReceiver:
             elif msg_type == "frame":
                 self._pending_metadata = data
                 self._expecting = "image"
+                transfer_mode = data.get("transfer_mode", "session")
+                if transfer_mode == "live":
+                    print(f"  Live frame received (index={data.get('index')})")
 
                 if self.global_intrinsics is None:
                     self.global_intrinsics = {
@@ -161,6 +173,12 @@ class CaptureReceiver:
                 manifest_path.write_bytes(message)
                 print(f"[*] Received manifest from device, saved to {manifest_path}")
                 print(f"[*] Session finalized with {self.frame_count} frame(s)")
+                await websocket.send(json.dumps({
+                    "status": "session_saved",
+                    "session_id": self.session_info.get("session_id") if self.session_info else None,
+                    "output_dir": str(self.output_dir),
+                    "received_frames": self.frame_count,
+                }))
                 if self.session_info:
                     print("[*] Session summary")
                     print(f"    name: {self.session_info.get('session_name')}")
@@ -231,12 +249,51 @@ class CaptureReceiver:
         print(f"[*] Wrote transforms.json ({len(self.frames)} frames) to {transforms_path}")
 
 
+def detect_lan_ip() -> str | None:
+    probe = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    try:
+        probe.connect(("8.8.8.8", 80))
+        ip = probe.getsockname()[0]
+        return ip if ip and ip != "127.0.0.1" else None
+    except OSError:
+        return None
+    finally:
+        probe.close()
+
+
+def register_bonjour_service(host: str, port: int):
+    resolved_host = host if host != "0.0.0.0" else detect_lan_ip()
+    if Zeroconf is None or ServiceInfo is None or resolved_host is None:
+        return None, None
+    try:
+        addresses = [socket.inet_aton(resolved_host)]
+        desc = {b"path": b"/", b"capabilities": b"session_manifest,pointcloud_v1,live_localization_v1"}
+        service_info = ServiceInfo(
+            "_openbene-capture._tcp.local.",
+            f"OpenBene Capture Receiver._openbene-capture._tcp.local.",
+            addresses=addresses,
+            port=port,
+            properties=desc,
+            server=f"openbene-receiver.local."
+        )
+        zeroconf = Zeroconf(ip_version=IPVersion.V4Only)
+        zeroconf.register_service(service_info)
+        return zeroconf, service_info
+    except Exception as exc:
+        print(f"[!] Bonjour registration skipped: {exc}")
+        return None, None
+
+
 async def main(output_dir: Path, host: str, port: int):
     receiver = CaptureReceiver(output_dir)
+    receiver.zeroconf, receiver.service_info = register_bonjour_service(host, port)
+    advertised_host = host if host != "0.0.0.0" else detect_lan_ip() or host
 
     print(f"[*] OpenBene Capture Receiver")
-    print(f"[*] Listening on ws://{host}:{port}")
+    print(f"[*] Listening on ws://{advertised_host}:{port}")
     print(f"[*] Output directory: {output_dir}")
+    if receiver.service_info is not None:
+        print(f"[*] Bonjour service: _openbene-capture._tcp.local")
     print(f"[*] Waiting for iOS device to connect...")
     print()
 

@@ -5,6 +5,7 @@ import UIKit
 struct RootView: View {
     @StateObject private var captureManager = CaptureSessionManager()
     @StateObject private var uploadCoordinator = CaptureUploadCoordinator(uploadClient: WebSocketUploadClient())
+    @StateObject private var discoveryService = ReceiverDiscoveryService()
     @AppStorage("capture.receiverURL") private var receiverURLString = "ws://127.0.0.1:8765"
     @AppStorage("capture.sessionMode") private var sessionModeRawValue = CaptureSessionUploadMode.mapping.rawValue
     @State private var shareURL: URL?
@@ -37,8 +38,9 @@ struct RootView: View {
         }
         .onAppear {
             connectToConfiguredReceiver()
-            captureManager.onFrameAccepted = { record in
-                uploadCoordinator.sendFrame(record)
+            discoveryService.startBrowsing()
+            captureManager.onPreparedFrame = { payload in
+                uploadCoordinator.sendPreparedFrame(payload, mode: currentSessionMode)
             }
             captureManager.onCaptureStarted = { sessionName, depthEnabled in
                 uploadCoordinator.beginSession(
@@ -314,7 +316,7 @@ struct RootView: View {
             }) {
                 HStack {
                     VStack(alignment: .leading, spacing: 4) {
-                        Text("实时连接")
+                        Text("快速传输")
                             .font(.caption.weight(.medium))
                             .foregroundColor(.white.opacity(0.65))
                         Text(uploadCoordinator.statusMessage)
@@ -323,6 +325,11 @@ struct RootView: View {
                         if let receiverURL = uploadCoordinator.receiverURL {
                             Text(receiverURL.absoluteString)
                                 .font(.caption2.monospaced())
+                                .foregroundColor(.white.opacity(0.62))
+                                .lineLimit(1)
+                        } else if let discovered = discoveryService.receivers.first {
+                            Text("发现：\(discovered.name) · \(discovered.host)")
+                                .font(.caption2)
                                 .foregroundColor(.white.opacity(0.62))
                                 .lineLimit(1)
                         }
@@ -339,6 +346,41 @@ struct RootView: View {
 
             if isConnectionConfigExpanded {
                 VStack(alignment: .leading, spacing: 10) {
+                    if !discoveryService.receivers.isEmpty {
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("附近电脑")
+                                .font(.caption.weight(.semibold))
+                                .foregroundColor(.white.opacity(0.75))
+                            ForEach(discoveryService.receivers.prefix(3)) { receiver in
+                                Button {
+                                    if let url = receiver.wsURL {
+                                        receiverURLString = url.absoluteString
+                                        connectToConfiguredReceiver()
+                                    }
+                                } label: {
+                                    HStack {
+                                        VStack(alignment: .leading, spacing: 2) {
+                                            Text(receiver.name)
+                                                .font(.caption.weight(.semibold))
+                                                .foregroundColor(.white)
+                                            Text("\(receiver.host):\(receiver.port)")
+                                                .font(.caption2.monospaced())
+                                                .foregroundColor(.white.opacity(0.6))
+                                        }
+                                        Spacer()
+                                        Text("连接")
+                                            .font(.caption2.weight(.bold))
+                                            .foregroundColor(.black)
+                                            .padding(.horizontal, 10)
+                                            .padding(.vertical, 6)
+                                            .background(Color.green)
+                                            .clipShape(Capsule())
+                                    }
+                                }
+                            }
+                        }
+                    }
+
                     if let receiverValidationMessage {
                         Text(receiverValidationMessage)
                             .font(.caption)
@@ -355,9 +397,23 @@ struct RootView: View {
                         .foregroundColor(.white)
                         .clipShape(RoundedRectangle(cornerRadius: 12))
 
-                    Text("先在 PC 上启动 receiver，再连接同一 Wi‑Fi 下的 ws://<PC-IP>:8765")
+                    Text("先在 PC 上启动 receiver。推荐直接点上面的“附近电脑”一键连接；找不到时再手动填写 ws://<PC-IP>:8765")
                         .font(.caption2)
                         .foregroundColor(.white.opacity(0.62))
+
+                    HStack(spacing: 10) {
+                        if let outputPath = uploadCoordinator.stateSummary.lastReceiverOutputPath {
+                            Text("电脑落盘：\(outputPath)")
+                                .font(.caption2)
+                                .foregroundColor(.white.opacity(0.62))
+                                .lineLimit(2)
+                        }
+                        if uploadCoordinator.stateSummary.pendingFrameCount > 0 {
+                            Text("待发 \(uploadCoordinator.stateSummary.pendingFrameCount) 帧")
+                                .font(.caption2)
+                                .foregroundColor(.yellow)
+                        }
+                    }
 
                     if let receiverURL = uploadCoordinator.receiverURL {
                         Text("当前目标：\(receiverURL.absoluteString)")

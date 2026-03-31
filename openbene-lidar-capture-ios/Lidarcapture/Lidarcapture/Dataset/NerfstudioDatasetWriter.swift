@@ -52,7 +52,7 @@ final class NerfstudioDatasetWriter {
         globalIntrinsics = nil
     }
 
-    func writeFrame(_ record: CaptureFrameRecord) {
+    func writeFrame(_ record: CaptureFrameRecord, preparedPayload: PreparedCaptureFramePayload? = nil) {
         // Capture intrinsics from first frame
         if globalIntrinsics == nil {
             globalIntrinsics = [
@@ -83,18 +83,22 @@ final class NerfstudioDatasetWriter {
         // Write image and depth on background queue
         let pixelBuffer = record.pixelBuffer
         let depthBuffer = record.depthBuffer
+        let preparedRGBData = preparedPayload?.rgbJPEGData
+        let preparedDepthData = preparedPayload?.depthPNGData
 
         writeQueue.async { [self] in
-            // Write RGB as JPEG
-            if let rgbImage = self.imageFromPixelBuffer(pixelBuffer) {
-                let jpegURL = imagesDirectory.appendingPathComponent("\(frameName).jpg")
-                if let jpegData = rgbImage.jpegData(compressionQuality: 0.9) {
-                    try? jpegData.write(to: jpegURL)
-                }
+            let jpegURL = imagesDirectory.appendingPathComponent("\(frameName).jpg")
+            if let preparedRGBData {
+                try? preparedRGBData.write(to: jpegURL)
+            } else if let rgbImage = self.imageFromPixelBuffer(pixelBuffer),
+                      let jpegData = rgbImage.jpegData(compressionQuality: 0.9) {
+                try? jpegData.write(to: jpegURL)
             }
 
-            // Write depth as 16-bit PNG
-            if let depthBuf = depthBuffer {
+            if let preparedDepthData {
+                let depthURL = depthDirectory.appendingPathComponent("\(frameName).png")
+                try? preparedDepthData.write(to: depthURL)
+            } else if let depthBuf = depthBuffer {
                 let depthURL = depthDirectory.appendingPathComponent("\(frameName).png")
                 self.writeDepthAsPNG(depthBuf, to: depthURL)
             }

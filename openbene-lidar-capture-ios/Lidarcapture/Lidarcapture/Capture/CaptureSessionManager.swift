@@ -66,6 +66,7 @@ final class CaptureSessionManager: NSObject, ObservableObject {
 
     private var datasetWriter: NerfstudioDatasetWriter?
     private let acceptancePolicy = FrameAcceptancePolicy()
+    private let preparedFrameEncoder = PreparedFrameEncoder()
     private let pointCloudAccumulator = LightweightPointCloudAccumulator()
     private var captureStartDate: Date?
     private var captureTimer: Timer?
@@ -148,7 +149,7 @@ final class CaptureSessionManager: NSObject, ObservableObject {
     }
 
     /// Callback invoked for each accepted frame (for upload / dual-write).
-    var onFrameAccepted: ((CaptureFrameRecord) -> Void)?
+    var onPreparedFrame: ((PreparedCaptureFramePayload) -> Void)?
 
     /// Callback invoked when a capture session starts.
     var onCaptureStarted: ((String, Bool) -> Void)?
@@ -331,10 +332,17 @@ final class CaptureSessionManager: NSObject, ObservableObject {
 
     private func writeFrame(_ frame: ARFrame) {
         let record = CaptureFrameRecord(frame: frame, index: frameCount, depthAvailable: depthAvailable)
-        datasetWriter?.writeFrame(record)
+        let preparedPayload = preparePayload(for: record)
+        datasetWriter?.writeFrame(record, preparedPayload: preparedPayload)
         pointCloudAccumulator.ingest(record)
-        onFrameAccepted?(record)
+        if let preparedPayload {
+            onPreparedFrame?(preparedPayload)
+        }
         frameCount += 1
+    }
+
+    private func preparePayload(for record: CaptureFrameRecord) -> PreparedCaptureFramePayload? {
+        preparedFrameEncoder.preparePayload(for: record)
     }
 
     private func startCaptureTimer() {
