@@ -78,6 +78,7 @@ final class CaptureSessionManager: NSObject, ObservableObject {
     private var maxAdjacentRotationJumpDegrees: Float = 0
     private var suspiciousJumpCount: Int = 0
     private var severeJumpCount: Int = 0
+    private var lastAutoFeedbackUpdateAt: TimeInterval = 0
 
     var workflowPhase: CaptureWorkflowPhase {
         if !DeviceCapabilities.isARWorldTrackingAvailable {
@@ -212,6 +213,7 @@ final class CaptureSessionManager: NSObject, ObservableObject {
         pointCloudUploadStatus = nil
         resetQualityDiagnostics()
         captureStartDate = Date()
+        lastAutoFeedbackUpdateAt = 0
         lastCaptureFeedback = captureMode == .manual ? "对准目标后按主按钮采样" : "自动采集中"
         startCaptureTimer()
         isCapturing = true
@@ -325,9 +327,13 @@ final class CaptureSessionManager: NSObject, ObservableObject {
 
         guard isCapturing else { return }
         guard captureMode == .auto else { return }
-        guard acceptancePolicy.shouldAccept(frame: frame) else { return }
-
-        writeFrame(frame)
+        switch acceptancePolicy.evaluate(frame: frame) {
+        case .accept:
+            writeFrame(frame)
+            lastCaptureFeedback = "自动已采集 \(frameCount) 张"
+        case .reject(let reason):
+            updateAutoCaptureFeedback(for: reason, at: frame.timestamp)
+        }
     }
 
     private func writeFrame(_ frame: ARFrame) {
@@ -343,6 +349,22 @@ final class CaptureSessionManager: NSObject, ObservableObject {
 
     private func preparePayload(for record: CaptureFrameRecord) -> PreparedCaptureFramePayload? {
         preparedFrameEncoder.preparePayload(for: record)
+    }
+
+    private func updateAutoCaptureFeedback(for reason: AutoCaptureRejectionReason, at timestamp: TimeInterval) {
+        guard timestamp - lastAutoFeedbackUpdateAt >= 0.4 else { return }
+        lastAutoFeedbackUpdateAt = timestamp
+
+        switch reason {
+        case .trackingUnstable:
+            lastCaptureFeedback = "自动暂停：跟踪不稳定"
+        case .waitingForMinInterval:
+            lastCaptureFeedback = "自动等待：采样间隔中"
+        case .waitingForMotion:
+            lastCaptureFeedback = "自动等待：请缓慢移动"
+        case .movementTooFast:
+            lastCaptureFeedback = "自动暂停：移动过快"
+        }
     }
 
     private func startCaptureTimer() {
