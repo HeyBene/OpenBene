@@ -30,7 +30,6 @@ final class WebSocketUploadClient: NSObject, UploadClient, ObservableObject {
     private var webSocket: URLSessionWebSocketTask?
     private var urlSession: URLSession?
     private let uploadQueue = DispatchQueue(label: "com.openbene.upload", qos: .utility)
-    private let ciContext = CIContext()
     private var pendingFrameCount: Int = 0
     private var connectionState: CaptureUploadConnectionState = .disconnected {
         didSet { notifyStateChanged() }
@@ -92,25 +91,37 @@ final class WebSocketUploadClient: NSObject, UploadClient, ObservableObject {
             guard let self else { return }
 
             self.incrementPendingFrames()
-            let metadata = self.buildFrameMetadata(payload.record, transferMode: "session")
+            let metadata = self.buildFrameMetadata(payload, transferMode: "session", includeImage: true)
             self.sendJSON(metadata, over: ws)
-            self.sendBinary(payload.rgbJPEGData, over: ws)
+            if let rgbJPEGData = payload.rgbJPEGData {
+                self.sendBinary(rgbJPEGData, over: ws)
+            }
             if let depthPNGData = payload.depthPNGData {
                 self.sendBinary(depthPNGData, over: ws)
+            }
+            if let confidencePNGData = payload.confidencePNGData {
+                self.sendBinary(confidencePNGData, over: ws)
             }
             self.markFrameSent()
         }
     }
 
-    func sendRealtimeFrame(_ record: CaptureFrameRecord) {
+    func sendRealtimeFrame(_ payload: PreparedCaptureFramePayload) {
         guard let ws = webSocket else { return }
 
         uploadQueue.async { [weak self] in
             guard let self else { return }
-            guard let rgbJPEGData = self.encodeRGBAsJPEG(record.pixelBuffer) else { return }
-            let metadata = self.buildFrameMetadata(record, transferMode: "live")
+            guard payload.depthPNGData != nil else { return }
+            self.incrementPendingFrames()
+            let metadata = self.buildFrameMetadata(payload, transferMode: "live", includeImage: false)
             self.sendJSON(metadata, over: ws)
-            self.sendBinary(rgbJPEGData, over: ws)
+            if let depthPNGData = payload.depthPNGData {
+                self.sendBinary(depthPNGData, over: ws)
+            }
+            if let confidencePNGData = payload.confidencePNGData {
+                self.sendBinary(confidencePNGData, over: ws)
+            }
+            self.markFrameSent()
         }
     }
 
@@ -178,7 +189,15 @@ final class WebSocketUploadClient: NSObject, UploadClient, ObservableObject {
         }
     }
 
-    private func buildFrameMetadata(_ record: CaptureFrameRecord, transferMode: String) -> [String: Any] {
+    private func buildFrameMetadata(
+        _ payload: PreparedCaptureFramePayload,
+        transferMode: String,
+        includeImage: Bool
+    ) -> [String: Any] {
+        let record = payload.record
+        let hasImage = includeImage && payload.rgbJPEGData != nil
+        let hasDepth = payload.depthPNGData != nil
+        let hasConfidence = payload.confidencePNGData != nil
         let transform = PoseTransformAdapter.arkitToNerfstudio(record.transformMatrix)
         return [
             "type": "frame",
@@ -191,58 +210,17 @@ final class WebSocketUploadClient: NSObject, UploadClient, ObservableObject {
             "w": record.width,
             "h": record.height,
             "transform_matrix": transform,
-            "has_depth": record.depthBuffer != nil,
-            "depth_width": record.depthWidth,
-            "depth_height": record.depthHeight,
-            "transfer_mode": transferMode
+            "has_image": hasImage,
+            "has_depth": hasDepth,
+            "has_confidence": hasConfidence,
+            "depth_width": hasDepth ? record.depthWidth : 0,
+            "depth_height": hasDepth ? record.depthHeight : 0,
+            "confidence_width": hasConfidence ? record.confidenceWidth : 0,
+            "confidence_height": hasConfidence ? record.confidenceHeight : 0,
+            "tracking_state": record.trackingStateRaw,
+            "depth_source": record.depthSourceRaw,
+            "transfer_mode": transferMode,
         ]
-    }
-
-    private func encodeRGBAsJPEG(_ pixelBuffer: CVPixelBuffer) -> Data? {
-        let ciImage = CIImage(cvPixelBuffer: pixelBuffer)
-        guard let cgImage = ciContext.createCGImage(ciImage, from: ciImage.extent) else { return nil }
-        return UIImage(cgImage: cgImage).jpegData(compressionQuality: 0.85)
-    }
-
-    func encodeDepthAsPNGData(_ depthBuffer: CVPixelBuffer) -> Data? {
-        CVPixelBufferLockBaseAddress(depthBuffer, .readOnly)
-        defer { CVPixelBufferUnlockBaseAddress(depthBuffer, .readOnly) }
-
-        let width = CVPixelBufferGetWidth(depthBuffer)
-        let height = CVPixelBufferGetHeight(depthBuffer)
-        guard let baseAddress = CVPixelBufferGetBaseAddress(depthBuffer) else { return nil }
-
-        let floatPointer = baseAddress.assumingMemoryBound(to: Float.self)
-        let pixelCount = width * height
-        let depthScale: Float = 1000.0
-
-        var uint16Data = [UInt16](repeating: 0, count: pixelCount)
-        for i in 0..<pixelCount {
-            let meters = floatPointer[i]
-            if meters.isFinite && meters > 0 {
-                uint16Data[i] = UInt16(min(max(meters * depthScale, 0), Float(UInt16.max)))
-            }
-        }
-
-        let bytesPerRow = width * MemoryLayout<UInt16>.size
-        let colorSpace = CGColorSpaceCreateDeviceGray()
-        let bitmapInfo: CGBitmapInfo = [.byteOrder16Little]
-
-        return uint16Data.withUnsafeMutableBytes { rawBuffer -> Data? in
-            guard let context = CGContext(
-                data: rawBuffer.baseAddress,
-                width: width, height: height,
-                bitsPerComponent: 16, bytesPerRow: bytesPerRow,
-                space: colorSpace, bitmapInfo: bitmapInfo.rawValue
-            ) else { return nil }
-
-            guard let cgImage = context.makeImage() else { return nil }
-            let mutableData = NSMutableData()
-            guard let destination = CGImageDestinationCreateWithData(mutableData as CFMutableData, UTType.png.identifier as CFString, 1, nil) else { return nil }
-            CGImageDestinationAddImage(destination, cgImage, nil)
-            guard CGImageDestinationFinalize(destination) else { return nil }
-            return mutableData as Data
-        }
     }
 
     private func incrementPendingFrames() {

@@ -65,7 +65,7 @@ final class CaptureUploadCoordinator: ObservableObject {
             let now = payload.record.timestamp
             guard now - lastRealtimeFrameSentAt >= realtimeSendInterval else { return }
             lastRealtimeFrameSentAt = now
-            uploadClient.sendRealtimeFrame(payload.record)
+            uploadClient.sendRealtimeFrame(payload)
         } else {
             uploadClient.sendFrame(payload)
         }

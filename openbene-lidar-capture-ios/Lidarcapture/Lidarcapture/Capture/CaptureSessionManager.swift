@@ -172,7 +172,12 @@ final class CaptureSessionManager: NSObject, ObservableObject {
 
         // Enable LiDAR depth if available
         if DeviceCapabilities.isLiDARAvailable {
-            config.frameSemantics.insert(.sceneDepth)
+            if #available(iOS 14.0, *),
+               ARWorldTrackingConfiguration.supportsFrameSemantics(.smoothedSceneDepth) {
+                config.frameSemantics.insert(.smoothedSceneDepth)
+            } else if ARWorldTrackingConfiguration.supportsFrameSemantics(.sceneDepth) {
+                config.frameSemantics.insert(.sceneDepth)
+            }
         }
 
         session.run(config, options: [.resetTracking, .removeExistingAnchors])

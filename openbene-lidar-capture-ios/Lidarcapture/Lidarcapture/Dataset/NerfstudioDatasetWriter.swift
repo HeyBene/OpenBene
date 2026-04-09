@@ -17,12 +17,16 @@ import UniformTypeIdentifiers
 ///   depth/          (only if LiDAR available)
 ///     000000.png
 ///     000001.png
+///   confidence/     (optional, if ARKit confidenceMap exists)
+///     000000.png
+///     000001.png
 /// ```
 final class NerfstudioDatasetWriter {
 
     private let outputDirectory: URL
     private let imagesDirectory: URL
     private let depthDirectory: URL
+    private let confidenceDirectory: URL
     private let depthAvailable: Bool
 
     /// Depth scale: depth_in_meters * depthScale = stored_uint16_value.
@@ -38,6 +42,7 @@ final class NerfstudioDatasetWriter {
         self.outputDirectory = outputDirectory
         self.imagesDirectory = outputDirectory.appendingPathComponent("images")
         self.depthDirectory = outputDirectory.appendingPathComponent("depth")
+        self.confidenceDirectory = outputDirectory.appendingPathComponent("confidence")
         self.depthAvailable = depthAvailable
     }
 
@@ -46,6 +51,7 @@ final class NerfstudioDatasetWriter {
             try? FileManager.default.createDirectory(at: imagesDirectory, withIntermediateDirectories: true)
             if depthAvailable {
                 try? FileManager.default.createDirectory(at: depthDirectory, withIntermediateDirectories: true)
+                try? FileManager.default.createDirectory(at: confidenceDirectory, withIntermediateDirectories: true)
             }
         }
         frames = []
@@ -71,11 +77,16 @@ final class NerfstudioDatasetWriter {
         var frameEntry: [String: Any] = [
             "file_path": "images/\(frameName).jpg",
             "transform_matrix": transformMatrix,
-            "timestamp": record.timestamp
+            "timestamp": record.timestamp,
+            "tracking_state": record.trackingStateRaw,
+            "depth_source": record.depthSourceRaw
         ]
 
         if depthAvailable && record.depthBuffer != nil {
             frameEntry["depth_file_path"] = "depth/\(frameName).png"
+        }
+        if depthAvailable && record.confidenceBuffer != nil {
+            frameEntry["confidence_file_path"] = "confidence/\(frameName).png"
         }
 
         frames.append(frameEntry)
@@ -85,6 +96,8 @@ final class NerfstudioDatasetWriter {
         let depthBuffer = record.depthBuffer
         let preparedRGBData = preparedPayload?.rgbJPEGData
         let preparedDepthData = preparedPayload?.depthPNGData
+        let confidenceBuffer = record.confidenceBuffer
+        let preparedConfidenceData = preparedPayload?.confidencePNGData
 
         writeQueue.async { [self] in
             let jpegURL = imagesDirectory.appendingPathComponent("\(frameName).jpg")
@@ -101,6 +114,14 @@ final class NerfstudioDatasetWriter {
             } else if let depthBuf = depthBuffer {
                 let depthURL = depthDirectory.appendingPathComponent("\(frameName).png")
                 self.writeDepthAsPNG(depthBuf, to: depthURL)
+            }
+
+            if let preparedConfidenceData {
+                let confidenceURL = confidenceDirectory.appendingPathComponent("\(frameName).png")
+                try? preparedConfidenceData.write(to: confidenceURL)
+            } else if let confidenceBuf = confidenceBuffer {
+                let confidenceURL = confidenceDirectory.appendingPathComponent("\(frameName).png")
+                self.writeConfidenceAsPNG(confidenceBuf, to: confidenceURL)
             }
         }
     }
@@ -169,6 +190,72 @@ final class NerfstudioDatasetWriter {
 
                 space: colorSpace,
                 bitmapInfo: bitmapInfo.rawValue
+            ) else { return }
+
+            guard let cgImage = context.makeImage() else { return }
+            guard let destination = CGImageDestinationCreateWithURL(
+                url as CFURL,
+                UTType.png.identifier as CFString,
+                1,
+                nil
+            ) else { return }
+            CGImageDestinationAddImage(destination, cgImage, nil)
+            CGImageDestinationFinalize(destination)
+        }
+    }
+
+    /// Write a confidence CVPixelBuffer as an 8-bit grayscale PNG.
+    private func writeConfidenceAsPNG(_ confidenceBuffer: CVPixelBuffer, to url: URL) {
+        CVPixelBufferLockBaseAddress(confidenceBuffer, .readOnly)
+        defer { CVPixelBufferUnlockBaseAddress(confidenceBuffer, .readOnly) }
+
+        let width = CVPixelBufferGetWidth(confidenceBuffer)
+        let height = CVPixelBufferGetHeight(confidenceBuffer)
+        let bytesPerRow = CVPixelBufferGetBytesPerRow(confidenceBuffer)
+        guard let baseAddress = CVPixelBufferGetBaseAddress(confidenceBuffer) else { return }
+
+        let pixelFormat = CVPixelBufferGetPixelFormatType(confidenceBuffer)
+        var grayscale = [UInt8](repeating: 0, count: width * height)
+
+        if pixelFormat == kCVPixelFormatType_OneComponent8 {
+            for row in 0..<height {
+                let rowStart = baseAddress.advanced(by: row * bytesPerRow)
+                let source = rowStart.assumingMemoryBound(to: UInt8.self)
+                for col in 0..<width {
+                    grayscale[row * width + col] = source[col]
+                }
+            }
+        } else if pixelFormat == kCVPixelFormatType_OneComponent16 {
+            for row in 0..<height {
+                let rowStart = baseAddress.advanced(by: row * bytesPerRow)
+                let source = rowStart.assumingMemoryBound(to: UInt16.self)
+                for col in 0..<width {
+                    grayscale[row * width + col] = UInt8(min(source[col], UInt16(UInt8.max)))
+                }
+            }
+        } else {
+            for row in 0..<height {
+                let rowStart = baseAddress.advanced(by: row * bytesPerRow)
+                let source = rowStart.assumingMemoryBound(to: UInt8.self)
+                for col in 0..<width {
+                    grayscale[row * width + col] = source[col]
+                }
+            }
+        }
+
+        let outputBytesPerRow = width * MemoryLayout<UInt8>.size
+        let colorSpace = CGColorSpaceCreateDeviceGray()
+        let bitmapInfo = CGImageAlphaInfo.none.rawValue
+
+        grayscale.withUnsafeMutableBytes { rawBuffer in
+            guard let context = CGContext(
+                data: rawBuffer.baseAddress,
+                width: width,
+                height: height,
+                bitsPerComponent: 8,
+                bytesPerRow: outputBytesPerRow,
+                space: colorSpace,
+                bitmapInfo: bitmapInfo
             ) else { return }
 
             guard let cgImage = context.makeImage() else { return }

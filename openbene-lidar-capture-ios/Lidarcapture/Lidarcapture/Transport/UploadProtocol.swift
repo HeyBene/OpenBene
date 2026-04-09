@@ -44,8 +44,9 @@ struct CaptureSessionPointCloudArtifact {
 
 struct PreparedCaptureFramePayload {
     let record: CaptureFrameRecord
-    let rgbJPEGData: Data
+    let rgbJPEGData: Data?
     let depthPNGData: Data?
+    let confidencePNGData: Data?
 }
 
 /// Defines the protocol for uploading capture frames to a PC receiver.
@@ -59,6 +60,6 @@ protocol UploadClient: AnyObject {
     func disconnect()
     func startSession(_ session: CaptureUploadSessionDescriptor)
     func sendFrame(_ payload: PreparedCaptureFramePayload)
-    func sendRealtimeFrame(_ record: CaptureFrameRecord)
+    func sendRealtimeFrame(_ payload: PreparedCaptureFramePayload)
     func sendSessionFinalized(manifest: Data, session: CaptureUploadSessionDescriptor?, pointCloud: CaptureSessionPointCloudArtifact?)
 }

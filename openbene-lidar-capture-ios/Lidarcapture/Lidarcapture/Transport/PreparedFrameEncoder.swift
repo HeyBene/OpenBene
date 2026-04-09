@@ -9,11 +9,18 @@ final class PreparedFrameEncoder {
     private let depthScale: Float = 1000.0
 
     func preparePayload(for record: CaptureFrameRecord) -> PreparedCaptureFramePayload? {
-        guard let rgbJPEGData = encodeRGBAsJPEG(record.pixelBuffer) else {
+        let rgbJPEGData = encodeRGBAsJPEG(record.pixelBuffer)
+        let depthPNGData = record.depthBuffer.flatMap { encodeDepthAsPNGData($0) }
+        let confidencePNGData = record.confidenceBuffer.flatMap { encodeConfidenceAsPNGData($0) }
+        if rgbJPEGData == nil && depthPNGData == nil && confidencePNGData == nil {
             return nil
         }
-        let depthPNGData = record.depthBuffer.flatMap { encodeDepthAsPNGData($0) }
-        return PreparedCaptureFramePayload(record: record, rgbJPEGData: rgbJPEGData, depthPNGData: depthPNGData)
+        return PreparedCaptureFramePayload(
+            record: record,
+            rgbJPEGData: rgbJPEGData,
+            depthPNGData: depthPNGData,
+            confidencePNGData: confidencePNGData
+        )
     }
 
     private func encodeRGBAsJPEG(_ pixelBuffer: CVPixelBuffer) -> Data? {
@@ -58,6 +65,75 @@ final class PreparedFrameEncoder {
             guard let cgImage = context.makeImage() else { return nil }
             let mutableData = NSMutableData()
             guard let destination = CGImageDestinationCreateWithData(mutableData as CFMutableData, UTType.png.identifier as CFString, 1, nil) else { return nil }
+            CGImageDestinationAddImage(destination, cgImage, nil)
+            guard CGImageDestinationFinalize(destination) else { return nil }
+            return mutableData as Data
+        }
+    }
+
+    private func encodeConfidenceAsPNGData(_ confidenceBuffer: CVPixelBuffer) -> Data? {
+        CVPixelBufferLockBaseAddress(confidenceBuffer, .readOnly)
+        defer { CVPixelBufferUnlockBaseAddress(confidenceBuffer, .readOnly) }
+
+        let width = CVPixelBufferGetWidth(confidenceBuffer)
+        let height = CVPixelBufferGetHeight(confidenceBuffer)
+        let bytesPerRow = CVPixelBufferGetBytesPerRow(confidenceBuffer)
+        guard let baseAddress = CVPixelBufferGetBaseAddress(confidenceBuffer) else { return nil }
+
+        let pixelFormat = CVPixelBufferGetPixelFormatType(confidenceBuffer)
+        var grayscale = [UInt8](repeating: 0, count: width * height)
+
+        if pixelFormat == kCVPixelFormatType_OneComponent8 {
+            for row in 0..<height {
+                let rowStart = baseAddress.advanced(by: row * bytesPerRow)
+                let source = rowStart.assumingMemoryBound(to: UInt8.self)
+                for col in 0..<width {
+                    grayscale[row * width + col] = source[col]
+                }
+            }
+        } else if pixelFormat == kCVPixelFormatType_OneComponent16 {
+            for row in 0..<height {
+                let rowStart = baseAddress.advanced(by: row * bytesPerRow)
+                let source = rowStart.assumingMemoryBound(to: UInt16.self)
+                for col in 0..<width {
+                    let value = source[col]
+                    grayscale[row * width + col] = UInt8(min(value, UInt16(UInt8.max)))
+                }
+            }
+        } else {
+            // Fallback for unexpected confidence formats: use the first byte per pixel.
+            for row in 0..<height {
+                let rowStart = baseAddress.advanced(by: row * bytesPerRow)
+                let source = rowStart.assumingMemoryBound(to: UInt8.self)
+                for col in 0..<width {
+                    grayscale[row * width + col] = source[col]
+                }
+            }
+        }
+
+        let outBytesPerRow = width * MemoryLayout<UInt8>.size
+        let colorSpace = CGColorSpaceCreateDeviceGray()
+        let bitmapInfo = CGImageAlphaInfo.none.rawValue
+
+        return grayscale.withUnsafeMutableBytes { rawBuffer -> Data? in
+            guard let context = CGContext(
+                data: rawBuffer.baseAddress,
+                width: width,
+                height: height,
+                bitsPerComponent: 8,
+                bytesPerRow: outBytesPerRow,
+                space: colorSpace,
+                bitmapInfo: bitmapInfo
+            ) else { return nil }
+
+            guard let cgImage = context.makeImage() else { return nil }
+            let mutableData = NSMutableData()
+            guard let destination = CGImageDestinationCreateWithData(
+                mutableData as CFMutableData,
+                UTType.png.identifier as CFString,
+                1,
+                nil
+            ) else { return nil }
             CGImageDestinationAddImage(destination, cgImage, nil)
             guard CGImageDestinationFinalize(destination) else { return nil }
             return mutableData as Data

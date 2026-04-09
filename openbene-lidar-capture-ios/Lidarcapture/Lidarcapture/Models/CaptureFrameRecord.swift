@@ -25,6 +25,15 @@ struct CaptureFrameRecord {
     let depthBuffer: CVPixelBuffer?
     let depthWidth: Int
     let depthHeight: Int
+    let depthSourceRaw: String
+
+    // Confidence map aligned with depth (optional)
+    let confidenceBuffer: CVPixelBuffer?
+    let confidenceWidth: Int
+    let confidenceHeight: Int
+
+    // Tracking state for downstream frame filtering
+    let trackingStateRaw: String
 
     init(frame: ARFrame, index: Int, depthAvailable: Bool) {
         self.index = index
@@ -40,17 +49,83 @@ struct CaptureFrameRecord {
         self.height = Int(imageResolution.height)
 
         self.transformMatrix = frame.camera.transform
+        self.trackingStateRaw = Self.trackingStateRaw(from: frame.camera.trackingState)
 
         self.pixelBuffer = frame.capturedImage
 
-        if depthAvailable, let sceneDepth = frame.sceneDepth {
-            self.depthBuffer = sceneDepth.depthMap
-            self.depthWidth = CVPixelBufferGetWidth(sceneDepth.depthMap)
-            self.depthHeight = CVPixelBufferGetHeight(sceneDepth.depthMap)
+        if depthAvailable {
+            if #available(iOS 14.0, *), let smoothedDepth = frame.smoothedSceneDepth {
+                self.depthBuffer = smoothedDepth.depthMap
+                self.depthWidth = CVPixelBufferGetWidth(smoothedDepth.depthMap)
+                self.depthHeight = CVPixelBufferGetHeight(smoothedDepth.depthMap)
+                self.depthSourceRaw = "smoothed_scene_depth"
+                self.confidenceBuffer = Self.confidenceBuffer(from: smoothedDepth)
+                if let confidenceBuffer {
+                    self.confidenceWidth = CVPixelBufferGetWidth(confidenceBuffer)
+                    self.confidenceHeight = CVPixelBufferGetHeight(confidenceBuffer)
+                } else {
+                    self.confidenceWidth = 0
+                    self.confidenceHeight = 0
+                }
+            } else if let sceneDepth = frame.sceneDepth {
+                self.depthBuffer = sceneDepth.depthMap
+                self.depthWidth = CVPixelBufferGetWidth(sceneDepth.depthMap)
+                self.depthHeight = CVPixelBufferGetHeight(sceneDepth.depthMap)
+                self.depthSourceRaw = "scene_depth"
+                self.confidenceBuffer = Self.confidenceBuffer(from: sceneDepth)
+                if let confidenceBuffer {
+                    self.confidenceWidth = CVPixelBufferGetWidth(confidenceBuffer)
+                    self.confidenceHeight = CVPixelBufferGetHeight(confidenceBuffer)
+                } else {
+                    self.confidenceWidth = 0
+                    self.confidenceHeight = 0
+                }
+            } else {
+                self.depthBuffer = nil
+                self.depthWidth = 0
+                self.depthHeight = 0
+                self.depthSourceRaw = "none"
+                self.confidenceBuffer = nil
+                self.confidenceWidth = 0
+                self.confidenceHeight = 0
+            }
         } else {
             self.depthBuffer = nil
             self.depthWidth = 0
             self.depthHeight = 0
+            self.depthSourceRaw = "none"
+            self.confidenceBuffer = nil
+            self.confidenceWidth = 0
+            self.confidenceHeight = 0
         }
+    }
+
+    private static func trackingStateRaw(from trackingState: ARCamera.TrackingState) -> String {
+        switch trackingState {
+        case .normal:
+            return "normal"
+        case .notAvailable:
+            return "not_available"
+        case .limited(let reason):
+            switch reason {
+            case .initializing:
+                return "limited_initializing"
+            case .excessiveMotion:
+                return "limited_excessive_motion"
+            case .insufficientFeatures:
+                return "limited_insufficient_features"
+            case .relocalizing:
+                return "limited_relocalizing"
+            @unknown default:
+                return "limited_unknown"
+            }
+        }
+    }
+
+    private static func confidenceBuffer(from depthData: ARDepthData) -> CVPixelBuffer? {
+        if #available(iOS 14.0, *) {
+            return depthData.confidenceMap
+        }
+        return nil
     }
 }
