@@ -1,0 +1,11 @@
+/**:
+  ros__parameters:
+    cmd_vel_topic: "/cmd_vel"
+    ip: ""
+    port: 8765
+    connect_on_startup: true
+    dry_run: false
+    log_commands: true
+    linear_scale: 1.0
+    angular_scale: 0.6
+    command_timeout_sec: 0.75

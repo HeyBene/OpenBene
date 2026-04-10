@@ -1,0 +1,61 @@
+from setuptools import setup
+
+
+package_name = "openbene_ros2"
+
+
+setup(
+    name=package_name,
+    version="0.1.0",
+    packages=[package_name],
+    data_files=[
+        ("share/ament_index/resource_index/packages", [f"resource/{package_name}"]),
+        (f"share/{package_name}", ["package.xml"]),
+        (f"share/{package_name}", ["README.md"]),
+        (f"share/{package_name}/launch", ["launch/cmd_vel_bridge.launch.py"]),
+        (f"share/{package_name}/launch", ["launch/dry_run_demo.launch.py"]),
+        (f"share/{package_name}/launch", ["launch/dataset_scan_replay.launch.py"]),
+        (f"share/{package_name}/launch", ["launch/dataset_relocalization.launch.py"]),
+        (f"share/{package_name}/launch", ["launch/live_capture_scan_server.launch.py"]),
+        (f"share/{package_name}/launch", ["launch/live_slam_mapping.launch.py"]),
+        (f"share/{package_name}/launch", ["launch/slam_mapping_from_dataset.launch.py"]),
+        (f"share/{package_name}/launch", ["launch/openbene_mapping_viewer.launch.py"]),
+        (f"share/{package_name}/launch", ["launch/relocalization_initialpose_bridge.launch.py"]),
+        (f"share/{package_name}/launch", ["launch/safety_cmd_vel.launch.py"]),
+        (f"share/{package_name}/launch", ["launch/semi_auto_cmd_vel.launch.py"]),
+        (f"share/{package_name}/launch", ["launch/save_map.launch.py"]),
+        (f"share/{package_name}/launch", ["launch/saved_map_server.launch.py"]),
+        (f"share/{package_name}/launch", ["launch/saved_map_amcl_from_dataset.launch.py"]),
+        (f"share/{package_name}/config", ["config/openbene_bridge.yaml"]),
+        (f"share/{package_name}/config", ["config/safety_cmd_vel.yaml"]),
+        (f"share/{package_name}/config", ["config/slam_toolbox_openbene.yaml"]),
+        (f"share/{package_name}/config", ["config/amcl_openbene.yaml"]),
+        (f"share/{package_name}/rviz", ["rviz/openbene_mapping.rviz"]),
+    ],
+    install_requires=["setuptools"],
+    zip_safe=True,
+    maintainer="OpenBene Contributors",
+    maintainer_email="openbene@example.com",
+    description="Minimal ROS 2 integration package for OpenBene.",
+    license="MIT",
+    tests_require=["pytest"],
+    entry_points={
+        "console_scripts": [
+            "cmd_vel_bridge = openbene_ros2.cmd_vel_bridge:main",
+            "cmd_vel_keyboard = openbene_ros2.cmd_vel_keyboard:main",
+            "cmd_vel_demo = openbene_ros2.cmd_vel_demo:main",
+            "dataset_scan_replay = openbene_ros2.dataset_scan_replay:main",
+            "dataset_relocalization = openbene_ros2.dataset_relocalization:main",
+            "live_capture_scan_server = openbene_ros2.live_capture_scan_server:main",
+            "session_camera_replay = openbene_ros2.session_camera_replay:main",
+            "live_camera_bridge = openbene_ros2.live_camera_bridge:main",
+            "lifecycle_bringup = openbene_ros2.lifecycle_bringup:main",
+            "relocalization_initialpose_bridge = openbene_ros2.relocalization_initialpose_bridge:main",
+            "mock_capture_client = openbene_ros2.mock_capture_client:main",
+            "doctor = openbene_ros2.doctor:main",
+            "session_doctor = openbene_ros2.session_doctor:main",
+            "map_doctor = openbene_ros2.map_doctor:main",
+            "safety_cmd_vel = openbene_ros2.safety_cmd_vel:main",
+        ],
+    },
+)

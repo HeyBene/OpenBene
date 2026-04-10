@@ -1,0 +1,12 @@
+/**:
+  ros__parameters:
+    input_cmd_vel_topic: "/cmd_vel_user"
+    output_cmd_vel_topic: "/cmd_vel_safe"
+    scan_topic: "/scan"
+    status_topic: "/openbene/safety/status"
+    command_timeout_sec: 0.30
+    max_linear_speed_mps: 0.15
+    max_angular_speed_radps: 0.50
+    slowdown_distance_m: 0.35
+    stop_distance_m: 0.20
+    front_sector_half_angle_deg: 30.0
