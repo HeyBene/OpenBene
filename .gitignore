@@ -97,6 +97,7 @@ nul
 captured_datasets/
 outputs/
 tmp/
+openbene_local/
 openbene_sdk/src/openbene/captured_data/
 
 # Local experimentation / one-off tools
@@ -109,6 +110,7 @@ nerfcapture2nerf.py
 openbot-mobile-control/releases/*.apk
 
 # ROS2 / autonomy is kept local here and tracked in BeneMobility
+openbene_mobility/
 openbene_ros2/
 openbene-lidar-capture-ios/
 docs/IOS_2D_IMPLEMENTATION_LOG_20260409.md

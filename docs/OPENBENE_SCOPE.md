@@ -15,6 +15,7 @@
 
 These may still exist locally on this machine, but they are no longer intended to be part of the OpenBene Git scope:
 
+- local staging tree: `openbene_mobility/`
 - `openbene_ros2/`
 - `openbene-lidar-capture-ios/`
 - ROS2 / mapping / localization / relocalization docs

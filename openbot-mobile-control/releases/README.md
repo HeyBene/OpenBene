@@ -184,8 +184,9 @@ except:
 
 ## 📖 相关文档 / Related Documentation
 
-- [快速开始指南 / Quick Start](../docs/QUICK_START.md)
-- [完整文档 / Full Documentation](../docs/README.md)
+- [仓库首页 / Repository README](../../README.md)
+- [中文说明 / Chinese README](../../README.zh-CN.md)
+- [移动端源码说明 / Mobile App Source](../README.md)
 - [更新日志 / Changelog](../CHANGELOG.md)
 - [Python SDK 文档](../../openbene_sdk/README.md)
 
