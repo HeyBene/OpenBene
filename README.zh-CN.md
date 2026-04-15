@@ -1,19 +1,27 @@
-# OpenBene
+<h1 align="center">OpenBene</h1>
 
-![Python Version](https://img.shields.io/badge/python-3.8%2B-blue)
-![License](https://img.shields.io/badge/license-MIT-green)
-[![GitHub Discussions](https://img.shields.io/github/discussions/HeyBene/OpenBene)](https://github.com/HeyBene/OpenBene/discussions)
+<p align="center">
+  <img alt="Python Version" src="https://img.shields.io/badge/python-3.8%2B-blue">
+  <img alt="License" src="https://img.shields.io/badge/license-MIT-green">
+  <a href="https://github.com/HeyBene/OpenBene/discussions">
+    <img alt="GitHub Discussions" src="https://img.shields.io/github/discussions/HeyBene/OpenBene">
+  </a>
+</p>
 
-**语言 / Languages：** [English](README.md) | 简体中文
+<p align="center"><strong>语言 / Languages：</strong> <a href="README.md">English</a> | 简体中文</p>
 
-**Phone as Body, PC as Brain** - 一个面向 OpenBot 机器人工作流的公开平台层工具库。
+<p align="center"><strong>Phone as Body, PC as Brain</strong> - 一个面向 OpenBot 机器人工作流的公开平台层工具库。</p>
 
 > 范围说明：
 > `OpenBene` 是公开的平台层仓库。
 > ROS2、建图、定位和内部 mobility 研发内容不会直接原样公开，而是整理后按需下放。
 > 边界说明见 [docs/OPENBENE_SCOPE.md](docs/OPENBENE_SCOPE.md)。
 
-[![参与讨论](https://img.shields.io/badge/参与讨论-GitHub_Discussions-blue?style=for-the-badge)](https://github.com/HeyBene/OpenBene/discussions)
+<p align="center">
+  <a href="https://github.com/HeyBene/OpenBene/discussions">
+    <img alt="参与讨论" src="https://img.shields.io/badge/参与讨论-GitHub_Discussions-blue?style=for-the-badge">
+  </a>
+</p>
 
 ## 项目概览
 

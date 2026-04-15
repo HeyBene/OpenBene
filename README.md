@@ -1,19 +1,27 @@
-# OpenBene
+<h1 align="center">OpenBene</h1>
 
-![Python Version](https://img.shields.io/badge/python-3.8%2B-blue)
-![License](https://img.shields.io/badge/license-MIT-green)
-[![GitHub Discussions](https://img.shields.io/github/discussions/HeyBene/OpenBene)](https://github.com/HeyBene/OpenBene/discussions)
+<p align="center">
+  <img alt="Python Version" src="https://img.shields.io/badge/python-3.8%2B-blue">
+  <img alt="License" src="https://img.shields.io/badge/license-MIT-green">
+  <a href="https://github.com/HeyBene/OpenBene/discussions">
+    <img alt="GitHub Discussions" src="https://img.shields.io/github/discussions/HeyBene/OpenBene">
+  </a>
+</p>
 
-**Languages:** English | [简体中文](README.zh-CN.md)
+<p align="center"><strong>Languages:</strong> English | <a href="README.zh-CN.md">简体中文</a></p>
 
-**Phone as Body, PC as Brain** - control OpenBot-based robots from Python with a public platform-layer toolkit.
+<p align="center"><strong>Phone as Body, PC as Brain</strong> - control OpenBot-based robots from Python with a public platform-layer toolkit.</p>
 
 > Scope note:
 > `OpenBene` is the public platform-layer repository.
 > ROS2, mapping, localization, and other internal mobility work are promoted here selectively after cleanup.
 > See [docs/OPENBENE_SCOPE.md](docs/OPENBENE_SCOPE.md) for the boundary.
 
-[![Join Discussion](https://img.shields.io/badge/Join_Discussion-GitHub_Discussions-blue?style=for-the-badge)](https://github.com/HeyBene/OpenBene/discussions)
+<p align="center">
+  <a href="https://github.com/HeyBene/OpenBene/discussions">
+    <img alt="Join Discussion" src="https://img.shields.io/badge/Join_Discussion-GitHub_Discussions-blue?style=for-the-badge">
+  </a>
+</p>
 
 ## Overview
 
