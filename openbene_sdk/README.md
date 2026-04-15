@@ -99,6 +99,17 @@ python interactive_control.py
 python keyboard_drive.py
 ```
 
+Windows direct BLE control to ESP32 (temporary manual-control path):
+
+```bash
+python -m pip install -e ".[ble]"
+python examples/keyboard_ble_drive.py
+```
+
+Beginner runbook:
+
+- `../docs/WINDOWS_BLE_CONTROL_RUNBOOK.md`
+
 Video:
 
 ```bash

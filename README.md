@@ -292,6 +292,7 @@ OpenBene/
 
 - [PROJECT_CONTEXT.md](PROJECT_CONTEXT.md) - Technical architecture details
 - [openbene_sdk/README.md](openbene_sdk/README.md) - SDK detailed documentation
+- [docs/OPENBENE_SCOPE.md](docs/OPENBENE_SCOPE.md) - Scope boundary for what stays in OpenBene vs. moves to BeneMobility
 - [CHANGELOG.md](CHANGELOG.md) - Version changelog
 
 ### Contributing
@@ -414,6 +415,7 @@ OpenBene/
 
 - [PROJECT_CONTEXT.md](PROJECT_CONTEXT.md) - 技术架构详情
 - [openbene_sdk/README.md](openbene_sdk/README.md) - SDK 详细文档
+- [docs/OPENBENE_SCOPE.md](docs/OPENBENE_SCOPE.md) - OpenBene 与 BeneMobility 的范围边界说明
 - [CHANGELOG.md](CHANGELOG.md) - 版本更新日志
 
 ### 参与贡献

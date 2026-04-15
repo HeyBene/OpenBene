@@ -84,6 +84,60 @@ tmpclaude-*/
 
 # Local documents (PDFs, private files)
 *.pdf
+*.docx
+*.pptx
+*.xlsx
+*.apk
 
 # Windows reserved names
 nul
+
+# Large local-only artifacts
+.venv-nerfstudio/
+captured_datasets/
+outputs/
+tmp/
+openbene_sdk/src/openbene/captured_data/
+
+# Local experimentation / one-off tools
+nerf_capture_receiver/
+nerfcapture2nerf.py
+/common.py
+/tmp_route_planing*.txt
+
+# Release binaries should not be tracked in git
+openbot-mobile-control/releases/*.apk
+
+# ROS2 / autonomy is kept local here and tracked in BeneMobility
+openbene_ros2/
+openbene-lidar-capture-ios/
+docs/IOS_2D_IMPLEMENTATION_LOG_20260409.md
+docs/IOS_2D_MAC_HANDOFF_20260408.md
+docs/LOCALIZATION_BEGINNER_RUNBOOK.md
+docs/MAC_APP_HANDOFF.md
+docs/NERFSTUDIO_TRAINING_RUNBOOK.md
+docs/OPENBENE_TO_ROS2_DATAFLOW.md
+docs/RELOCALIZATION_TUNING_20260407.md
+docs/ROS2_BEGINNER_RUNBOOK.md
+docs/ROS2_BRIDGE_V1.md
+docs/ROS2_EXECUTION_PLAN.md
+docs/ROS2_PREP.md
+docs/RTR_TT_CURRENT_WORKFLOW_20260410.md
+docs/SEMI_AUTO_SAFETY_V1_20260409.md
+docs/TSDF_SWEEP_session_1774588130.md
+docs/WELCOME_POST_DRAFT.md
+docs/WORKLOG.md
+openbene_sdk/src/openbene/capture_receiver.py
+openbene_sdk/src/openbene/live_ros2_bridge.py
+openbene_sdk/src/openbene/relocalization.py
+openbene_sdk/src/openbene/ros2_bridge_common.py
+openbene_sdk/src/openbene/session_geometry_validator.py
+openbene_sdk/src/openbene/session_map_builder_o3d.py
+openbene_sdk/src/openbene/session_map_builder_tsdf.py
+openbene_sdk/src/openbene/session_relocalization_offset_metrics.py
+openbene_sdk/src/openbene/session_relocalization_sweep.py
+openbene_sdk/src/openbene/session_relocalization_validator.py
+openbene_sdk/src/openbene/session_ros2_bridge.py
+openbene_sdk/src/openbene/session_subset_export.py
+openbene_sdk/src/openbene/session_transform_offset.py
+openbene_sdk/tests/test_relocalization.py

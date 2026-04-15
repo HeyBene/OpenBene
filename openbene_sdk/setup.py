@@ -49,7 +49,8 @@ setup(
 
         # Video streaming support (optional, but recommended)
         "opencv-python>=4.5.0",
-        "numpy>=1.19.0",
+        "numpy>=1.19.0,<2.0",
+        "pillow>=8.0.0",
 
         # MQTT support for smart home devices
         "paho-mqtt>=1.6.0",
@@ -69,11 +70,14 @@ setup(
         "vision": [
             # Will be used in Milestone 2
             "opencv-python>=4.5.0",
-            "numpy>=1.19.0",
+            "numpy>=1.19.0,<2.0",
             "pillow>=8.0.0",
         ],
         "mqtt": [
             "paho-mqtt>=1.6.0",
+        ],
+        "ble": [
+            "bleak>=0.22.0",
         ],
     },
 

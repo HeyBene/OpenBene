@@ -67,6 +67,22 @@ from .mqtt_connection import (
     MQTTConnectionError,
     MQTTTopics,
 )
+from .esp32_ble import (
+    CHAR_RX_UUID,
+    CHAR_TX_UUID,
+    MAX_PWM,
+    SERVICE_UUID,
+    OpenBotBleClient,
+    clamp_pwm,
+    ensure_bleak_available,
+    is_openbot_device_name,
+    make_ctrl_cmd,
+    make_feature_cmd,
+    make_heartbeat_cmd,
+    make_sensor_stream_cmd,
+    parse_esp_message,
+    scan_openbot_devices,
+)
 
 __version__ = '2.5.0'  # 添加 DataLogger 灵活数据录制器
 
@@ -93,4 +109,19 @@ __all__ = [
     'MQTTConnection',
     'MQTTConnectionError',
     'MQTTTopics',
+    # ESP32 BLE
+    'SERVICE_UUID',
+    'CHAR_RX_UUID',
+    'CHAR_TX_UUID',
+    'MAX_PWM',
+    'OpenBotBleClient',
+    'ensure_bleak_available',
+    'clamp_pwm',
+    'make_ctrl_cmd',
+    'make_heartbeat_cmd',
+    'make_feature_cmd',
+    'make_sensor_stream_cmd',
+    'parse_esp_message',
+    'is_openbot_device_name',
+    'scan_openbot_devices',
 ]
