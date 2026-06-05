@@ -349,7 +349,12 @@ async def main():
 
     print(f"\n发现 {len(bots)} 台 OpenBot 设备：")
     for i, d in enumerate(bots):
-        print(f"  [{i}] {d.name}  地址={d.address}  RSSI={d.rssi} dBm")
+        rssi = getattr(d, "rssi", None)
+        if rssi is None:
+            details = getattr(d, "details", None)
+            rssi = getattr(details, "rssi", None) if details is not None else None
+        rssi_text = f"{rssi} dBm" if rssi is not None else "unknown"
+        print(f"  [{i}] {d.name}  地址={d.address}  RSSI={rssi_text}")
 
     if len(bots) == 1:
         chosen = bots[0]

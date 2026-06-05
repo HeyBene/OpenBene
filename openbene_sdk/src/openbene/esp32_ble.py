@@ -202,3 +202,15 @@ class OpenBotBleClient:
             parsed = parse_esp_message(line)
             for callback in list(self._callbacks):
                 callback(parsed)
+
+        if self._line_buffer:
+            # BLE notifications from the firmware arrive as complete payloads and do not
+            # include trailing newlines, so flush the remaining chunk as one message.
+            line = self._line_buffer.strip()
+            self._line_buffer = ""
+            if not line:
+                return
+            self.received_lines.append(line)
+            parsed = parse_esp_message(line)
+            for callback in list(self._callbacks):
+                callback(parsed)
