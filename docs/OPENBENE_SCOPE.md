@@ -8,6 +8,7 @@
 - WebSocket / discovery / recording / sensor / video platform code
 - BLE control utilities that are generic to OpenBot / ESP32 manual control
 - `openbot-mobile-control/` source code
+- `apps/robot_app/` source code
 - `openbot/` firmware / hardware-side baseline
 - community / release / general platform docs
 

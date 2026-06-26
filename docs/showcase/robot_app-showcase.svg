@@ -1,0 +1,269 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 960" role="img" aria-labelledby="title desc">
+  <title id="title">OpenBene App Showcase</title>
+  <desc id="desc">Three phone mockups showing connection, camera preview, and sensor data screens for the OpenBot mobile app.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#020617" />
+      <stop offset="55%" stop-color="#0b1120" />
+      <stop offset="100%" stop-color="#111c36" />
+    </linearGradient>
+    <radialGradient id="glowCyan" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#22d3ee" stop-opacity="0.55" />
+      <stop offset="100%" stop-color="#22d3ee" stop-opacity="0" />
+    </radialGradient>
+    <radialGradient id="glowAmber" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#f59e0b" stop-opacity="0.45" />
+      <stop offset="100%" stop-color="#f59e0b" stop-opacity="0" />
+    </radialGradient>
+    <radialGradient id="glowViolet" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#8b5cf6" stop-opacity="0.45" />
+      <stop offset="100%" stop-color="#8b5cf6" stop-opacity="0" />
+    </radialGradient>
+    <linearGradient id="phoneBody" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#1e293b" />
+      <stop offset="100%" stop-color="#0f172a" />
+    </linearGradient>
+    <linearGradient id="screenLight" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#ffffff" />
+      <stop offset="100%" stop-color="#eef2ff" />
+    </linearGradient>
+    <linearGradient id="screenDark" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#081120" />
+      <stop offset="100%" stop-color="#16213d" />
+    </linearGradient>
+    <linearGradient id="chipBlue" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#dbeafe" />
+      <stop offset="100%" stop-color="#bfdbfe" />
+    </linearGradient>
+    <linearGradient id="chipGreen" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#dcfce7" />
+      <stop offset="100%" stop-color="#bbf7d0" />
+    </linearGradient>
+    <linearGradient id="chipAmber" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#fef3c7" />
+      <stop offset="100%" stop-color="#fde68a" />
+    </linearGradient>
+    <linearGradient id="accentBlue" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#38bdf8" />
+      <stop offset="100%" stop-color="#0284c7" />
+    </linearGradient>
+    <linearGradient id="accentGreen" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#4ade80" />
+      <stop offset="100%" stop-color="#16a34a" />
+    </linearGradient>
+    <linearGradient id="accentRed" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#fb7185" />
+      <stop offset="100%" stop-color="#dc2626" />
+    </linearGradient>
+    <filter id="shadow" x="-30%" y="-30%" width="160%" height="160%">
+      <feDropShadow dx="0" dy="22" stdDeviation="28" flood-color="#020617" flood-opacity="0.45" />
+    </filter>
+    <filter id="softShadow" x="-30%" y="-30%" width="160%" height="160%">
+      <feDropShadow dx="0" dy="10" stdDeviation="16" flood-color="#020617" flood-opacity="0.28" />
+    </filter>
+    <pattern id="grid" width="64" height="64" patternUnits="userSpaceOnUse">
+      <path d="M 64 0 L 0 0 0 64" fill="none" stroke="#ffffff" stroke-opacity="0.04" stroke-width="1" />
+    </pattern>
+    <clipPath id="phoneClipA">
+      <rect x="16" y="18" width="328" height="584" rx="32" />
+    </clipPath>
+    <clipPath id="phoneClipCenter">
+      <rect x="16" y="18" width="328" height="664" rx="32" />
+    </clipPath>
+  </defs>
+
+  <rect width="1600" height="960" fill="url(#bg)" />
+  <rect width="1600" height="960" fill="url(#grid)" />
+  <circle cx="230" cy="170" r="190" fill="url(#glowCyan)" />
+  <circle cx="1380" cy="180" r="220" fill="url(#glowAmber)" />
+  <circle cx="1280" cy="790" r="260" fill="url(#glowViolet)" />
+  <path d="M 120 820 C 320 760, 470 860, 680 798 S 1040 720, 1250 788 S 1480 860, 1540 810"
+        fill="none" stroke="#7dd3fc" stroke-opacity="0.12" stroke-width="3" />
+  <path d="M 120 845 C 340 790, 520 900, 720 840 S 1090 760, 1300 832 S 1490 890, 1540 860"
+        fill="none" stroke="#a78bfa" stroke-opacity="0.08" stroke-width="2" />
+
+  <text x="72" y="92" fill="#f8fafc" font-family="Segoe UI, Arial, sans-serif" font-size="56" font-weight="800" letter-spacing="0.2">
+    OpenBene App Showcase
+  </text>
+  <text x="74" y="136" fill="#cbd5e1" font-family="Segoe UI, Arial, sans-serif" font-size="22" font-weight="500">
+    Connection • Control • Telemetry
+  </text>
+
+  <g transform="translate(1020 48)">
+    <rect x="0" y="0" width="126" height="32" rx="16" fill="#0f172a" fill-opacity="0.72" stroke="#38bdf8" stroke-opacity="0.35" />
+    <text x="63" y="21" text-anchor="middle" fill="#e0f2fe" font-family="Segoe UI, Arial, sans-serif" font-size="14" font-weight="700">WebSocket</text>
+
+    <rect x="138" y="0" width="116" height="32" rx="16" fill="#0f172a" fill-opacity="0.72" stroke="#4ade80" stroke-opacity="0.28" />
+    <text x="196" y="21" text-anchor="middle" fill="#dcfce7" font-family="Segoe UI, Arial, sans-serif" font-size="14" font-weight="700">Live Video</text>
+
+    <rect x="262" y="0" width="100" height="32" rx="16" fill="#0f172a" fill-opacity="0.72" stroke="#f59e0b" stroke-opacity="0.28" />
+    <text x="312" y="21" text-anchor="middle" fill="#fef3c7" font-family="Segoe UI, Arial, sans-serif" font-size="14" font-weight="700">Sensors</text>
+
+    <rect x="370" y="0" width="112" height="32" rx="16" fill="#0f172a" fill-opacity="0.72" stroke="#a78bfa" stroke-opacity="0.3" />
+    <text x="426" y="21" text-anchor="middle" fill="#ede9fe" font-family="Segoe UI, Arial, sans-serif" font-size="14" font-weight="700">BLE / USB</text>
+  </g>
+
+  <g filter="url(#shadow)" transform="translate(110 206)">
+    <rect x="0" y="0" width="360" height="620" rx="44" fill="url(#phoneBody)" />
+    <rect x="16" y="18" width="328" height="584" rx="32" fill="url(#screenLight)" />
+    <rect x="140" y="12" width="80" height="8" rx="4" fill="#94a3b8" fill-opacity="0.8" />
+
+    <g clip-path="url(#phoneClipCenter)">
+      <rect x="16" y="18" width="328" height="584" rx="32" fill="url(#screenLight)" />
+      <rect x="16" y="18" width="328" height="584" rx="32" fill="#eff6ff" fill-opacity="0.45" />
+
+      <rect x="40" y="46" width="112" height="30" rx="15" fill="url(#chipBlue)" />
+      <text x="96" y="66" text-anchor="middle" fill="#075985" font-family="Segoe UI, Arial, sans-serif" font-size="14" font-weight="700">Connection</text>
+
+      <text x="40" y="116" fill="#0f172a" font-family="Segoe UI, Arial, sans-serif" font-size="32" font-weight="800">Waiting for PC...</text>
+      <text x="40" y="146" fill="#475569" font-family="Segoe UI, Arial, sans-serif" font-size="16" font-weight="500">Phone as Body</text>
+
+      <rect x="40" y="184" width="280" height="108" rx="18" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.4" />
+      <text x="60" y="212" fill="#0f172a" font-family="Segoe UI, Arial, sans-serif" font-size="16" font-weight="700">Server Address</text>
+      <text x="60" y="246" fill="#0369a1" font-family="Consolas, monospace" font-size="18" font-weight="700">ws://192.168.1.12:8765</text>
+      <text x="60" y="272" fill="#64748b" font-family="Segoe UI, Arial, sans-serif" font-size="12" font-weight="500">Use the address shown in-app</text>
+
+      <text x="40" y="338" fill="#0f172a" font-family="Segoe UI, Arial, sans-serif" font-size="16" font-weight="700">OpenBot Connection</text>
+
+      <rect x="40" y="360" width="132" height="40" rx="12" fill="#dbeafe" stroke="#93c5fd" />
+      <text x="106" y="386" text-anchor="middle" fill="#075985" font-family="Segoe UI, Arial, sans-serif" font-size="13" font-weight="700">Bluetooth (BLE)</text>
+
+      <rect x="180" y="360" width="92" height="40" rx="12" fill="#eff6ff" stroke="#bfdbfe" />
+      <text x="226" y="386" text-anchor="middle" fill="#1d4ed8" font-family="Segoe UI, Arial, sans-serif" font-size="13" font-weight="700">USB</text>
+
+      <rect x="280" y="360" width="40" height="40" rx="12" fill="#eef2ff" stroke="#c7d2fe" />
+      <text x="300" y="386" text-anchor="middle" fill="#4338ca" font-family="Segoe UI, Arial, sans-serif" font-size="13" font-weight="700">Auto</text>
+
+      <rect x="40" y="432" width="280" height="52" rx="14" fill="#cbd5e1" />
+      <text x="180" y="465" text-anchor="middle" fill="#475569" font-family="Segoe UI, Arial, sans-serif" font-size="16" font-weight="700">Waiting for PC...</text>
+
+      <rect x="40" y="518" width="132" height="36" rx="18" fill="#ecfeff" stroke="#67e8f9" />
+      <text x="106" y="541" text-anchor="middle" fill="#0f766e" font-family="Segoe UI, Arial, sans-serif" font-size="13" font-weight="700">UDP discovery</text>
+
+      <rect x="188" y="518" width="132" height="36" rx="18" fill="#f1f5f9" stroke="#cbd5e1" />
+      <text x="254" y="541" text-anchor="middle" fill="#334155" font-family="Segoe UI, Arial, sans-serif" font-size="13" font-weight="700">Connect when ready</text>
+    </g>
+  </g>
+
+  <g filter="url(#shadow)" transform="translate(620 150)">
+    <rect x="0" y="0" width="360" height="700" rx="46" fill="url(#phoneBody)" />
+    <rect x="16" y="18" width="328" height="664" rx="32" fill="url(#screenDark)" />
+    <rect x="140" y="12" width="80" height="8" rx="4" fill="#94a3b8" fill-opacity="0.8" />
+
+    <g clip-path="url(#phoneClipA)">
+      <rect x="16" y="18" width="328" height="664" rx="32" fill="url(#screenDark)" />
+      <rect x="16" y="18" width="328" height="664" rx="32" fill="#0f172a" fill-opacity="0.45" />
+
+      <rect x="40" y="46" width="92" height="30" rx="15" fill="url(#chipGreen)" />
+      <text x="86" y="66" text-anchor="middle" fill="#166534" font-family="Segoe UI, Arial, sans-serif" font-size="14" font-weight="700">Control</text>
+
+      <rect x="250" y="46" width="58" height="30" rx="15" fill="#dcfce7" />
+      <text x="279" y="66" text-anchor="middle" fill="#15803d" font-family="Segoe UI, Arial, sans-serif" font-size="13" font-weight="700">Live</text>
+
+      <text x="40" y="116" fill="#f8fafc" font-family="Segoe UI, Arial, sans-serif" font-size="28" font-weight="800">Camera Preview</text>
+      <text x="40" y="144" fill="#94a3b8" font-family="Segoe UI, Arial, sans-serif" font-size="14" font-weight="500">Real-time video and control loop</text>
+
+      <rect x="40" y="176" width="280" height="314" rx="24" fill="url(#accentBlue)" opacity="0.18" stroke="#38bdf8" stroke-opacity="0.2" />
+      <rect x="54" y="190" width="252" height="286" rx="20" fill="url(#screenDark)" stroke="#1d4ed8" stroke-opacity="0.3" />
+      <path d="M 78 404 C 118 340, 168 314, 230 286 S 294 250, 300 214" fill="none" stroke="#38bdf8" stroke-opacity="0.7" stroke-width="4" stroke-linecap="round" />
+      <circle cx="130" cy="336" r="64" fill="#22d3ee" fill-opacity="0.12" />
+      <circle cx="130" cy="336" r="28" fill="none" stroke="#67e8f9" stroke-opacity="0.75" stroke-width="3" />
+      <line x1="130" y1="300" x2="130" y2="372" stroke="#e0f2fe" stroke-opacity="0.7" stroke-width="2" />
+      <line x1="94" y1="336" x2="166" y2="336" stroke="#e0f2fe" stroke-opacity="0.7" stroke-width="2" />
+      <circle cx="252" cy="246" r="8" fill="#f8fafc" fill-opacity="0.8" />
+      <circle cx="276" cy="222" r="4" fill="#f8fafc" fill-opacity="0.5" />
+      <circle cx="284" cy="262" r="5" fill="#f8fafc" fill-opacity="0.38" />
+      <circle cx="92" cy="244" r="4" fill="#f8fafc" fill-opacity="0.35" />
+
+      <rect x="64" y="208" width="88" height="28" rx="14" fill="#991b1b" />
+      <text x="108" y="227" text-anchor="middle" fill="#fef2f2" font-family="Segoe UI, Arial, sans-serif" font-size="13" font-weight="800">REC</text>
+
+      <rect x="216" y="208" width="70" height="28" rx="14" fill="#0f172a" fill-opacity="0.75" stroke="#bae6fd" stroke-opacity="0.2" />
+      <text x="251" y="227" text-anchor="middle" fill="#e0f2fe" font-family="Segoe UI, Arial, sans-serif" font-size="13" font-weight="700">Connected</text>
+
+      <rect x="64" y="410" width="94" height="38" rx="12" fill="#0f172a" fill-opacity="0.82" stroke="#38bdf8" stroke-opacity="0.25" />
+      <text x="111" y="434" text-anchor="middle" fill="#e0f2fe" font-family="Segoe UI, Arial, sans-serif" font-size="13" font-weight="700">Frames Sent</text>
+      <text x="111" y="449" text-anchor="middle" fill="#93c5fd" font-family="Consolas, monospace" font-size="12" font-weight="700">124</text>
+
+      <rect x="166" y="410" width="94" height="38" rx="12" fill="#0f172a" fill-opacity="0.82" stroke="#4ade80" stroke-opacity="0.25" />
+      <text x="213" y="434" text-anchor="middle" fill="#dcfce7" font-family="Segoe UI, Arial, sans-serif" font-size="13" font-weight="700">Streaming</text>
+      <text x="213" y="449" text-anchor="middle" fill="#86efac" font-family="Consolas, monospace" font-size="12" font-weight="700">Live</text>
+
+      <rect x="268" y="410" width="36" height="38" rx="12" fill="url(#accentRed)" opacity="0.92" />
+      <text x="286" y="433" text-anchor="middle" fill="#ffffff" font-family="Segoe UI, Arial, sans-serif" font-size="12" font-weight="800">Stop</text>
+
+      <text x="40" y="548" fill="#f8fafc" font-family="Segoe UI, Arial, sans-serif" font-size="18" font-weight="800">Motion Control</text>
+      <text x="40" y="573" fill="#94a3b8" font-family="Segoe UI, Arial, sans-serif" font-size="13" font-weight="500">Drive, pause, and disconnect from one screen</text>
+
+      <rect x="40" y="598" width="84" height="54" rx="16" fill="#082f49" stroke="#0ea5e9" stroke-opacity="0.28" />
+      <text x="82" y="629" text-anchor="middle" fill="#7dd3fc" font-family="Segoe UI, Arial, sans-serif" font-size="14" font-weight="700">Drive</text>
+
+      <rect x="132" y="598" width="84" height="54" rx="16" fill="#112042" stroke="#60a5fa" stroke-opacity="0.26" />
+      <text x="174" y="629" text-anchor="middle" fill="#bfdbfe" font-family="Segoe UI, Arial, sans-serif" font-size="14" font-weight="700">Pause</text>
+
+      <rect x="224" y="598" width="84" height="54" rx="16" fill="#16213d" stroke="#cbd5e1" stroke-opacity="0.16" />
+      <text x="266" y="629" text-anchor="middle" fill="#e2e8f0" font-family="Segoe UI, Arial, sans-serif" font-size="14" font-weight="700">Disconnect</text>
+    </g>
+  </g>
+
+  <g filter="url(#shadow)" transform="translate(1130 206)">
+    <rect x="0" y="0" width="360" height="620" rx="44" fill="url(#phoneBody)" />
+    <rect x="16" y="18" width="328" height="584" rx="32" fill="url(#screenLight)" />
+    <rect x="140" y="12" width="80" height="8" rx="4" fill="#94a3b8" fill-opacity="0.8" />
+
+    <g clip-path="url(#phoneClipA)">
+      <rect x="16" y="18" width="328" height="584" rx="32" fill="url(#screenLight)" />
+      <rect x="16" y="18" width="328" height="584" rx="32" fill="#f8fafc" fill-opacity="0.42" />
+
+      <rect x="40" y="46" width="96" height="30" rx="15" fill="url(#chipAmber)" />
+      <text x="88" y="66" text-anchor="middle" fill="#92400e" font-family="Segoe UI, Arial, sans-serif" font-size="14" font-weight="700">Telemetry</text>
+
+      <text x="40" y="116" fill="#0f172a" font-family="Segoe UI, Arial, sans-serif" font-size="30" font-weight="800">Sensor Data</text>
+      <text x="40" y="146" fill="#475569" font-family="Segoe UI, Arial, sans-serif" font-size="16" font-weight="500">Real-time monitoring</text>
+
+      <rect x="40" y="178" width="130" height="100" rx="18" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.2" />
+      <circle cx="70" cy="208" r="16" fill="#e0f2fe" />
+      <rect x="64" y="202" width="12" height="12" rx="6" fill="#0ea5e9" />
+      <text x="96" y="204" fill="#0f172a" font-family="Segoe UI, Arial, sans-serif" font-size="15" font-weight="700">Frames Sent</text>
+      <text x="96" y="236" fill="#0284c7" font-family="Consolas, monospace" font-size="28" font-weight="800">124</text>
+
+      <rect x="190" y="178" width="130" height="100" rx="18" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.2" />
+      <circle cx="220" cy="208" r="16" fill="#dcfce7" />
+      <path d="M 214 208 L 220 198 L 226 208 L 220 220 Z" fill="#16a34a" />
+      <text x="246" y="204" fill="#0f172a" font-family="Segoe UI, Arial, sans-serif" font-size="15" font-weight="700">Sensor Updates</text>
+      <text x="246" y="236" fill="#16a34a" font-family="Consolas, monospace" font-size="28" font-weight="800">60</text>
+
+      <rect x="40" y="300" width="280" height="110" rx="18" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.2" />
+      <text x="60" y="330" fill="#0f172a" font-family="Segoe UI, Arial, sans-serif" font-size="16" font-weight="700">Battery Level</text>
+      <text x="285" y="330" text-anchor="end" fill="#16a34a" font-family="Segoe UI, Arial, sans-serif" font-size="26" font-weight="800">87%</text>
+      <rect x="60" y="350" width="240" height="14" rx="7" fill="#e2e8f0" />
+      <rect x="60" y="350" width="209" height="14" rx="7" fill="url(#accentGreen)" />
+      <text x="60" y="386" fill="#64748b" font-family="Segoe UI, Arial, sans-serif" font-size="12" font-weight="500">Device power status</text>
+
+      <rect x="40" y="430" width="132" height="114" rx="18" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.2" />
+      <text x="60" y="458" fill="#0f172a" font-family="Segoe UI, Arial, sans-serif" font-size="15" font-weight="700">Accelerometer</text>
+      <rect x="60" y="476" width="14" height="46" rx="7" fill="#dbeafe" />
+      <rect x="80" y="486" width="14" height="36" rx="7" fill="#bfdbfe" />
+      <rect x="100" y="470" width="14" height="52" rx="7" fill="#60a5fa" />
+      <text x="118" y="468" fill="#1d4ed8" font-family="Consolas, monospace" font-size="12" font-weight="700">X 0.12</text>
+      <text x="118" y="488" fill="#0f766e" font-family="Consolas, monospace" font-size="12" font-weight="700">Y -0.03</text>
+      <text x="118" y="508" fill="#9333ea" font-family="Consolas, monospace" font-size="12" font-weight="700">Z 9.81</text>
+
+      <rect x="188" y="430" width="132" height="114" rx="18" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.2" />
+      <text x="208" y="458" fill="#0f172a" font-family="Segoe UI, Arial, sans-serif" font-size="15" font-weight="700">Gyroscope</text>
+      <rect x="208" y="476" width="14" height="32" rx="7" fill="#fbcfe8" />
+      <rect x="228" y="468" width="14" height="40" rx="7" fill="#f9a8d4" />
+      <rect x="248" y="482" width="14" height="26" rx="7" fill="#c084fc" />
+      <text x="266" y="468" fill="#be185d" font-family="Consolas, monospace" font-size="12" font-weight="700">X 0.21</text>
+      <text x="266" y="488" fill="#7c3aed" font-family="Consolas, monospace" font-size="12" font-weight="700">Y 0.18</text>
+      <text x="266" y="508" fill="#a21caf" font-family="Consolas, monospace" font-size="12" font-weight="700">Z -0.04</text>
+    </g>
+  </g>
+
+  <g transform="translate(112 884)">
+    <rect x="0" y="0" width="1376" height="48" rx="18" fill="#0f172a" fill-opacity="0.72" stroke="#334155" stroke-opacity="0.6" />
+    <text x="688" y="31" text-anchor="middle" fill="#cbd5e1" font-family="Segoe UI, Arial, sans-serif" font-size="15" font-weight="600">
+      WebSocket server • Live camera • Sensor telemetry • BLE / USB control • UDP auto-discovery
+    </text>
+  </g>
+</svg>

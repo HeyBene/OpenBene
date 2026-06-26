@@ -1,4 +1,4 @@
-<h1 align="center">OpenBene</h1>
+# OpenBene
 
 <p align="center">
   <img alt="Python Version" src="https://img.shields.io/badge/python-3.8%2B-blue">
@@ -8,20 +8,14 @@
   </a>
 </p>
 
-<p align="center"><strong>Languages:</strong> English | <a href="README.zh-CN.md">简体中文</a></p>
+<p align="center"><strong>Languages:</strong> English | <a href="README.zh-CN.md">Simplified Chinese</a></p>
 
-<p align="center"><strong>Phone as Body, PC as Brain</strong> - control OpenBot-based robots from Python with a public platform-layer toolkit.</p>
+<p align="center"><strong>Phone as Body, PC as Brain</strong> - a public platform-layer toolkit for OpenBot-style robots.</p>
 
 > Scope note:
 > `OpenBene` is the public platform-layer repository.
 > ROS2, mapping, localization, and other internal mobility work are promoted here selectively after cleanup.
 > See [docs/OPENBENE_SCOPE.md](docs/OPENBENE_SCOPE.md) for the boundary.
-
-<p align="center">
-  <a href="https://github.com/HeyBene/OpenBene/discussions">
-    <img alt="Join Discussion" src="https://img.shields.io/badge/Join_Discussion-GitHub_Discussions-blue?style=for-the-badge">
-  </a>
-</p>
 
 ## Overview
 
@@ -33,10 +27,36 @@ OpenBene focuses on reusable platform capabilities:
 - Video, sensor, and recording support
 - BLE manual-control utilities for ESP32/OpenBot workflows
 
+## App Showcase
+
+<p align="center">
+  <img alt="OpenBene app showcase" src="docs/showcase/robot_app-showcase.svg" width="100%">
+</p>
+
+This preview shows the imported robot app now living in `apps/robot_app/`:
+
+- connection state and `Server Address`
+- live `Camera Preview`
+- `Sensor Data` with `Frames Sent`, `Sensor Updates`, `Battery Level`, `Accelerometer`, and `Gyroscope`
+- WebSocket, UDP auto-discovery, and BLE / USB control paths
+
+## Start Here
+
+- PC-side Python control: [openbene_sdk/README.md](openbene_sdk/README.md)
+- Mobile app UI: [openbot-mobile-control/README.md](openbot-mobile-control/README.md)
+- Imported robot app: [apps/robot_app/README.md](apps/robot_app/README.md)
+- Repo map and migration boundaries: [docs/architecture.md](docs/architecture.md)
+
+## Workspace Areas
+
+- Mainline public surfaces: `openbene_sdk/`, `openbot-mobile-control/`, `apps/robot_app/`, `openbot/`, `docs/`
+- App area: `apps/` for self-contained Flutter projects
+- Auxiliary local workspaces: `openbene_mobility/`, `openbene_local/`
+
 ## Architecture
 
 ```text
-PC (Python) -> WebSocket -> Phone App -> USB/BLE -> Robot Controller -> Motors
+PC (Python SDK) -> WebSocket -> Phone App -> USB/BLE -> Robot Controller -> Motors
 ```
 
 ## Quick Start
@@ -50,13 +70,11 @@ Before you start:
 
 ### 1. Prepare the phone app
 
+If you are working from source, the existing Flutter app lives in `openbot-mobile-control/`, and the imported robot app lives in `apps/robot_app/`.
+
 If an Android build is included for your release, start here:
 
 - [openbot-mobile-control/releases/README.md](openbot-mobile-control/releases/README.md)
-
-For source-based mobile development:
-
-- Flutter app: [openbot-mobile-control](openbot-mobile-control)
 
 Important:
 
@@ -68,12 +86,6 @@ Important:
 ```bash
 cd openbene_sdk
 pip install -e .
-```
-
-Optional but recommended:
-
-```bash
-python -m venv .venv
 ```
 
 ### 3. Run the full demo
@@ -92,35 +104,21 @@ The demo can guide you through:
 - sensor reading
 - data recording
 
-Success looks like:
-
-- the demo finds the phone automatically, or connects with the displayed IP
-- control commands reach the robot
-- video or sensor output starts appearing in the demo flow
-
-### 4. Basic Python example
-
-```python
-from openbene import OpenBene
-
-bot = OpenBene.auto_connect()
-print(f"Connected to {bot.ip}:{bot.port}")
-
-bot.forward(0.5)
-
-import time
-time.sleep(2)
-
-bot.stop()
-bot.disconnect()
-```
-
-If auto-discovery fails, use the phone app's displayed address and run:
+### 4. Try the basic examples
 
 ```bash
-cd openbene_sdk/examples
+python basic_control.py
+python interactive_control.py
+python video_display.py
+python video_recording_demo.py
+python data_collection.py
+python test_udp_discovery.py
 python diagnose.py <phone_ip>
 ```
+
+For Windows BLE manual control to ESP32/OpenBot firmware:
+
+- [docs/WINDOWS_BLE_CONTROL_RUNBOOK.md](docs/WINDOWS_BLE_CONTROL_RUNBOOK.md)
 
 ### 5. Quick troubleshooting
 
@@ -136,50 +134,37 @@ Test-NetConnection -ComputerName <phone_ip> -Port 8765
 5. On iOS, check:
    `Settings -> Privacy & Security -> Local Network -> OpenBene = ON`
 
-## SDK Entry Points
-
-Useful examples:
-
-```bash
-python examples/basic_control.py
-python examples/interactive_control.py
-python examples/video_display.py
-python examples/video_recording_demo.py
-python examples/data_collection.py
-python examples/test_udp_discovery.py
-python examples/diagnose.py <phone_ip>
-```
-
-For Windows BLE manual control to ESP32/OpenBot firmware:
-
-- [docs/WINDOWS_BLE_CONTROL_RUNBOOK.md](docs/WINDOWS_BLE_CONTROL_RUNBOOK.md)
-
 ## Project Structure
 
 ```text
 OpenBene/
-├── .github/                     # GitHub config and workflows
-├── docs/                        # Public documentation
-├── openbene_sdk/                # Python SDK
-│   ├── src/                     # Core SDK code
-│   ├── examples/                # Example scripts
-│   └── tests/                   # SDK tests
-├── openbot/                     # Firmware / hardware baseline
-├── openbot-mobile-control/      # Flutter mobile app
-├── README.md                    # English README (default)
-├── README.zh-CN.md              # Simplified Chinese README
-├── PROJECT_CONTEXT.md           # Architecture and project context
-└── CHANGELOG.md                 # Changelog
+- docs/                   # Public documentation and runbooks
+- openbene_sdk/           # Python SDK
+  - src/                  # Core SDK code
+  - examples/             # Example scripts
+  - tests/                # SDK tests
+- openbot/                # Firmware / hardware baseline
+- openbot-mobile-control/ # Existing Flutter mobile app
+- apps/
+  - robot_app/            # Imported robot-side Flutter app
+- openbene_mobility/      # Auxiliary local mobility workspace
+- openbene_local/         # Auxiliary scratch/private workspace
+- README.md               # English README (default)
+- README.zh-CN.md         # Simplified Chinese README
+- PROJECT_CONTEXT.md      # Compatibility pointer
+- CHANGELOG.md            # Changelog
 ```
 
 ## Documentation
 
+- [docs/architecture.md](docs/architecture.md) - Canonical architecture and newcomer map
 - [openbene_sdk/README.md](openbene_sdk/README.md) - SDK documentation
+- [apps/robot_app/README.md](apps/robot_app/README.md) - Imported robot app documentation
 - [openbot-mobile-control/releases/README.md](openbot-mobile-control/releases/README.md) - Android build and release notes
 - [docs/WINDOWS_BLE_CONTROL_RUNBOOK.md](docs/WINDOWS_BLE_CONTROL_RUNBOOK.md) - Windows BLE control workflow
 - [docs/OPENBENE_SCOPE.md](docs/OPENBENE_SCOPE.md) - Public scope boundary
 - [docs/MOBILITY_SYNC_RULES.md](docs/MOBILITY_SYNC_RULES.md) - Rules for promoting internal mobility work into public OpenBene
-- [PROJECT_CONTEXT.md](PROJECT_CONTEXT.md) - Architecture context
+- [PROJECT_CONTEXT.md](PROJECT_CONTEXT.md) - Compatibility pointer
 - [CHANGELOG.md](CHANGELOG.md) - Changelog
 
 ## Contributing

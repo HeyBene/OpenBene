@@ -113,7 +113,9 @@ OpenBene/
 │   │   ├── recording.py    # 数据采集
 │   │   └── openbene.py     # 主类
 │   └── examples/           # 示例代码
-├── openbot-mobile-control/ # Flutter App
+├── openbot-mobile-control/ # Existing Flutter mobile app
+├── apps/
+│   └── robot_app/          # Imported robot-side Flutter app
 └── openbot.ino             # Arduino 固件
 ```
 

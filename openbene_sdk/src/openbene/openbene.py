@@ -602,6 +602,8 @@ class OpenBene:
             - 'gyroscope': 陀螺仪数据 {x, y, z}
             - 'magnetometer': 磁力计数据 {x, y, z}
             - 'battery_level': 电池电量百分比
+            - 'voltage': 电池电压
+            - 'distance': 最近距离
         """
         return self.sensors.get_all()
 
@@ -622,6 +624,31 @@ class OpenBene:
             如果没有数据则返回 None。
         """
         return self.sensors.get_gyroscope()
+
+    def get_magnetometer(self) -> Optional[Dict[str, float]]:
+        """获取磁力计数据。
+
+        Returns:
+            包含 x, y, z 轴磁场数据的字典，单位 uT。
+            如果没有数据则返回 None。
+        """
+        return self.sensors.get_magnetometer()
+
+    def get_battery_level(self) -> Optional[float]:
+        """获取电池电量百分比。
+
+        Returns:
+            电池电量，通常是 0-100 的百分比；如果没有数据则返回 None。
+        """
+        return self.sensors.get_battery_level()
+
+    def get_voltage(self) -> Optional[float]:
+        """获取最近的电池电压值。"""
+        return self.sensors.get_voltage()
+
+    def get_distance(self) -> Optional[float]:
+        """获取最近的距离值。"""
+        return self.sensors.get_distance()
 
     # ==================== 数据采集（代理到recorder模块）====================
 
