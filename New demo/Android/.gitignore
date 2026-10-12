@@ -1,0 +1,8 @@
+.gradle/
+build/
+local.properties
+local-mirror.init.gradle
+*.iml
+.idea/
+.DS_Store
+captures/

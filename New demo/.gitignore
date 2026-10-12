@@ -1,0 +1,14 @@
+# Local scratch / reference clones (not deliverables)
+_ref/
+
+# OS junk
+.DS_Store
+Thumbs.db
+
+# Xcode artifacts inside the vendored original app
+ARIndoorNav-original/Pods/
+ARIndoorNav-original/build/
+ARIndoorNav-original/DerivedData/
+**/xcuserdata/
+**/*.xcuserstate
+

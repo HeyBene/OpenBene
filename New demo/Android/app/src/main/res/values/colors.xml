@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="brand_navy">#FF10233B</color>
+    <color name="brand_teal">#FF14B8A6</color>
+    <color name="overlay_backdrop">#CC10233B</color>
+    <color name="overlay_text">#FFF7FAFC</color>
+    <color name="ic_launcher_background">#FF10233B</color>
+</resources>

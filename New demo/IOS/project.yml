@@ -1,0 +1,76 @@
+# XcodeGen spec for the iOS app.
+#
+#   brew install xcodegen
+#   cd IOS && xcodegen generate && open OpenBotAnchorNav.xcodeproj
+#
+# The navigation kernel is compiled straight from OpenBotNavKit/Sources, the
+# same files `swift test` uses, so there is only one copy of the logic: the kit
+# is one framework target that both the app and the tests link against.
+name: OpenBotAnchorNav
+options:
+  bundleIdPrefix: com.openbene
+  deploymentTarget:
+    iOS: "15.0"
+  createIntermediateGroups: true
+
+targets:
+  OpenBotNavKit:
+    type: framework
+    platform: iOS
+    sources:
+      - path: OpenBotNavKit/Sources/OpenBotNavKit
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.openbene.anchornav.kit
+        SWIFT_VERSION: "5.9"
+        GENERATE_INFOPLIST_FILE: YES
+        TARGETED_DEVICE_FAMILY: "1"
+
+  OpenBotAnchorNav:
+    type: application
+    platform: iOS
+    sources:
+      - path: OpenBotAnchorNav
+        excludes:
+          - Info.plist
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.openbene.anchornav
+        INFOPLIST_FILE: OpenBotAnchorNav/Info.plist
+        SWIFT_VERSION: "5.9"
+        TARGETED_DEVICE_FAMILY: "1"
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        CODE_SIGN_STYLE: Automatic
+        GENERATE_INFOPLIST_FILE: NO
+    info:
+      path: OpenBotAnchorNav/Info.plist
+      properties: {}
+    dependencies:
+      - target: OpenBotNavKit
+      - sdk: ARKit.framework
+      - sdk: CoreBluetooth.framework
+      - sdk: Vision.framework
+
+  OpenBotNavKitTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - path: OpenBotNavKit/Tests/OpenBotNavKitTests
+      - path: OpenBotNavKit/Tests/OpenBotNavKitTests/Resources
+        buildPhase: resources
+    dependencies:
+      - target: OpenBotNavKit
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.openbene.anchornav.tests
+        SWIFT_VERSION: "5.9"
+
+schemes:
+  OpenBotAnchorNav:
+    build:
+      targets:
+        OpenBotAnchorNav: all
+        OpenBotNavKitTests: [test]
+    test:
+      targets:
+        - OpenBotNavKitTests

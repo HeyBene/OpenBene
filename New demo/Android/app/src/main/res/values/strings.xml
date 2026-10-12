@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">OpenBene Anchor Nav</string>
+    <string name="subtitle">Floor markers + AR pose, OpenBot drives itself</string>
+    <string name="destination_label">Destination</string>
+    <string name="route_summary_placeholder">Pick a room. The route, distance and turn list appear here.</string>
+    <string name="connect_label">Drive a real OpenBot over Bluetooth LE (otherwise a mock link records the commands)</string>
+    <string name="scan_button">Scan for OpenBot</string>
+    <string name="start_button">Start AR navigation</string>
+    <string name="stop_button">Stop</string>
+    <string name="start_driving_button">Start driving</string>
+    <string name="localised_tap_start">Localised. Tap Start driving when the robot is on the floor.</string>
+    <string name="follow_switch_label">Follow mode: drive behind the person the camera sees instead of the route</string>
+    <string name="follow_mode_label">Follow mode</string>
+    <string name="follow_ready">Follow mode. Put the operator in front of the camera, then tap Start driving.</string>
+    <string name="follow_armed">Follow mode armed: the robot drives towards the person in front of it.</string>
+    <string name="follow_waiting">waiting for the camera</string>
+    <string name="follow_detail">follow mode: no marker localisation, the camera box drives the robot</string>
+    <string name="waiting_for_marker">Waiting for a marker fix\u2026</string>
+    <string name="status_idle">Idle. The robot must be placed at the entrance marker before starting.</string>
+    <string name="scanning_bluetooth">Scanning for the OpenBot BLE service\u2026</string>
+    <string name="no_robot_found">No OpenBot found. Check that the ESP32 is powered and in range.</string>
+    <string name="connected_to">Connected to %1$s</string>
+    <string name="camera_permission_needed">Camera permission is required for AR navigation.</string>
+    <string name="ar_not_supported">This device has no supported ARCore installation. Install Google Play Services for AR.</string>
+    <string name="map_load_failed">Could not load the demo map: %1$s</string>
+</resources>

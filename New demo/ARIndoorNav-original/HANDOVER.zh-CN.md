@@ -1,0 +1,239 @@
+# ARIndoorNav 原版交接文档（功能界定 · Mac 构建 · 测试清单）
+
+> 范围：本文件只描述「原版 ARIndoorNav」——2021 年 Firebase 版。
+> 配套代码：本目录（`New demo/ARIndoorNav-original/`），是上游仓库的**未修改快照**；除本文件与 `markers-to-print/` 外没有任何改动。
+> 本轮不测试、不修改 `New demo/Android` 与 `New demo/IOS` 里的增强版 demo。
+> 目标：在 Mac 上编译、安装，用 App 采集一条「唯一锚点 → 若干节点」的路线，并用同一张锚点完成导航。
+
+以下路径均相对于本目录 `ARIndoorNav-original/`。
+
+## 0. 结论先行
+
+原版是一个「单锚点 + 链式相对位移」的 ARKit 概念验证 App：
+
+- 扫一张参考图作为起点，把 AR 世界原点锁到这张图上，**整个会话只锁一次**；
+- 用 App 现场采集一条由若干虚拟节点组成的路线；
+- 导航时按数据里的相对位移重建这条路线，用静态的球体、箭头、连线提示方向；
+- 没有中途重定位、没有回程、没有机器人控制，「到达终点」的判定在代码里被停用。
+
+## 1. 来源与快照
+
+| 项 | 值 |
+| --- | --- |
+| 上游仓库 | https://github.com/bu35/ARIndoorNav （默认分支 main） |
+| 快照提交 | `d83cf7c6a6d3b1a7cfceca72b4765d4357d87d73`（"initial commit"，Bryan U `<bu35@drexel.edu>`，2021-06-13） |
+| 作者署名 | README 写明 "Created by - Bryan Ung & Allie Do"，联系邮箱 bryanung18@gmail.com |
+| 许可 | 上游未提供 LICENSE 文件（默认版权保留，仅供内部验证） |
+| 目录 | `ARIndoorNav/`（App 源码）、`ARIndoorNav.xcodeproj`、`ARIndoorNav.xcworkspace`、`Podfile`、`server/`（NodeJS）、`resources/`（数据库导出）、新增 `markers-to-print/` |
+
+容易混淆的两个仓库：
+
+- `Oscheibe/ARIndoorNav`：Unity + C# + ARCore 的另一个项目（TH Köln，2019 年起），与本项目无关。
+- `HeyBene/ARIndoorNav`（私人导入版）：本原版的裁剪版——去掉了 Firebase、登录注册、部分地图管理功能，并替换过参考图。验证「原版」时不要用那一份。
+
+## 2. 系统组成与数据流
+
+```text
+ iPhone App (ARKit + SceneKit)          NodeJS (express :8080)          Firebase
+ ┌───────────────────────┐  HTTP    ┌────────────────────────┐  admin  ┌────────────────────┐
+ │ 扫描参考图 / AR 导航   │ ───────> │ /NavigationInstructions │ ───────> │ Realtime Database  │
+ │ Create Custom Map 采集 │          │ /DestinationList        │          │  destination/...   │
+ │ 本地地图存档（设备）   │ <─────── │ /UploadCustomMap 等     │ <─────── │  users/<uid>/...   │
+ └───────────────────────┘          └────────────────────────┘          └────────────────────┘
+        └──────────────── Firebase Auth SDK（登录/注册在 App 内直接完成）──────────────┘
+```
+
+- 除登录/注册外，App 不直接读写数据库，全部经 NodeJS 服务转发。
+- 本地另有一份地图存档（`UserDefaults` + `NSKeyedArchiver`，见 `ARIndoorNav/Model/DataStoreManager.swift`）。
+
+## 3. 功能界定（严格版）
+
+### 3.1 参考图（锚点）：只有 2 张
+
+| 名称 | 文件 | 注册物理宽度 | 打印要求 |
+| --- | --- | --- | --- |
+| `pi` | `ARIndoorNav/Assets.xcassets/ARResources.arresourcegroup/pi.arreferenceimage/pi.jpg` | 3 英寸（7.62 cm） | 按 3 英寸宽打印（见 `markers-to-print/pi.jpg`） |
+| `1` | `ARIndoorNav/Assets.xcassets/ARResources.arresourcegroup/1.arreferenceimage/1.jpeg` | 5 英寸（12.7 cm） | 按 5 英寸宽打印（见 `markers-to-print/1.jpeg`） |
+
+- 宽度来自资产目录 `Contents.json` 的 `properties.width`；打印尺寸不对会导致定位尺度错误，甚至识别失败。
+- 代码只接受这两个名字：`returnBeaconHighlightNode` 里判断 `referenceImage.name == "pi" || referenceImage.name == "1"`。
+- 每个 App 会话只把**第一次**扫到的锚点作为定位原点：`session.setWorldOrigin(relativeTransform: anchor.transform)` 只执行一次（`ARSceneViewDelegate.swift:303-311`）。
+- 之后再扫到锚点只显示高亮，不参与任何重新定位（`isBeaconRootNodeFound` 置位后直接跳过定位分支）。
+
+### 3.2 采集（Create Custom Map）
+
+入口：主界面左上菜单 → `Manage Maps` → 右上角操作按钮 → 选 `Create Custom Map` → 回到 AR 界面。
+
+AR 界面按钮（见 `ViewController.swift`）：
+
+| 按钮 | 作用 | 出现时机 |
+| --- | --- | --- |
+| `Add` | 添加节点 | 扫到锚点后出现 |
+| `End` | 结束采集（标记终点） | 起点就位后与 Add 一起出现 |
+| `Undo` | 撤销上一个节点 | 与 Add 一起 |
+| `Save` | 命名并保存地图 | 按过 End 之后出现 |
+
+节点语义与记录方式：
+
+- 第一次按 `Add`：`start` 节点，位移相对**锚点节点**；
+- 中间按 `Add`：`intermediate` 节点，位移相对**上一个节点**；
+- 按 `End`：`destination` 节点；随后 `Save` 弹出输入框，填地图名保存。
+- 每次点击时读取 `session.currentFrame.camera.transform` 的平移列，减去参考节点的位置，得到 `(x_offset, y_offset, z_offset)`（`ARSceneViewDelegate.swift:245-289`）。
+- 采集时可以人持手机走，也可以把手机固定在机器人/小车上推着走；App 不区分。
+- 保存结果：必写本地 `DataStore`（`UserDefaults`，立刻可用）；上传是单独的菜单动作（`Manage Maps → Upload Custom Maps`），需要登录且 Node 服务在线，会写到 `users/<uid>/destination/<name>`。
+
+### 3.3 导航
+
+两个入口：
+
+1. **服务器路线**：AR 界面右上角放大镜按钮 → `SearchController` 从服务器 `/DestinationList`（数据库全局 `destination/` 表）拉取目的地；扫锚点后向 `/NavigationInstructions` 请求该目的地的节点链。
+2. **本地自定义地图**：`Manage Maps` 列表里直接点选之前保存的地图，节点链直接装入会话（不经过服务器），再扫锚点开始。
+
+扫到锚点后（`ARSceneViewDelegate.swift` 的 `setUpNavigation` / `placeNode` / `placeArrowNodes`）：
+
+- 以锚点节点为根，把节点链按 `lastNode.transform × T(offset)` 逐级重建（白色/蓝色球体）；
+- 相邻节点之间画圆柱连线；
+- 每个节点上方放一个箭头，`arrow.look(at: 下一个节点)` 指向下一节点；
+- 引导物是导航开始时一次性放置的静态 3D 物体，之后不随用户位置更新。
+
+到达判定：代码里有 `checkDestinationLoop()`（`ARSceneViewDelegate.swift:419-448`），但调用处被注释掉（`ARSceneViewDelegate.swift:78` 是 `//self.checkDestinationLoop()`），全工程没有其它调用点。**因此原版实际不会提示 "Destination Reached"，也不会自动结束导航。**
+
+### 3.4 数据模型（Firebase 字段）
+
+`resources/ARIndoorNav-database-export.json` 的真实结构：
+
+```json
+{
+  "destination": {
+    "bathroom": {
+      "beacon_name": "pi",
+      "destination": "bathroom",
+      "node_count": 3,
+      "nodes": {
+        "index": [
+          { "type": "start",        "x_offset": 0,    "y_offset": 0.5, "z_offset": 0.2 },
+          { "type": "intermediate", "x_offset": -3.3, "y_offset": 0,   "z_offset": 0 },
+          { "type": "destination",  "x_offset": 0,    "y_offset": 1.3, "z_offset": 0 }
+        ]
+      }
+    }
+  },
+  "destination_list": [ { "name": "Bathroom" }, { "name": "Stairs" }, { "name": "Door" } ],
+  "users": { "<uid>": { "destination": { "<name>": { "...": "同一结构" } } } }
+}
+```
+
+| 字段 | 含义 |
+| --- | --- |
+| `beacon_name` | 该路线采集时用的锚点名（`pi` 或 `1`）。**导航时不校验**（见 4.2） |
+| `node_count` | 节点个数 |
+| `nodes.index[i].type` | `start` / `intermediate` / `destination` |
+| `nodes.index[i].(x/y/z)_offset` | 相对上一个节点的三维位移（第一个相对锚点），单位米，AR 会话世界轴 |
+
+### 3.5 偏移量的坐标系语义（为什么不能手写）
+
+- 采集时：世界原点已经移到锚点上；偏移量 = 点击瞬间**相机位置 − 上一节点位置**，写在 AR 会话世界轴下。
+- 回放时：偏移量被当作**上一节点局部坐标系**里的平移链式应用（`node.simdTransform = lastNode.transform × T(offset)`），所有节点都挂在锚点节点之下。
+- 结论：一条路线 = 锚点图片局部坐标系里的一串相对位移，不是楼面坐标。**没有采集时的锚点位姿，手工坐标对不上真实环境**；直接改 JSON 数字只有在你知道锚点真实位置与朝向时才可能正确。
+
+## 4. 局限（逐条 + 依据）
+
+1. **单锚点、无中途纠偏**：世界原点只锁第一次扫到的锚点；没有 ARWorldMap 持久化、回环检测、位姿优化。长走廊、弱纹理、光照变化造成的漂移会直接叠加到整条路线。
+2. **锚点不校验**：服务器只按目的地名查询（`server/database.js` 的 `getNavigationInstructions(destination)`）；客户端组装节点时忽略 `beacon_name`（`Utils/Formatter.swift` 的 `buildNodeListWithJsonData`）；`ManageMapsController` 里读出的 `beaconName` 是死变量。用错锚点不会报错，路线会安静地整体错位。
+3. **到达判定失效**：`checkDestinationLoop()` 的调用被注释（见 3.3），无任何其它调用点；不会有到达提示或结束逻辑。
+4. **没有反向 / 回程**：数据库只存单方向节点链，UI 也没有返回流程。同一会话内理论可反向，但代码未实现；退出重开后必须重新扫锚点（没有锚点就无法重建坐标系）。
+5. **引导物静态**：箭头/连线在导航开始时一次放置，不随位置更新，也不是罗盘。
+6. **没有机器人控制**：全工程没有 CoreBluetooth/BLE/底盘代码，不输出控制指令；它只是给人看的 AR 导航。
+7. **路线是链式相对位移，不是地图**：无分支、无图搜索、无任意两点间导航；每条路线只能从采集它的那个锚点、按原顺序走。
+8. **强依赖自建后端**：作者原 Firebase 项目不可用；必须自建 Firebase（Auth + Realtime Database）并运行 NodeJS 服务。服务不运行时，仅本机已保存地图的采集与导航可用；搜索目的地、上传、下载不可用。
+9. **上传 / 下载需要登录**：`Manage Maps` 的 Upload/Download 需要 Email/Password 账号（Firebase Auth）。
+10. **换锚点 = 整条重采**：数据挂在锚点坐标系里，换一张锚点图不能沿用旧数据。
+11. **采集精度靠手感**：节点误差取决于点击时刻与相机高度；作者样例里 `start` 的 `y_offset` 约 0.5（相机相对地面锚点的高度），中间节点接近 0。
+12. **2021 年的工程配置**：objectVersion 51、部署目标 iOS 14、`UIRequiredDeviceCapabilities` 里带 `armv7`。本机运行没问题；若要上架 App Store 需要清理。
+
+## 5. Mac 构建与安装
+
+### 5.0 准备
+
+- macOS + Xcode（含 Command Line Tools），一台支持 ARKit 的 iPhone（模拟器不能跑 ARKit）。
+- CocoaPods（`brew install cocoapods` 或 `sudo gem install cocoapods`）。
+- 建议 Node 18/20（可用 nvm 管理）。
+
+### 5.1 Firebase
+
+1. 新建 Firebase 项目 → 添加 iOS App，Bundle ID 与工程一致（默认 `com.bryanung`，可在 Xcode 的 target ARIndoorNav → General 里改）。
+2. Authentication → Sign-in method → 启用 Email/Password。
+3. Realtime Database → 创建数据库（先用测试模式）→ 可选：导入 `resources/ARIndoorNav-database-export.json` 得到示例路线（bathroom / door / stairs，锚点是 `pi`）。
+4. 下载 `GoogleService-Info.plist`，放进 `ARIndoorNav/` 目录（与 `AppDelegate.swift` 同级，加入 target）。缺少它 App 启动即崩（`FirebaseApp.configure()`）。
+
+### 5.2 Node 服务
+
+```bash
+cd server
+# Firebase 控制台 → 项目设置 → 服务账号 → 生成新的私钥，下载后改名
+# serviceAccountKey.json 放在 server/ 下
+npm install express@4 firebase-admin request
+node server.js        # 监听 8080
+```
+
+- `server/database.js` 里的 `databaseURL` 必须换成控制台显示的实际地址（新项目一般是 `https://<name>-default-rtdb.<region>.firebasedatabase.app`，老项目是 `https://<name>.firebaseio.com`）。
+
+### 5.3 App
+
+```bash
+cd <本目录>
+pod install
+open ARIndoorNav.xcworkspace    # 用 workspace，不是 xcodeproj
+```
+
+- 把 `ARIndoorNav/Utils/Constants.swift` 顶部的 `ipaddress` 改成 Mac 的局域网 IP（手机与 Mac 必须在同一网段）。
+- Xcode 里选真机 Run，首次运行同意相机权限。
+
+### 5.4 常见问题
+
+| 现象 | 处理 |
+| --- | --- |
+| `pod install` 拉不到 Firebase | 换网络/代理；或把 Podfile 里的三个 pod 改成 `FirebaseAuth` / `FirebaseDatabase`（现代 Firebase 不再需要单独声明 `Firebase/Core`） |
+| CocoaPods 提示未指定 platform | 把 Podfile 第一行的注释去掉，写成 `platform :ios, '14.0'` |
+| App 启动崩溃，日志提到 GoogleService-Info | 5.1 的 plist 没放或没加入 target |
+| 搜索目的地报 "Failure to connect/retrieve data from server" | Node 服务没起，或 `Constants.swift` 里的 IP 不对 |
+| 上传地图失败 | 未登录，或 `serviceAccountKey.json` / `databaseURL` 不对 |
+| 扫不到锚点 | 打印尺寸不对（3 英寸 / 5 英寸）、光线太暗、纸面反光、距离太远 |
+| 模拟器 | ARKit 不可用，必须真机 |
+
+## 6. 测试清单
+
+按顺序做，逐步记录现象（这是功能界定的现场证据）：
+
+- **T1 账号**：启动 App → 注册/登录（Profile）。确认不登录也能进入 AR 主界面。
+- **T2 采集**：`Manage Maps → 右上角 → Create Custom Map` → 对着 `pi`（3 英寸打印）扫到锚点 → `Add` 起点 → 推进 3–5 m → `Add` →（可再加 1–2 个）→ `End` → `Save` 命名。
+  预期：地面出现起点球/中间球 + 连线；Save 后 `Manage Maps` 列表出现该地图。
+- **T3 本地导航**：`Manage Maps` → 点选刚保存的地图 → 扫同一张 `pi` → 球/线/箭头出现 → 沿箭头走到终点。
+  预期：箭头指向下一节点；**到达终点没有任何提示**（已知局限 3，不是 bug）。
+- **T4 服务器路线（可选）**：Node 服务在线 + 已导入示例 JSON → AR 界面搜索按钮 → 选 `Bathroom` / `Stairs` / `Door` → 扫 `pi` → 同样出现路线。
+- **T5 反向 / 重启**：到终点后退出 App 重开 → 不扫锚点直接走，确认无法定位（预期失败）；再扫 `pi` 回到起点重走，确认可以。
+- **T6 锚点错配（验证局限 2）**：打印 `1`（5 英寸）→ 在没有 `1` 数据的情况下用它扫开 `pi` 的路线 → 观察路线错位且无任何报错。
+
+## 7. 与增强版 demo 的边界
+
+- `New demo/Android`、`New demo/IOS`：自研增强版（4 锚点纠偏、图 + Dijkstra、双向边、BLE 驱动底盘），本轮**不改动、不测试**，原样保留。
+- 原版数据（链式相对位移、挂在锚点坐标系）与增强版地图 JSON（楼面坐标 + 锚点位姿）不是同一种东西，不能直接互换。
+- 与官方 OpenBot App 的合并（把 AR 导航做成一个新模式）是后续议题，不在本轮范围。
+
+## 8. 附录：关键代码位置
+
+| 功能 | 位置 |
+| --- | --- |
+| 世界原点锁定 / 锚点处理 | `ARIndoorNav/Controller/ARSceneViewDelegate.swift:303-311` 与 `renderer(_:nodeFor:)` |
+| 采集时记录偏移 | 同文件 `getNodeDataAndPlotBuildingNode`（`:245-289`） |
+| 回放时重建节点 / 箭头 | 同文件 `setUpNavigation` / `placeNode` / `placeArrowNodes`（`:61-186`） |
+| 到达判定（已注释） | 同文件 `:78`、`:419-448` |
+| 节点模型 | `ARIndoorNav/Model/LocationInfo.swift`、`DataStore.swift`、`DataStoreManager.swift` |
+| 服务器请求 | `ARIndoorNav/Utils/NetworkService.swift`、`ARIndoorNav/Model/NodeManager.swift` |
+| 服务端查询 | `server/database.js`、`server/server.js` |
+| 数据库字段示例 | `resources/ARIndoorNav-database-export.json` |
+
+---
+
+文档版本：2026-10-12 初版。内容基于快照 `d83cf7c6` 的逐行取证；后续若修改原版代码，请先更新本文件再动代码。
+
