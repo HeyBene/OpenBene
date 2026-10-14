@@ -43,7 +43,7 @@
 | `ar/NodeOverlayView.kt` | 球体 + 连线 + 箭头的投影绘制 |
 | `ar/CameraBackgroundRenderer.kt`、`ar/DisplayRotationHelper.kt` | ARCore 相机背景与旋转（来自增强版） |
 | `nav/NodeDriver.kt` | 朝当前节点行驶的控制器（先原地转向，再差速前进；声呐 35 cm 停车） |
-| `nav/FollowController.kt`、`robot/PersonBoxDetector.kt` | 跟随模式（来自增强版） |
+| `nav/FollowController.kt`、`robot/PersonBoxDetector.kt` | 跟随模式（来自增强版；检测器多传了显示旋转，跟随的左右方向才和画面对齐） |
 | `robot/OpenBotProtocol.kt`、`robot/OpenBotBleLink.kt`、`robot/RobotLink.kt` | ESP32 BLE 协议与链路 |
 
 ## 3. 算法：锚点帧与节点链
