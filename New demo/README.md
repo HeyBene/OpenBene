@@ -178,7 +178,7 @@ arcoreimg build-db --input_images=shared/markers --output=Android/app/src/main/a
 
 * 第一次务必**把机器人架空空转**，确认轮子转向、急停、BLE 连接都正常再落地。
 * 避障默认关闭：本仓库的 520 底盘没装超声模块，固件仍会 ping，悬空的 echo 引脚会报出 1-3 cm 的假距离，声呐保护会让机器人钉在原地。三个 App 的 `s` 订阅都由一个开关控制（Kotlin 的 `SONAR_INSTALLED`、Swift 的 `OpenBotBleLink.sonarInstalled`），默认 `false`；装上模块后改这一个开关即恢复 `BLOCKED` 停车。`bumper` 上报仍会把执行器置为 `FAILED`。
-* 轮速（`w` 帧）在这台 520 上不可信，只能看"轮子在不在转"，不要拿它当里程计；实测见 [ARIndoorNav-original/HANDOVER.zh-CN.md](ARIndoorNav-original/HANDOVER.zh-CN.md) §3.6.1。
+* 轮速（`w` 帧）在这台 520 上不可信，只能看"轮子在不在转"，不要拿它当里程计；实测见 [ARIndoorNav-original/HANDOVER.zh-CN.md](ARIndoorNav-original/HANDOVER.zh-CN.md) §3.6.1。原版 OpenBot App 里轮速被用在哪、有没有进控制回路，见 [docs/openbot-wheel-telemetry.md](docs/openbot-wheel-telemetry.md)。
 * 随时可以按 “Stop”：会立刻发 0 速度并结束 AR 会话（会话中断/失败时也会自动停车）。
 * ARCore/ARKit 的跟踪状态不是正常时会先停车等它恢复（跟随模式只用相机画面，不受影响）；恢复跟踪后执行器会从当前航点继续。
 * 走廊上有人或宠物时不要启动；巡航速度 0.35（约为满速的一半）。
