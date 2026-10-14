@@ -6,6 +6,13 @@ import CoreBluetooth
 /// commands and a TX characteristic for telemetry notifications.
 final class OpenBotBleLink: NSObject, RobotLink, CBCentralManagerDelegate, CBPeripheralDelegate {
 
+    /// The 520 chassis in this demo has no ultrasonic module fitted, but the
+    /// firmware keeps pinging anyway: the echo pin is left floating, picks up
+    /// the trigger pulse and reports 1-3 cm, which the obstacle guard reads as
+    /// a wall and refuses to drive through. Subscribe to the sonar stream only
+    /// when the module is actually installed.
+    static let sonarInstalled = false
+
     struct Discovered {
         let id: UUID
         let name: String
@@ -165,13 +172,15 @@ final class OpenBotBleLink: NSObject, RobotLink, CBCentralManagerDelegate, CBPer
 
     private func enableTelemetry(_ peripheral: CBPeripheral) {
         guard let rx = rxCharacteristic else { return }
-        let commands = [
+        var commands = [
             OpenBotProtocol.heartbeatCommand(intervalMs: 500),
             OpenBotProtocol.sensorStreamCommand(header: "v", intervalMs: 500),
             OpenBotProtocol.sensorStreamCommand(header: "w", intervalMs: 250),
-            OpenBotProtocol.sensorStreamCommand(header: "s", intervalMs: 250),
-            OpenBotProtocol.featureCommand(),
         ]
+        if Self.sonarInstalled {
+            commands.append(OpenBotProtocol.sensorStreamCommand(header: "s", intervalMs: 250))
+        }
+        commands.append(OpenBotProtocol.featureCommand())
         for command in commands {
             peripheral.writeValue(command, for: rx, type: .withResponse)
         }

@@ -20,6 +20,15 @@ import android.util.Log
 import java.util.UUID
 
 /**
+ * The 520 chassis in this demo has no ultrasonic module fitted, but the
+ * firmware keeps pinging anyway: the echo pin is left floating, picks up the
+ * trigger pulse and reports 1-3 cm, which the obstacle guard reads as a wall
+ * and refuses to drive through. Subscribe to the sonar stream only when the
+ * module is actually installed.
+ */
+private const val SONAR_INSTALLED = false
+
+/**
  * BLE link to the OpenBot ESP32 firmware, matching the UUIDs used by
  * openbene_sdk/src/openbene/esp32_ble.py: one service, an RX characteristic for
  * commands and a TX characteristic for telemetry notifications.
@@ -121,7 +130,7 @@ class OpenBotBleLink(private val context: Context) : RobotLink {
         write(OpenBotProtocol.heartbeatCmd(500))
         write(OpenBotProtocol.sensorStreamCmd('v', 500))
         write(OpenBotProtocol.sensorStreamCmd('w', 250))
-        write(OpenBotProtocol.sensorStreamCmd('s', 250))
+        if (SONAR_INSTALLED) write(OpenBotProtocol.sensorStreamCmd('s', 250))
         write(OpenBotProtocol.featureCmd())
     }
 

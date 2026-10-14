@@ -45,4 +45,4 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
 * 图像锚点数据库在启动时用 assets 里的 PNG 现场构建，不需要 `arcoreimg`；如果要更稳的离线特征库见顶层 README。
 * 扫码路径依赖 `MarkerGeometry.DEFAULT_CODE_QUAD_SIZE_M`（默认 0.12 m，含静区的二维码块宽）；如果实际打印/识别尺寸不同，改这一个常量即可。
 * 跟随模式：AR 界面底部的 “Follow mode” 开关切过去后，机器人跟着相机里最大的人脸框走（框偏左/偏右就转，框小就前进，框大就停）。跟随不需要锚点，所以没定位也能启动；预设是 `FollowConfig.FACE_BOX`（目标框高度 0.16），现场标定后再落地。
-* 跟随与定点导航共用同一条 RobotLink：切模式时会先停车并停掉执行器。声呐 35 cm 以内两种模式都会停车。
+* 跟随与定点导航共用同一条 RobotLink：切模式时会先停车并停掉执行器。声呐 35 cm 以内两种模式都会停车，但声呐默认不订阅——本仓库的 520 底盘没装超声模块，固件仍会上报拾到 trigger 脉冲产生的 1-3 cm 假距离，保护会把机器人钉在原地；开关是 `OpenBotBleLink.kt` 顶部的 `SONAR_INSTALLED`（默认 `false`）。

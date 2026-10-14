@@ -33,3 +33,4 @@ cd IOS && xcodegen generate && open OpenBotAnchorNav.xcodeproj
 * `ArNavigationController` 在同一帧里同时尝试图像锚点与二维码：图像锚点优先，二维码作为冷启动/兜底，两者都走同一个 `ArObservation`。
 * 会话中断（来电、切后台）会立刻停车。
 * 跟随模式：底部 Route / Follow 分段控件切到 Follow 后，目标框来自 Vision 的 `VNDetectHumanRectanglesRequest`（系统自带，无需打包模型），与二维码扫描共用同一帧相机图像。跟随不需要锚点与定位，切换时会先停车；预设是默认的 `FollowConfig`（目标框高度 0.55），现场标定后再落地。
+* 声呐默认不订阅：本仓库的 520 底盘没装超声模块，固件仍会上报由 trigger 脉冲串扰产生的 1-3 cm 假距离，声呐保护会把机器人钉在原地。开关是 `OpenBotBleLink.sonarInstalled`（默认 `false`），装上模块后改成 `true` 即恢复 35 cm 停车。
