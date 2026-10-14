@@ -55,7 +55,8 @@
 | `pi` | `ARIndoorNav/Assets.xcassets/ARResources.arresourcegroup/pi.arreferenceimage/pi.jpg` | 3 英寸（7.62 cm） | 按 3 英寸宽打印（见 `markers-to-print/pi.jpg`） |
 | `1` | `ARIndoorNav/Assets.xcassets/ARResources.arresourcegroup/1.arreferenceimage/1.jpeg` | 5 英寸（12.7 cm） | 按 5 英寸宽打印（见 `markers-to-print/1.jpeg`） |
 
-- 宽度来自资产目录 `Contents.json` 的 `properties.width`；打印尺寸不对会导致定位尺度错误，甚至识别失败。
+- 宽度来自资产目录里的 `Contents.json`：`pi.arreferenceimage/Contents.json` 写着 `{"unit": "inches", "width": 3}`，`1.arreferenceimage/Contents.json` 写着 `width: 5`。打印尺寸不对会导致定位尺度错误，甚至识别失败。
+- `markers-to-print/` 的原始像素：`pi.jpg` 2245×3603、`1.jpeg` 2436×2246；按 3 英寸 / 5 英寸宽度打印相当于约 748 / 487 DPI，清晰度足够。AR 只用**宽度**定尺度，高度按长宽比自动得出，所以打印时保证宽度准确即可。
 - 代码只接受这两个名字：`returnBeaconHighlightNode` 里判断 `referenceImage.name == "pi" || referenceImage.name == "1"`。
 - 每个 App 会话只把**第一次**扫到的锚点作为定位原点：`session.setWorldOrigin(relativeTransform: anchor.transform)` 只执行一次（`ARSceneViewDelegate.swift:303-311`）。
 - 之后再扫到锚点只显示高亮，不参与任何重新定位（`isBeaconRootNodeFound` 置位后直接跳过定位分支）。
@@ -206,7 +207,44 @@ open ARIndoorNav.xcworkspace    # 用 workspace，不是 xcodeproj
 | 搜索目的地报 "Failure to connect/retrieve data from server" | Node 服务没起，或 `Constants.swift` 里的 IP 不对 |
 | 上传地图失败 | 未登录，或 `serviceAccountKey.json` / `databaseURL` 不对 |
 | 扫不到锚点 | 打印尺寸不对（3 英寸 / 5 英寸）、光线太暗、纸面反光、距离太远 |
+| `pod install` 报 "required a higher minimum deployment target" | 见 5.5：抬部署目标，或在 Podfile 里钉 Firebase 10.x |
 | 模拟器 | ARKit 不可用，必须真机 |
+
+### 5.5 2026 年首次构建的高概率阻塞点：CocoaPods 依赖解析
+
+本工程没有 `Podfile.lock`，也没有 `Pods/` 目录，所以第一次 `pod install` 会去解析**最新**的 Firebase SDK。而工程的部署目标是 iOS 14.0（`project.pbxproj` 里 `IPHONEOS_DEPLOYMENT_TARGET = 14.0`），Firebase 11.x 起要求 iOS 13+、12.x 起要求 iOS 15+。一旦解析到 12.x，`pod install` 会直接失败：
+
+```text
+[!] CocoaPods could not find compatible versions for pod "FirebaseAuth":
+  Specs satisfying the `FirebaseAuth` dependency were found, but they required a higher minimum deployment target.
+```
+
+两种处理方式，任选一种。两者都只动构建配置，不改业务代码，因此第 3 节的功能界定依然成立。
+
+**选项 A（推荐，跟最新 SDK）**：把部署目标抬到 15.0。
+
+```ruby
+# Podfile 第一行去掉注释并改成 15.0
+platform :ios, '15.0'
+```
+
+同时在 Xcode 里改 target `ARIndoorNav` → General → Minimum Deployments → 15.0（或更高）。
+
+**选项 B（保持 iOS 14）**：在 Podfile 里钉住 Firebase 10.x，并把三个旧式 pod 换成现代名字（`Firebase/Core` 由下面两个自动带入）：
+
+```ruby
+platform :ios, '14.0'
+
+target 'ARIndoorNav' do
+  use_frameworks!
+  pod 'FirebaseAuth', '~> 10.29'
+  pod 'FirebaseDatabase', '~> 10.29'
+end
+```
+
+两种选项下 App 代码都不用改：`Auth.auth()`、`Database.database()` 这些 API 在 10.x / 11.x / 12.x 里都还在。
+
+如果装完 Pod 后 Xcode 报 `armv7` 或 `VALID_ARCHS` 相关错误，把 target 的 Build Settings → ARCHS 设成 `arm64`（本工程 `Info.plist` 里残留的 `armv7` 只影响上架，不影响真机运行）。
 
 ## 6. 测试清单
 
@@ -242,5 +280,22 @@ open ARIndoorNav.xcworkspace    # 用 workspace，不是 xcodeproj
 
 ---
 
-文档版本：2026-10-12 初版。内容基于快照 `d83cf7c6` 的逐行取证；后续若修改原版代码，请先更新本文件再动代码。
+## 9. 本轮只读核验记录（2026-10-14）
+
+下面的硬结论都在本目录源码上逐条复核过，核验过程没有修改任何原版代码：
+
+| 结论 | 核验位置 |
+| --- | --- |
+| 只有 2 张参考图，名字必须是 `pi` / `1` | `Assets.xcassets/ARResources.arresourcegroup/Contents.json` 只列这两个；`ARSceneViewDelegate.swift:403` 做名字判断 |
+| 打印宽度 3 英寸 / 5 英寸 | 两个 `.arreferenceimage/Contents.json` 的 `properties.width` |
+| 世界原点只锁一次 | `ARSceneViewDelegate.swift:307` |
+| 到达判定被停用 | `ARSceneViewDelegate.swift:78`（注释掉的调用）、`:419` 起 `checkDestinationLoop` 无任何调用点 |
+| 忽略 `beacon_name` | `Utils/Formatter.swift` 的 `buildNodeListWithJsonData` 只用 `node_count` 与偏移量；`ManageMapsController.swift:371` 读出的 `beaconName` 不参与导航 |
+| 没有机器人控制 | 全工程无 `CoreBluetooth` 命中 |
+| 本地存档 = UserDefaults + NSKeyedArchiver | `Model/DataStoreManager.swift:33-61` |
+| 登录不阻塞 AR 主流程 | `Auth.auth()` 只出现在 Form / Profile / ManageMaps 的登录、上传、下载分支 |
+
+---
+
+文档版本：2026-10-12 初版；2026-10-14 修订（补 3.6 轮子编码器结论、5.5 依赖解析、第 9 节核验记录）。内容基于快照 `d83cf7c6` 的逐行取证；后续若修改原版代码，请先更新本文件再动代码。
 
