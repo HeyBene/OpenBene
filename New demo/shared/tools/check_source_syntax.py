@@ -17,7 +17,11 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-SOURCES = [ROOT / "Android" / "app" / "src", ROOT / "IOS"]
+SOURCES = [
+    ROOT / "Android" / "app" / "src",
+    ROOT / "Android-ARIndoorNav" / "app" / "src",
+    ROOT / "IOS",
+]
 SUFFIXES = (".kt", ".swift")
 PAIRS = {")": "(", "]": "[", "}": "{"}
 

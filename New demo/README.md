@@ -2,7 +2,12 @@
 
 在 OpenBot 的 tracking 基础上，用手机 AR 做有限程度的定点导航：机器人的手机上运行本工程的两个 App，识别贴在地面上的打印锚点（二维码 / 图像锚点），把 AR 世界坐标对齐到楼面地图，然后用 Dijkstra 规划房间路线、沿折线行驶，并通过蓝牙 LE 直接驱动 OpenBot 底盘。手机装在机器人上，所以「导航」是机器人自主开过去，App 同时用界面显示转向提示与地图位置。
 
-两个 demo 共用同一套地图、同一套算法和同一份锚点贴纸，只在 AR 定位这一层不同：
+Android 侧现在有两个工程，方向不同，可以同时安装：
+
+* `New demo/Android`（增强版）：导入楼层地图 JSON，选房间、Dijkstra 规划、多锚点纠偏；
+* `New demo/Android-ARIndoorNav`（对标原版 ARIndoorNav）：不导入地图，App 内现场采集一条节点链、之后复现这条链，单锚点 + VIO，没有规划与重定位。详见 [Android-ARIndoorNav/README.md](Android-ARIndoorNav/README.md)。
+
+两个 demo（Android 增强版与 iOS）共用同一套地图、同一套算法和同一份锚点贴纸，只在 AR 定位这一层不同：
 
 | Demo | 平台 | 锚点识别 | AR 定位 |
 | --- | --- | --- | --- |
@@ -38,7 +43,8 @@ New demo/
     markers/*.png           4 张可打印锚点贴纸（200 mm，二维码 + 箭头 + 定位角块）
     navcore/                Python 参考实现（路由、引导、位姿估计、执行状态机、跟随、仿真）
     tools/                  生成贴纸 / 生成图标 / 校验地图 / 同步资源 / 校验锚点数学 / 校验跟随参数
-  Android/                  Android 工程（Kotlin + ARCore + ML Kit + 人脸检测）
+  Android/                  Android 增强版工程（Kotlin + ARCore + ML Kit + 人脸检测）
+  Android-ARIndoorNav/      Android 对标原版 ARIndoorNav 的减法工程（单锚点 + 节点链，无地图）
   IOS/                      iOS 工程（Swift + ARKit + Vision + CoreBluetooth + 人体检测）
   _ref/qr-nav/              参考仓库的本地克隆，仅作对照，不参与构建
 ```
@@ -128,6 +134,10 @@ python shared/tools/verify_follow_parity.py
 5. 跟随模式：AR 界面底部把开关切到 “Follow mode”，把操作者放在相机前面，再点 “Start driving”。跟随不需要定位，所以没看到锚点也能启动；机器人会保持目标框居中并维持距离。
 6. 不想接机器人时不要打开蓝牙开关，App 会用 mock link：只把控制量显示在界面上，可以手持手机在贴纸间移动来验证整套导航逻辑。
 
+### 对标原版 ARIndoorNav 的 Android 工程
+
+`Android-ARIndoorNav/` 是上面这个工程的减法副本：去掉地图 JSON、Dijkstra、多锚点重定位、二维码解码与 4 张 OpenBene 贴纸，锚点换成原版的两张参考图（`pi` 3 in 宽、`1` 5 in 宽），流程改成"现场采集一条节点链 → 之后复现这条链"。它同样在本机编译通过（产物 `Android-ARIndoorNav/app/build/outputs/apk/debug/app-debug.apk`，约 48 MB），包名 `com.openbene.arindoornav`，可与增强版同时安装。功能边界、操作步骤、打印尺寸、测试清单与已知限制见 [Android-ARIndoorNav/README.md](Android-ARIndoorNav/README.md)。
+
 图像锚点数据库是 App 启动时用 `assets/markers/*.png` 现建的（`AugmentedImageDatabase.addImage`），不需要额外工具。如果想让 ARCore 用离线特征库（更稳），可以：
 
 ```bash
@@ -178,8 +188,9 @@ arcoreimg build-db --input_images=shared/markers --output=Android/app/src/main/a
 
 ## 已知限制与验证状态
 
+* Android 侧另有对标原版 ARIndoorNav 的减法工程 `Android-ARIndoorNav/`：本机编译通过（约 48 MB 的 debug APK），只验证到编译与打包，装机运行仍需现场验证；其功能边界与测试清单见该目录 README。
 * 本工程在 Windows 上开发：**Python 参考实现与全部 86 个测试、地图校验、资源同步、锚点数学、原生源码结构检查都在本机跑通**；**Android 工程已在本机用 Gradle 8.10.2 + AGP 8.5.0 + Kotlin 1.9.24 + JDK 17 实际编译通过**，产物为 `Android/app/build/outputs/apk/debug/app-debug.apk`。本机没有连接 Android 设备，所以还没有装机运行验证。iOS 工程（含跟随模式）在本机没有 Xcode 的情况下写成，内核另有 38 个 `swift test` 用例，**尚未编译**，请在 Xcode 里首次构建时留意报错。
 * 有限定点导航：只支持地图里已有的房间与节点，没有避障重规划，没有动态障碍绕行；走廊里出现新障碍时靠声呐停车等待人工清障。
 * 二维码备用解算依赖印刷尺寸（`MarkerGeometry.DEFAULT_CODE_QUAD_SIZE_M = 0.12`，即含静区的二维码块宽）与相机内参，位置精度约 ±10-15%，航向在机器人正对贴纸时可信；图像锚点路径没有这个问题。两条路径的取舍与公式都写在 `shared/navcore/openbene_nav/marker_math.py` 的模块注释里。
 * 跟随模式只跟一个目标：控制器取画面里最大的框，多人同框时会来回切换；目标框高度当距离用，换相机倾角或换人之后要重新标定 `targetHeight`。
-* 未提交 git：`New demo/` 目前还是未跟踪目录，需要入库时再决定提交范围。
+* 提交状态：`New demo/` 已入库并推送到 `HeyBene/OpenBene` 的 `main` 分支；`_ref/`（参考仓库克隆）与各工程里的 `local.properties`、`local-mirror.init.gradle` 是本机专用文件，已列进 `.gitignore`。

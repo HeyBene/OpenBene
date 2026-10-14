@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">OpenBene AR Indoor Nav</string>
+    <string name="subtitle">One anchor sheet, a recorded node chain, the OpenBot drives it. No map import.</string>
+    <string name="storage_label">Routes file</string>
+    <string name="create_map_button">Create custom map</string>
+    <string name="routes_label">Saved routes</string>
+    <string name="no_routes">No route yet. Put the robot on the anchor sheet and tap Create custom map.</string>
+    <string name="navigate_button">Navigate</string>
+    <string name="delete_button">Delete</string>
+    <string name="delete_confirm_title">Delete route</string>
+    <string name="delete_confirm_message">Delete %1$s?</string>
+    <string name="follow_button">Follow the operator (OpenBot tracking)</string>
+    <string name="connect_label">Drive a real OpenBot over Bluetooth LE (otherwise a mock link records the commands)</string>
+    <string name="scan_button">Scan for OpenBot</string>
+    <string name="scanning_bluetooth">Scanning for the OpenBot BLE service\u2026</string>
+    <string name="no_robot_found">No OpenBot found. Check that the ESP32 is powered and in range.</string>
+    <string name="connected_to">Connected to %1$s</string>
+    <string name="status_idle">Idle. The robot must be placed on the anchor sheet before starting.</string>
+    <string name="camera_permission_needed">Camera permission is required for AR navigation.</string>
+    <string name="ar_not_supported">This device has no supported ARCore installation. Install Google Play Services for AR.</string>
+    <string name="route_load_failed">Could not load the route: %1$s</string>
+
+    <string name="state_booting">booting AR</string>
+    <string name="state_looking_for_anchor">Looking for the anchor sheet\u2026</string>
+    <string name="state_anchor_locked">Anchor locked: %1$s</string>
+    <string name="state_capturing">Capturing a route on anchor %1$s</string>
+    <string name="state_navigating">Navigating to %1$s</string>
+    <string name="state_following">Follow mode (OpenBot tracking)</string>
+    <string name="capture_hint_start">Tap Add to record the start node at the current position.</string>
+    <string name="capture_hint_more">Tap Add for the next node, End for the destination.</string>
+    <string name="capture_hint_ended">Destination recorded. Tap Save.</string>
+    <string name="capture_hint_need_anchor">Scan the anchor sheet first, then tap Add.</string>
+    <string name="capture_add">Add</string>
+    <string name="capture_undo">Undo</string>
+    <string name="capture_end">End</string>
+    <string name="capture_save">Save</string>
+    <string name="save_dialog_title">Route name</string>
+    <string name="save_dialog_hint">destination</string>
+    <string name="save_done">Saved %1$s</string>
+    <string name="save_failed">Could not save: %1$s</string>
+    <string name="navigate_hint">Anchor locked. Tap Start driving to follow the recorded chain.</string>
+    <string name="start_driving_button">Start driving</string>
+    <string name="stop_button">Stop</string>
+    <string name="follow_ready">Put the operator in front of the camera, then tap Start driving.</string>
+    <string name="follow_armed">Follow mode armed: the robot drives towards the person in front of it.</string>
+    <string name="follow_waiting">waiting for the camera</string>
+    <string name="waiting_for_tracking">Waiting for AR tracking\u2026</string>
+</resources>
