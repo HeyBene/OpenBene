@@ -103,3 +103,24 @@ public enum OpenBotProtocol {
         rpm / 60.0 * 2.0 * Double.pi * wheelRadiusM
     }
 }
+
+/// BLE notifications may split a line or contain several complete lines.
+/// Never parse a partial wheel/sensor value as a whole measurement.
+public struct OpenBotTelemetryStream {
+    private var buffer = Data()
+    public init() {}
+
+    public mutating func receive(_ data: Data, to telemetry: Telemetry, nowS: Double, sonarInstalled: Bool) {
+        buffer.append(data)
+        // Byte framing also handles CRLF, which Swift treats as a single
+        // Character and therefore cannot find with String.firstIndex(of: "\n").
+        while let end = buffer.firstIndex(of: 10) {
+            let line = String(decoding: buffer[..<end], as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
+            buffer.removeSubrange(...end)
+            if !sonarInstalled, case .sonar? = OpenBotProtocol.parse(line) { continue }
+            OpenBotProtocol.apply(line, to: telemetry, nowS: nowS)
+        }
+        if buffer.count > 4096 { buffer.removeAll() }
+        if !sonarInstalled { telemetry.sonarCm = nil }
+    }
+}

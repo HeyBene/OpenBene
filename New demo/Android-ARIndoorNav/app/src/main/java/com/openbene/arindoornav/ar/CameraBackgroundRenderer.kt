@@ -22,9 +22,10 @@ class CameraBackgroundRenderer {
     private var texCoordAttrib = 0
     private var textureUniform = 0
 
-    private val quadVertices = FloatBuffer.allocate(8)
-    private val quadTexCoords = FloatBuffer.allocate(8)
-    private val quadTexCoordsTransformed = FloatBuffer.allocate(8)
+    private val quadVertices = ByteBuffer.allocateDirect(8 * 4).order(ByteOrder.nativeOrder()).asFloatBuffer()
+    private val quadTexCoords = ByteBuffer.allocateDirect(8 * 4).order(ByteOrder.nativeOrder()).asFloatBuffer()
+    private val quadTexCoordsTransformed = ByteBuffer.allocateDirect(8 * 4).order(ByteOrder.nativeOrder()).asFloatBuffer()
+    private var uvReady = false
     private val projectionMatrix = FloatArray(16)
 
     val cameraTextureId: Int get() = textureId
@@ -35,6 +36,7 @@ class CameraBackgroundRenderer {
     }
 
     fun createOnGlThread(context: Context) {
+        uvReady = false
         val vertexShader = loadShader(GLES20.GL_VERTEX_SHADER, VERTEX_SHADER)
         val fragmentShader = loadShader(GLES20.GL_FRAGMENT_SHADER, FRAGMENT_SHADER)
         program = GLES20.glCreateProgram()
@@ -66,8 +68,9 @@ class CameraBackgroundRenderer {
 
     fun draw(frame: Frame) {
         if (program == 0) return
-        if (frame.hasDisplayGeometryChanged()) {
+        if (!uvReady || frame.hasDisplayGeometryChanged()) {
             frame.transformDisplayUvCoords(quadTexCoords, quadTexCoordsTransformed)
+            uvReady = true
         }
 
         GLES20.glDisable(GLES20.GL_DEPTH_TEST)

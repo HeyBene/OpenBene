@@ -2,6 +2,7 @@ package com.openbene.arindoornav
 
 import android.Manifest
 import android.content.pm.PackageManager
+import android.content.Intent
 import android.os.Build
 import android.os.Bundle
 import android.os.Handler
@@ -12,12 +13,17 @@ import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
+import android.widget.EditText
+import android.widget.Spinner
+import android.widget.ArrayAdapter
+import android.text.InputType
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import com.google.android.material.materialswitch.MaterialSwitch
 import com.openbene.arindoornav.ar.ArRouteActivity
+import com.openbene.arindoornav.ar.AnchorSheets
 import com.openbene.arindoornav.model.StoredRoute
 import com.openbene.arindoornav.robot.OpenBotBleLink
 import java.util.Locale
@@ -57,8 +63,9 @@ class MainActivity : AppCompatActivity() {
 
         storageText.text = getString(R.string.storage_label) + ": " + store.location()
 
-        createMapButton.setOnClickListener {
-            startActivity(ArRouteActivity.intent(this, ArRouteActivity.MODE_CAPTURE))
+        createMapButton.setOnClickListener { chooseAnchor() }
+        findViewById<Button>(R.id.pwmButton).setOnClickListener {
+            startActivity(Intent(this, PwmActivity::class.java))
         }
         followButton.setOnClickListener {
             startActivity(ArRouteActivity.intent(this, ArRouteActivity.MODE_FOLLOW))
@@ -78,8 +85,8 @@ class MainActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
-        renderRoutes()
         updateStatus()
+        renderRoutes()
     }
 
     override fun onDestroy() {
@@ -89,9 +96,48 @@ class MainActivity : AppCompatActivity() {
         handler.removeCallbacksAndMessages(null)
     }
 
+    override fun onPause() {
+        handler.removeCallbacksAndMessages(null)
+        bleLink?.stopScan()
+        super.onPause()
+    }
+
+    private fun chooseAnchor() {
+        val body = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(32, 16, 32, 16) }
+        val sheet = Spinner(this).apply {
+            adapter = ArrayAdapter(this@MainActivity, android.R.layout.simple_spinner_dropdown_item, AnchorSheets.ALL.map { it.name })
+        }
+        val width = EditText(this).apply {
+            hint = "完整图片实测宽度（厘米）"; setText("20")
+            inputType = InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_FLAG_DECIMAL
+        }
+        body.addView(TextView(this).apply { text = "选一张锚点图片，打印并平放地面。填写完整图片的实际宽度。" })
+        body.addView(sheet); body.addView(width)
+        sheet.onItemSelectedListener = object : android.widget.AdapterView.OnItemSelectedListener {
+            override fun onItemSelected(parent: android.widget.AdapterView<*>?, view: View?, index: Int, id: Long) {
+                width.setText((AnchorSheets.ALL[index].widthM * 100).toString())
+            }
+            override fun onNothingSelected(parent: android.widget.AdapterView<*>?) {}
+        }
+        val dialog = AlertDialog.Builder(this).setTitle("开始采集").setView(body)
+            .setNegativeButton("取消", null).setPositiveButton("打开相机", null).create()
+        dialog.setOnShowListener {
+            dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+                val cm = width.text.toString().toFloatOrNull()
+                if (cm == null || !cm.isFinite() || cm !in 1f..200f) { width.error = "请输入 1–200 cm"; return@setOnClickListener }
+                startActivity(ArRouteActivity.intent(this, ArRouteActivity.MODE_CAPTURE)
+                    .putExtra("anchor", AnchorSheets.ALL[sheet.selectedItemPosition].name).putExtra("width", cm / 100))
+                dialog.dismiss()
+            }
+        }
+        dialog.show()
+    }
+
     private fun renderRoutes() {
         routeList.removeAllViews()
-        val routes = store.load().sortedBy { it.destination.lowercase() }
+        val routes = runCatching { store.load().sortedBy { it.destination.lowercase() } }.getOrElse {
+            statusText.text = "本地航线读取失败：${it.message}"; emptyList()
+        }
         emptyRoutesText.visibility = if (routes.isEmpty()) View.VISIBLE else View.GONE
         for (route in routes) routeList.addView(routeRow(route))
     }
@@ -109,7 +155,7 @@ class MainActivity : AppCompatActivity() {
         info.textSize = 13f
         info.text = String.format(
             Locale.US,
-            "%s\nanchor %s, %d nodes, %.1f m",
+            "%s\n锚点 %s，%d 个节点，%.1f m",
             route.destination,
             route.beaconName.ifEmpty { "?" },
             route.nodeCount,
@@ -139,8 +185,9 @@ class MainActivity : AppCompatActivity() {
             .setTitle(R.string.delete_confirm_title)
             .setMessage(getString(R.string.delete_confirm_message, route.destination))
             .setPositiveButton(android.R.string.ok) { _, _ ->
-                store.delete(route.destination)
-                renderRoutes()
+                runCatching { store.delete(route.destination) }
+                    .onSuccess { renderRoutes() }
+                    .onFailure { Toast.makeText(this, "删除失败：${it.message}", Toast.LENGTH_LONG).show() }
             }
             .setNegativeButton(android.R.string.cancel, null)
             .show()
@@ -163,7 +210,7 @@ class MainActivity : AppCompatActivity() {
     private fun blePermissions(): Array<String> = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
         arrayOf(Manifest.permission.BLUETOOTH_SCAN, Manifest.permission.BLUETOOTH_CONNECT)
     } else {
-        arrayOf(Manifest.permission.ACCESS_FINE_LOCATION)
+        arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION)
     }
 
     private fun requestBlePermissions() {
@@ -186,13 +233,14 @@ class MainActivity : AppCompatActivity() {
         bleLink?.close()
         bleLink = link
         link.startScan { device, rssi ->
-            val name = runCatching { device.name }.getOrNull() ?: "OpenBot"
+            val name = try { device.name } catch (_: SecurityException) { null } ?: "OpenBot"
             found[device.address] = name + "  " + rssi + " dBm  " + device.address
         }
         handler.postDelayed({ showScanResults() }, SCAN_WINDOW_MS)
     }
 
     private fun showScanResults() {
+        bleLink?.stopScan()
         if (isFinishing) return
         if (found.isEmpty()) {
             statusText.text = getString(R.string.no_robot_found)

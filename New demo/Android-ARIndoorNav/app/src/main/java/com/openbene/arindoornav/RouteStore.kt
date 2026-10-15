@@ -4,12 +4,9 @@ import android.content.Context
 import com.openbene.arindoornav.model.RouteCodec
 import com.openbene.arindoornav.model.StoredRoute
 import java.io.File
+import android.util.AtomicFile
 
-/**
- * Routes live in one JSON file inside the app sandbox. The file uses the schema of
- * the original ARIndoorNav Firebase database; the original asked a Node service
- * for it, which this demo does not need.
- */
+/** Local-only storage; AtomicFile preserves the previous capture on failed writes. */
 class RouteStore(private val context: Context) {
 
     private val file: File get() = File(context.filesDir, FILE_NAME)
@@ -17,16 +14,17 @@ class RouteStore(private val context: Context) {
     fun location(): String = file.absolutePath
 
     fun load(): List<StoredRoute> {
-        if (!file.exists()) return emptyList()
-        return try {
-            RouteCodec.decode(file.readText())
-        } catch (error: Exception) {
-            emptyList()
-        }
+        val atomic = AtomicFile(file)
+        if (!atomic.baseFile.exists() && !File(file.path + ".bak").exists()) return emptyList()
+        return atomic.openRead().bufferedReader().use { RouteCodec.decode(it.readText()) }
     }
 
     fun save(routes: List<StoredRoute>) {
-        file.writeText(RouteCodec.encode(routes))
+        val bytes = RouteCodec.encode(routes).toByteArray(Charsets.UTF_8)
+        val atomic = AtomicFile(file)
+        val stream = atomic.startWrite()
+        try { stream.write(bytes); atomic.finishWrite(stream) }
+        catch (error: Exception) { atomic.failWrite(stream); throw error }
     }
 
     fun find(destination: String): StoredRoute? =

@@ -24,6 +24,7 @@ class NodeOverlayView @JvmOverloads constructor(
 ) : View(context, attrs) {
 
     private var nodes: List<FloatArray> = emptyList()
+    private var headingTips: List<FloatArray> = emptyList()
     private var viewProjection: FloatArray? = null
     private var focalPx: Float = 0f
     private var currentIndex: Int = -1
@@ -62,15 +63,17 @@ class NodeOverlayView @JvmOverloads constructor(
         setShadowLayer(6f, 0f, 2f, Color.BLACK)
     }
 
-    /** Nodes are AR world positions; call from any thread. */
+    /** Nodes are AR world positions; call on the main thread. */
     fun update(
         nodes: List<FloatArray>,
         viewProjection: FloatArray,
         focalPx: Float,
         currentIndex: Int,
         anchorName: String?,
+        headingTips: List<FloatArray> = emptyList(),
     ) {
         this.nodes = nodes
+        this.headingTips = headingTips
         this.viewProjection = viewProjection
         this.focalPx = focalPx
         this.currentIndex = currentIndex
@@ -103,6 +106,13 @@ class NodeOverlayView @JvmOverloads constructor(
 
         for (index in projected.indices) {
             val point = projected[index] ?: continue
+            val tip = headingTips.getOrNull(index)
+            if (tip != null && ArMath.project(matrix, tip, width, height, screen)) {
+                linePaint.color = Color.CYAN
+                canvas.drawLine(point[0], point[1], screen[0], screen[1], linePaint)
+                drawArrowHead(canvas, point, floatArrayOf(screen[0], screen[1]))
+                linePaint.color = Color.parseColor("#E6FFFFFF")
+            }
             val radius = (focalPx * NODE_RADIUS_M / point[2]).coerceIn(6f, 120f)
             val end = index == 0 || index == projected.size - 1
             canvas.drawCircle(point[0], point[1], radius, if (end) spherePaint else intermediatePaint)
@@ -112,13 +122,12 @@ class NodeOverlayView @JvmOverloads constructor(
             canvas.drawText(label(index, projected.size), point[0], point[1] - radius - 12f, labelPaint)
         }
 
-        anchorName?.let { canvas.drawText("anchor: " + it, 24f, height - 24f, anchorPaint) }
+        anchorName?.let { canvas.drawText("锚点：" + it, 24f, height - 24f, anchorPaint) }
     }
 
     private fun label(index: Int, count: Int): String = when {
-        index == 0 -> "start"
-        index == count - 1 -> "dest"
-        else -> index.toString()
+        index == 0 -> "起点"
+        else -> "节点 $index"
     }
 
     private fun drawArrowHead(canvas: Canvas, from: FloatArray, to: FloatArray) {

@@ -13,9 +13,13 @@ object OpenBotProtocol {
 
     fun clampSpeed(speed: Double): Double = speed.coerceIn(-1.0, 1.0)
 
-    fun speedToPwm(speed: Double): Int = Math.round(clampSpeed(speed) * MAX_PWM).toInt()
+    fun speedToPwm(speed: Double): Int {
+        val value = clampSpeed(speed) * MAX_PWM
+        return if (value >= 0) kotlin.math.floor(value + 0.5).toInt() else -kotlin.math.floor(-value + 0.5).toInt()
+    }
 
     fun ctrlCmd(left: Double, right: Double): ByteArray {
+        if (!left.isFinite() || !right.isFinite()) return "c0,0\n".toByteArray(Charsets.US_ASCII)
         val payload = "c" + speedToPwm(left) + "," + speedToPwm(right) + "\n"
         return payload.toByteArray(Charsets.US_ASCII)
     }
@@ -53,4 +57,21 @@ object OpenBotProtocol {
 
     fun rpmToSpeedMps(rpm: Double, wheelRadiusM: Double): Double =
         rpm / 60.0 * 2.0 * Math.PI * wheelRadiusM
+}
+
+/** Newline-framed BLE data can be split across multiple notifications. */
+class TelemetryStream {
+    private val buffer = StringBuilder()
+    fun receive(bytes: ByteArray, telemetry: Telemetry, nowS: Double, sonarInstalled: Boolean = false) {
+        buffer.append(bytes.toString(Charsets.US_ASCII).replace("\u0000", ""))
+        while (true) {
+            val end = buffer.indexOf("\n")
+            if (end < 0) break
+            val line = buffer.substring(0, end).trim()
+            buffer.delete(0, end + 1)
+            if (sonarInstalled || !line.startsWith("s")) OpenBotProtocol.applyLine(telemetry, line, nowS)
+        }
+        if (buffer.length > 4096) buffer.setLength(0)
+        if (!sonarInstalled) telemetry.sonarCm = null
+    }
 }

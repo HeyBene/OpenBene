@@ -59,9 +59,9 @@ public final class Router {
         guard mapData.hasLocation(startLocationId) else { throw MapError.unknownLocation(startLocationId) }
         guard mapData.hasLocation(destinationLocationId) else { throw MapError.unknownLocation(destinationLocationId) }
 
-        let resolvedRoom = room ?? Room(
+        let resolvedRoom = try room ?? Room(
             id: destinationLocationId,
-            name: try mapData.location(destinationLocationId).name,
+            name: mapData.location(destinationLocationId).name,
             locationId: destinationLocationId
         )
 

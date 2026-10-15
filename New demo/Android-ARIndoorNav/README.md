@@ -1,144 +1,122 @@
-# OpenBene AR Indoor Nav（Android · 对标原版 ARIndoorNav）
+# OpenBene Android 锚点导航（ARCore）
 
-这是 `New demo/Android`（增强版）的**减法副本**：只保留原版 ARIndoorNav 的那一套模型 —— **一张参考图锚点 + 一条现场采集的节点链 + 复现这条链**，并保留 OpenBot 的 BLE 驱动链路。两个工程并存、互不影响：
+以当前 iOS 版的现场采集和节点执行逻辑为基础：单张地面图像锚点 → 采集起点和有朝向的节点链 → 本机保存 → 再次识别同一锚点 → 按采集顺序复现位置与朝向。
 
-| 工程 | 用途 |
-| --- | --- |
-| `New demo/Android` | 增强版：导入楼层地图 JSON，选房间、Dijkstra 规划、沿折线行驶、途中多锚点纠偏 |
-| `New demo/Android-ARIndoorNav`（本工程） | 对标原版：不导入任何地图，App 内采集节点链，之后复现这条链 |
+没有预设地图、地图导入、路径规划、自动反向路线、中途重设锚点或云端存储。旧的跟随模式保留，和节点导航分开。
 
-本工程删掉了楼层地图文件、Dijkstra 路由、转向指引、多锚点重定位、二维码（ML Kit 条码）解码与 4 张 OpenBene 贴纸；锚点改为原版 ARIndoorNav 的**两张参考图**（`pi`、`1`）。
+## 在当前 Mac 上用 Flutter 运行
 
----
+已经安装并验证 Flutter 3.29.1、Dart 3.7.0、JDK 21、Android SDK 34、Gradle 8.7。JDK/SDK 位于工作区根目录 `.android-tools`，已通过 `flutter config` 指向该位置。请保留这个目录。`~/.gradle` 链接到其中的构建缓存，避免重复下载。
 
-## 1. 与原版 ARIndoorNav 的对应关系
+1. 安卓手机开启开发者选项与 USB 调试，用数据线连接 Mac，在手机上允许这台 Mac 调试。
+2. 进入 Flutter 工程：
 
-| 原版 ARIndoorNav（iOS + ARKit + Firebase） | 本工程（Kotlin + ARCore） | 是否等价 |
-| --- | --- | --- |
-| `Assets.xcassets/ARResources` 里 2 张参考图 `pi`（3 in 宽）、`1`（5 in 宽） | `assets/anchors/pi.jpg`、`assets/anchors/1.jpeg`，宽度写死在 `AnchorSheets.ALL` | 等价（必须按同宽度打印，见 §5） |
-| 每个 AR 会话把**第一张**扫到的参考图设为世界原点（`session.setWorldOrigin`） | 把第一张 `AugmentedImage` 的 `centerPose` 记为锚点帧，之后不再改 | 等价：单锚点，一次会话只锚一次 |
-| `Create Custom Map`：扫锚点 → `Add` 起点 → `Add` 中间点 → `End` 终点 → `Save` | 同一套按钮与顺序（`Add` / `Undo` / `End` / `Save`） | 等价 |
-| 节点只存 `x_offset/y_offset/z_offset`（相对上一节点；第一个节点相对参考图） | 同样的三个量、同样的语义、同样的 JSON 键名 | 等价 |
-| 导航时按偏移累加逐个重建节点，放球体 + 连线 + 箭头 | 同样按偏移累加，画球体 + 连线 + 箭头（用相机矩阵投影到 2D 画布） | 等价 |
-| 路线存在 Firebase Realtime Database + 自建 Node 服务 | 存在 App 私有目录 `files/routes.json`，**JSON 结构与原版数据库一致** | 存储不同、格式相同（原版导出可直接拷入） |
-| 账号/登录/改密/下载地图等 Firebase Auth 界面 | 无 | 本工程不需要 |
-| 只有 start / intermediate / destination 三种节点 | 同样三种 | 等价 |
-| 没有：中途重定位、多锚点纠偏、回环、ARWorldMap / Cloud Anchor、反向路线、地图规划 | 同样没有 | 等价（都是"单锚点 + VIO 连续跟踪"） |
-| 到达判定被注释掉（`ARSceneViewDelegate.swift` 里的 `//self.checkDestinationLoop()`） | 补了"到点停车"（0.30 m） | **差异**：否则底盘不会停 |
-| 不驱动任何底盘（纯视觉指引） | 保留 OpenBot BLE 驱动层，可沿节点链行驶 | **差异**：这一层是 OpenBot 集成，不属于原版 |
+```sh
+cd "/Users/fandi/Downloads/ARIndoorNav-main/OpenBene/New demo/Android-ARIndoorNav/flutter"
+flutter devices
+flutter run -d <安卓设备ID>
+```
 
-结论：本工程复刻的是原版的**路线模型与操作流程**；底盘驱动与跟随模式来自 OpenBot 基线（`New demo/Android` 已有），不属于原版 ARIndoorNav 的功能。
+只有一台安卓设备时可直接 `flutter run`。如编辑器已打开，重开终端或编辑器可刷新 SDK 配置。不需要配置 Apple Team 或 Firebase。
 
-## 2. 代码结构
+应用启动后会自动打开导航首页。Flutter 入口通过 MethodChannel 打开原生 Kotlin 界面；ARCore、相机、地图采集、导航和 BLE 共用 `app/src/main` 的实现。Dart 页面可 hot reload；修改 Kotlin/Android 后需停止再运行 `flutter run`。
 
-| 路径 | 作用 |
-| --- | --- |
-| `MainActivity.kt` | 路线列表、新建采集、进入导航/跟随、蓝牙选 OpenBot |
-| `RouteStore.kt` | 读写 `files/routes.json`（原版数据库 schema） |
-| `AppState.kt` | BLE 选择与 `RobotLink` 构造（没选设备就用 mock 链路） |
-| `model/RouteModel.kt` | `RouteNode` / `StoredRoute` / `RouteCodec`（原版 JSON 的编码解码） |
-| `ar/ArRouteActivity.kt` | AR 会话、锚点锁定、采集、复现、驱动、跟随 |
-| `ar/AnchorSheets.kt` | 两张参考图与物理宽度，运行时构造 `AugmentedImageDatabase` |
-| `ar/ArMath.kt` | 4×4 矩阵乘法、点投影、平面位姿（x、−z、yaw） |
-| `ar/NodeOverlayView.kt` | 球体 + 连线 + 箭头的投影绘制 |
-| `ar/CameraBackgroundRenderer.kt`、`ar/DisplayRotationHelper.kt` | ARCore 相机背景与旋转（来自增强版） |
-| `nav/NodeDriver.kt` | 朝当前节点行驶的控制器（先原地转向，再差速前进；声呐 35 cm 停车） |
-| `nav/FollowController.kt`、`robot/PersonBoxDetector.kt` | 跟随模式（来自增强版；检测器多传了显示旋转，跟随的左右方向才和画面对齐） |
-| `robot/OpenBotProtocol.kt`、`robot/OpenBotBleLink.kt`、`robot/RobotLink.kt` | ESP32 BLE 协议与链路 |
+若只需生成调试包：
 
-## 3. 算法：锚点帧与节点链
+```sh
+flutter build apk --debug --target-platform android-arm64
+```
 
-**锚点帧。** 扫到参考图后取 `centerPose` 作为这一会话的参考坐标系；采集时把相机位姿换算到锚点帧：
+输出为 `flutter/build/app/outputs/flutter-apk/app-debug.apk`，不需要手动管理 APK 才能真机调试。`flutter run` 会按连接的设备编译、安装和启动。
+
+## 换一台 Mac
+
+安装 Flutter、JDK 17 或 21、Android SDK 命令行工具或 Android Studio；安装 `platform-tools`、`platforms;android-34`、`build-tools;34.0.0`。Flutter 构建还会使用 NDK `26.1.10909125` 和 CMake `3.22.1`（首次构建可自动安装）。
+
+```sh
+flutter config --android-sdk <SDK绝对路径> --jdk-dir <JDK的Contents/Home绝对路径>
+flutter doctor --android-licenses
+cd flutter
+flutter pub get
+flutter run -d <安卓设备ID>
+```
+
+`local.properties`、SDK、JDK、缓存和构建产物均不提交到仓库。Gradle wrapper 脚本及 JAR 已补全并锁定 Gradle 8.7 的分发 SHA-256。
+
+## 真机使用顺序
+
+需要支持 ARCore 的 Android 7.0/API 24 或以上设备，并安装 Google Play Services for AR。应用内会请求相机及蓝牙权限；Android 11 及以下还需位置权限和系统定位开关用于 BLE 搜索。
+
+### 1. 先测试底盘
+
+首页打开蓝牙驱动开关，扫描并选择底盘，再进入“PWM 调节与测试”。首次测试将车轮架空，确认前进、左右转向及停车方向。
+
+- 直行、左转、右转三个 PWM 独立设置，范围 `0..255`，默认均为 **160**。
+- 滑块及 ±1 按钮调节；“保存并应用”保存至本机。
+- 三个测试按钮用当前界面值运行 **1 秒**，随后自动停车。修改数值、手动停车、离开页面、切到后台、断连或碰撞也会结束测试。
+- 页面显示连接、电压（底盘有回读时）、最近发送的控制帧和链路错误。
+- 根目录旧跟随模式仍使用原跟随参数；这三个设置作用于节点导航和短时 PWM 测试。
+
+### 2. 采集航线
+
+1. 将一张参考图片打印并平放地面，保持不动。素材在 `app/src/main/assets/anchors/`，包含 iOS 同款 entrance/junction/room101/room102 图片和原版 pi/1 图片。
+2. 首页“开始采集新航线”，选择对应图片，填写**完整图片实测宽度**（厘米；不要只量内部二维码）。四张 iOS 图默认 20 cm；pi 默认 7.62 cm，1 默认 12.7 cm，按实际打印尺寸修改。
+3. 首次对准整张图片，等待“锚点已固定”。此后可以离开图片，节点使用同一 ARCore 空间坐标。
+4. 固定手机在底盘上的安装位置。移动到起点并朝向所需方向，点“采集起点”。依次移动到每个节点，朝向需要记录的方向后点“采集节点”。记录的是相机的位置和朝向，采集与导航应使用同一安装方式。
+5. 可撤销上一个点。“终点”可标记最后一个节点；至少起点加一个节点即可直接“保存”，末点自动成为终点。起点、节点、白色航线和青色节点朝向箭头显示在相机画面上。
+6. 输入名称保存。航线位于应用私有目录 `files/routes.json`，没有上传服务器；卸载应用会删除本地数据。
+
+### 3. 应用导航
+
+1. 首页选择保存的航线，点“应用导航”。本次只识别采集时选择的同一张图片，并使用保存的实际宽度。
+2. 等待锚点固定，随后将机器人放回采集起点 **30 cm** 内，点击“开始执行”。不需要持续看见二维码。
+3. 执行顺序：
 
 ```text
-camera_in_anchor = centerPose⁻¹ · cameraPose
-offset_i         = camera_in_anchor.translation − position_(i−1)     // position_(-1) = 0
-position_i       = position_(i−1) + offset_i
+原地转向下一节点的连线方向（误差 ≤3°）
+  → 停车 2 秒
+  → 差速直行，到点距离 ≤0.30 m
+  → 停车 2 秒
+  → 转到该节点采集的朝向（误差 ≤5°）
+  → 若还有节点，停车 2 秒，再对准下一段并继续
+  → 最后一个节点完成朝向后停车结束
 ```
 
-第一个节点的参考点是参考图本身，所以它的偏移就是当时相机相对纸面的三维位置，y 分量约等于相机高度 0.4–0.5 m —— 和原版示例数据里 `start` 的 `y_offset = 0.5` 是同一件事。原版用 ARKit 的 `setWorldOrigin(relativeTransform: anchor.transform)` 做了同一件事，两种实现结果一致。
+直行时保留轻微差速修正；方向偏差超过 6° 会先停车 2 秒，再重新原地对准。设置 PWM 会先停车，保存后回起点手动重新开始。航线各段需事先确认直线可达。
 
-**复现。** 重新扫到同一张参考图后：
+跟踪暂时受限、相机超过 0.6 秒无新帧、蓝牙断开或碰撞会结束当前执行，不自动恢复动力。正常离开二维码不会重新锁定或要求重扫；切到后台会结束本次会话，需要退出 AR 页再打开并重新识别起始锚点。
 
-```text
-node_anchor = Σ offset_0..i
-node_world  = centerPose · node_anchor
+## 控制协议与参数
+
+- BLE 服务 `61653dc3-4021-4d1e-ba83-8b4eec61d613`，RX `06386c14-86ea-4d71-811c-48f97c58f8c9`，TX `9bf1103b-834c-47cf-b149-c9e4bcf778a7`。
+- 控制帧 `c<left>,<right>\n`，每轮范围 `-255..255`，停车 `c0,0\n`。160 左转为 `c-160,160\n`，160 右转为 `c160,-160\n`，直行为 `c160,160\n`。
+- 直行差速增益 `1.6`；归一化值经固件协议换算，四舍五入采用中点远离零；最终限幅到 ±255。
+- 非零控制写入间隔至少 40 ms，心跳每 250 ms 发送 `h750\n`。GATT 写入及通知订阅串行，停车优先，关闭连接前先尝试发送零指令并保留 250 ms 链路。
+- `w` 轮速遥测仅解析显示/诊断，**不用于位姿、到点或运动控制**。位置和朝向只来自 ARCore。
+- `OpenBotBleLink.SONAR_INSTALLED = false`，不订阅或使用 `s` 假距离，没有超声避障。
+
+## 验证
+
+```sh
+cd flutter
+flutter analyze
+flutter test
 ```
 
-节点之间按**直线段**连接，每段中点画一个指向下一节点的箭头。节点不是锚点，不能被重新识别；离开参考图之后只有 VIO 连续跟踪，没有任何重定位。
+共享 Kotlin 算法及 Android lint（直接调用 Gradle 需先设置 JDK）：
 
-**尺度。** ARCore 用参考图的**物理宽度**确定尺度（`pi` = 3 in = 0.0762 m，`1` = 5 in = 0.127 m，见 `AnchorSheets.ALL`）。打印宽度与代码不一致时，整条链会整体缩放错位 —— 这不是漂移，先查打印尺寸。
-
-**驱动用的平面。** 行驶只看水平量：`x = ARCore world x`、`y = −ARCore world z`、`yaw` 绕重力轴；航向误差大于 15° 先原地转，然后按 `steerGain × 误差` 做差速。声呐 35 cm 内停车、50 cm 以上恢复，到点阈值 0.30 m。
-
-## 4. 操作流程
-
-**采集（Create custom map）**
-
-1. 把手机固定在底盘上，镜头朝前下方约 30–45°；把机器人放在参考图旁边（能扫到纸面）。
-2. 点 `Create custom map` → 对准参考图，顶部状态变成 `Anchor locked: pi`（或 `1`）。没锁到之前 `Add` 是灰的。
-3. 把机器人推到路线起点 → 点 `Add`（这是 `start`，白色球）。
-4. 沿路线推着机器人走，到每个关键位置点 `Add`（蓝色球，中间点）。
-5. 到终点 → 点 `End`（终点节点）→ 点 `Save`，输入名字（例如 `door`）。点错了可以 `Undo` 回退一步。
-
-**导航（Navigate）**
-
-1. 主界面点对应路线的 `Navigate`。
-2. 把机器人放回参考图附近，对准纸面等 `Anchor locked`。
-3. 球体、连线、箭头出现（这就是原版显示的东西）。不开 BLE 时点 `Start driving` 只做**干跑**：界面显示左右轮命令（mock 链路），底盘不动。
-4. 要真跑：主界面先打开蓝牙开关 → `Scan for OpenBot` → 选中设备（名字含 `OpenBot` / `RTR_520`）→ 再进 `Navigate` → 锁定锚点后点 `Start driving`。
-
-## 5. 打印锚点图（现场准备）
-
-两张图都在 `../ARIndoorNav-original/markers-to-print/`（与原版 App 里的参考图是同一张文件）：
-
-| 文件 | 内容 | 打印宽度 |
-| --- | --- | --- |
-| `pi.jpg` | 树莓派 Raspberry Pi 3 Model B 包装盒封面照片（element14 版） | **整张图宽 3 in（76.2 mm）** |
-| `1.jpeg` | 织物上手写黑色数字 `1` 的照片 | **整张图宽 5 in（127 mm）** |
-
-两张都是"照片级"纹理，特征点足够，ARCore 检测一般可用；关键是**整张图的宽度**（不是图中某个局部）按上表打印，并且平整贴在地面、避免反光。
-
-## 6. 构建
-
-本机（Windows，Gradle 8.10.2 + AGP 8.5.0 + Kotlin 1.9.24 + JDK 17 + Android SDK 34）已实际编译通过：
-
-```bash
-cd Android-ARIndoorNav
-gradle --no-daemon :app:assembleDebug          # Android Studio 也可以直接打开本目录
-adb install -r app/build/outputs/apk/debug/app-debug.apk
+```sh
+export JAVA_HOME="/Users/fandi/Downloads/ARIndoorNav-main/.android-tools/jdk-21.0.12.1+1/Contents/Home"
+cd android
+./gradlew :app:testDebugUnitTest :app:lintDebug
 ```
 
-产物 `app/build/outputs/apk/debug/app-debug.apk` 约 48 MB（增强版约 63 MB）。本机没有连接 Android 设备，所以只验证到"编译通过 + 打包成功"，**装机运行仍需现场验证**。
+也可在原生工程根目录单独运行 `./gradlew :app:testDebugUnitTest :app:assembleDebug :app:lintDebug`。原生与 Flutter 构建使用相同应用 ID `com.openbene.arindoornav`。
 
-本机另有两个只服务本地构建、已列进 `.gitignore` 的文件：`local.properties`（指向 Android SDK）与 `local-mirror.init.gradle`（把仓库切到本地 HTTP 镜像）。仓库里没有 wrapper 的 jar，换机器可以 `gradle wrapper` 先生成。
+构建与测试记录、未完成的真机验证见 [NOTES.md](NOTES.md)。ARCore 设备与识别原理可查 [Google 官方设备列表](https://developers.google.com/ar/devices)、[Augmented Images](https://developers.google.com/ar/develop/augmented-images)；Flutter 原生桥接使用[官方 Platform Channels](https://docs.flutter.dev/platform-integration/platform-channels)。
 
-## 7. 现场测试清单
+## 采集页没有相机画面
 
-| 编号 | 步骤 | 期望 |
-| --- | --- | --- |
-| T1 | 按 §5 打印并铺好锚点图 | 尺寸正确、平整、不反光 |
-| T2 | 采集一条 2–3 个节点的短路线 | 状态显示 `Anchor locked`，球体出现在正确位置，`Undo` 能回退 |
-| T3 | `adb shell run-as com.openbene.arindoornav cat files/routes.json` | 看到与原版同构的 JSON（`beacon_name` / `node_count` / `nodes.index[].x_offset`） |
-| T4 | 主界面进入该路线，干跑（不开 BLE） | 锁定锚点后出现球体 + 连线 + 箭头；`Start driving` 只更新界面上的轮速 |
-| T5 | 打开 BLE、连上 RTR_520，再进导航 | 机器人朝当前节点行驶，到点后目标切到下一节点，最后一个节点停下 |
-| T6 | 采完一条路线后重新进入同一条路线（新会话） | 只要再扫到同一张参考图，节点链与上一次重合 |
-| T7 | 反向走 | 同一次会话内 ARCore 还在跟踪，可以按箭头人工走回去；**没有自动反向路线**，想做反向导航就对着同一张图从另一端起再采一条 |
+只有收到相机首帧后才会显示“请识别锚点”；此前页面会显示权限、服务安装/设备准备、会话创建、等待首帧等真实状态。失败时会保留中文说明和原始异常，点击返回退出。
 
-## 8. 已知限制（必须知道）
-
-* **只有单锚点 + VIO。** 离开参考图后没有中途重定位、没有多锚点纠偏、没有回环、没有 ARWorldMap / Cloud Anchor；长走廊、纹理少、光照变化、镜头遮挡都会漂移。
-* **驱动是开环的。** ARCore 只给出"该转多少度、还差多少米"，底盘实际执行了多少并不知道；本工程既不读轮速做里程，也不做速度闭环。原版里这一层并不存在，本工程也没有解决它。
-* **没有反馈回路，走偏不会自动纠正。** 只剩到点判定一个保护：声呐默认不发。
-* **声呐默认关闭。** 本仓库的 520 底盘没装超声模块，固件仍会 ping：echo 引脚悬空、拾到 trigger 脉冲后上报 1-3 cm，35 cm 阈值会把它读成"墙"，机器人就一直不动。`OpenBotBleLink.enableTelemetry()` 里的 `s` 订阅由文件顶部的 `SONAR_INSTALLED = false` 控制，装上模块后改这一个常量即可恢复避障。
-* **轮速不能当里程。** 实测这台 520 的 `w` 帧不随 PWM 变化（-60 与 -150 读数相同）、同一条命令两次相差 60%、中间还有一段读数是 0，最多只能看"轮子在不在转"。数据与结论见 `../ARIndoorNav-original/HANDOVER.zh-CN.md` §3.6.1；本工程的驱动本来也不读它。
-* **节点不是地图点。** 它们不能被重新识别，也没有环境特征；换一张参考图或换个纸面朝向，同一条链就对不上了。
-* **节点间是直线。** 采集时的转弯路径不会被记录成形状（原版同样只有点）。
-* **参考图必须与代码里的物理宽度一致**，否则整条链比例错位。
-* **ARCore 检测需要纸面在画面里足够大**；手机装得太低、太斜或地面强烈反光时可能长时间检测不到锚点。
-* 到点阈值（0.30 m）、巡航速度（0.30）、转向增益（1.6）都在 `nav/NodeDriver.kt` 的 `DriverConfig` 里，现场按底盘手感调整。
-
-## 9. 与增强版的分工
-
-如果你的目标是"给定楼层地图，选房间，自动规划路线过去"，用 `New demo/Android`（增强版）。本工程只服务另一个目标：**不导入地图，现场走一遍，之后复现这条路**。两者共用同一套 BLE 协议与跟随控制器，可以同时安装（包名不同：`com.openbene.arindoornav` 与 `com.openbene.anchornav`）。
-
+若显示 `UnavailableDeviceNotCompatibleException`，说明当前设备/系统环境被 ARCore 判定不兼容。能安装 Google Play Services for AR 并不代表设备受支持；请核对官方支持列表并换兼容设备。已连接的 vivo X27/V1838A 真机已复现此错误，无法用这台手机完成 ARCore 采集。排查日志可用 `adb logcat -s OpenBeneAR:V` 获取；不要通过跳过 ARCore 设备准备流程绕过错误。

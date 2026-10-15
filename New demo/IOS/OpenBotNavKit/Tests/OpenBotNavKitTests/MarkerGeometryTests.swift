@@ -112,7 +112,7 @@ final class MarkerGeometryTests: XCTestCase {
     }
 
     func testUnorderedCornersUseTheDeviceHeading() {
-        let (camera, _, pixels) = scene()
+        let (camera, sheet, pixels) = scene()
         let device = MarkerGeometry.deviceInAr(cameraPose: camera)
         let recovered = MarkerGeometry.markerPose(
             fromQuad: pixels,
@@ -124,12 +124,15 @@ final class MarkerGeometryTests: XCTestCase {
             deviceYawRad: device.yawRad
         )
         XCTAssertEqual(recovered?.yawRad ?? 0, device.yawRad, accuracy: 1e-9)
-        XCTAssertEqual(recovered?.y ?? 0, device.y, accuracy: 1e-6)
+        // Only heading falls back to the camera. Position remains the detected sheet centre.
+        XCTAssertNotNil(recovered)
+        XCTAssertEqual(recovered?.x ?? .infinity, sheet.x, accuracy: 1e-6)
+        XCTAssertEqual(recovered?.y ?? .infinity, sheet.y, accuracy: 1e-6)
     }
 
     func testDevicePoseKeepsPitchOutOfTheHeading() {
         for yaw in [-40.0, 0.0, 25.0] {
-            let (camera, _, _) = scene(cameraYawDeg: yaw, cameraPitchDeg: -30.0)
+            let (camera, _, _) = scene(cameraPitchDeg: -30.0, cameraYawDeg: yaw)
             let planar = MarkerGeometry.deviceInAr(cameraPose: camera)
             XCTAssertEqual(planar.x, 0.0, accuracy: 1e-9)
             XCTAssertEqual(planar.y, 0.0, accuracy: 1e-9)

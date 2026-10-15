@@ -42,9 +42,6 @@ targets:
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         CODE_SIGN_STYLE: Automatic
         GENERATE_INFOPLIST_FILE: NO
-    info:
-      path: OpenBotAnchorNav/Info.plist
-      properties: {}
     dependencies:
       - target: OpenBotNavKit
       - sdk: ARKit.framework
@@ -64,6 +61,20 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.openbene.anchornav.tests
         SWIFT_VERSION: "5.9"
+        GENERATE_INFOPLIST_FILE: YES
+
+  OpenBotAnchorNavUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources:
+      - path: OpenBotAnchorNavUITests
+    dependencies:
+      - target: OpenBotAnchorNav
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.openbene.anchornav.uitests
+        SWIFT_VERSION: "5.9"
+        GENERATE_INFOPLIST_FILE: YES
 
 schemes:
   OpenBotAnchorNav:
@@ -71,6 +82,8 @@ schemes:
       targets:
         OpenBotAnchorNav: all
         OpenBotNavKitTests: [test]
+        OpenBotAnchorNavUITests: [test]
     test:
       targets:
         - OpenBotNavKitTests
+        - OpenBotAnchorNavUITests

@@ -3,6 +3,21 @@ import XCTest
 
 final class PoseTests: XCTestCase {
 
+    func testAngleWrappingPreservesHeadingAcrossFullTurns() {
+        for heading in [-90.0, 0.0, 90.0, 180.0] {
+            for turns in -3...3 {
+                let degrees = heading + Double(turns) * 360.0
+                XCTAssertEqual(wrapDeg(degrees), heading, accuracy: 1e-9)
+                XCTAssertEqual(wrapRad(degrees * Double.pi / 180.0), heading * Double.pi / 180.0, accuracy: 1e-9)
+            }
+        }
+    }
+
+    func testNegativeHalfTurnUsesThePositiveBoundary() {
+        XCTAssertEqual(wrapDeg(-180.0), 180.0, accuracy: 1e-9)
+        XCTAssertEqual(wrapRad(-Double.pi), Double.pi, accuracy: 1e-9)
+    }
+
     func testPoseComposeMatchesHandCalculation() {
         let first = Pose2D.fromDeg(x: 1.0, y: 2.0, yawDeg: 90.0)
         let second = Pose2D.fromDeg(x: 3.0, y: 0.0, yawDeg: 0.0)

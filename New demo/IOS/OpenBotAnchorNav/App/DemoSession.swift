@@ -1,127 +1,83 @@
 import Foundation
 import Combine
 import CoreBluetooth
+import OpenBotNavKit
 
-/// Application state shared by the picker and the AR screen: the demo map, the
-/// destination, and the choice of robot link.
 final class DemoSession: ObservableObject {
-
-    enum LoadState {
-        case loading
-        case ready
-        case failed(String)
-    }
-
+    enum LoadState { case loading, ready, failed(String) }
     struct DiscoveredRobot: Identifiable {
         let id: UUID
         let name: String
         let rssi: Int
-
         var label: String { name + "  \(rssi) dBm" }
     }
 
-    static let startLocationId = "loc_entrance"
-
     @Published private(set) var loadState: LoadState = .loading
-    @Published private(set) var roomNames: [String] = []
-    @Published var selectedRoom = "Room 101"
+    @Published private(set) var maps: [RecordedMap] = []
+    @Published var selectedMapID: UUID?
     @Published var useBle = false
-    @Published private(set) var statusText = "Idle. Put the phone on the robot and start from the entrance marker."
+    @Published private(set) var statusText = "请先采集地图，数据仅保存在本机。"
     @Published private(set) var selectedRobot: DiscoveredRobot?
     @Published private(set) var scanning = false
-
-    private(set) var map: MapData?
+    @Published private(set) var discovered: [DiscoveredRobot] = []
+    private let store = RecordedMapStore()
+    let pwmSettings = PwmSettingsModel()
     private var scanner: OpenBotBleLink?
 
+    var selectedMap: RecordedMap? { maps.first { $0.id == selectedMapID } }
+
     func load() {
-        guard map == nil else { return }
-        guard let url = Bundle.main.url(forResource: "demo_floor", withExtension: "json") else {
-            loadState = .failed("demo_floor.json is missing from the app bundle")
-            return
-        }
         do {
-            let text = try String(contentsOf: url, encoding: .utf8)
-            let parsed = try MapData.parse(text)
-            map = parsed
-            roomNames = parsed.roomNames()
-            if let first = roomNames.first, !roomNames.contains(selectedRoom) {
-                selectedRoom = first
-            }
+            maps = try store.loadAll()
+            if !maps.contains(where: { $0.id == selectedMapID }) { selectedMapID = maps.first?.id }
             loadState = .ready
-        } catch {
-            loadState = .failed("\(error)")
-        }
+            if !store.warnings.isEmpty { statusText = store.warnings.joined(separator: "\n") }
+        } catch { loadState = .failed(error.localizedDescription) }
     }
 
-    /// Route preview, in the same shape as the Python demo output.
-    func routeSummary() -> String {
-        guard let map = map else { return "" }
-        do {
-            guard let route = try Router(mapData: map).routeToRoom(
-                startLocationId: DemoSession.startLocationId,
-                roomName: selectedRoom
-            ) else { return "no route to " + selectedRoom }
-
-            var lines: [String] = []
-            let start = (try? map.location(route.startLocationId).name) ?? route.startLocationId
-            lines.append(String(format: "%-14@ %5.1f m", start as NSString, route.totalDistanceM))
-            for step in GuidanceBuilder(mapData: map).build(route) {
-                lines.append("  - " + step.message)
-            }
-            let markers = route.locationSequence().map { $0.replacingOccurrences(of: "loc_", with: "") }
-            lines.append("markers on the way: " + markers.joined(separator: " -> "))
-            return lines.joined(separator: "\n")
-        } catch {
-            return "route error: \(error)"
-        }
+    func save(_ map: RecordedMap) throws {
+        try store.save(map)
+        selectedMapID = map.id
+        load()
+        statusText = "地图已保存到本机。"
     }
+
+    func delete(_ map: RecordedMap) throws { try store.delete(map); load() }
+    func fileURL(_ map: RecordedMap) throws -> URL { try store.fileURL(for: map) }
 
     func startScanning() {
         let link = scanner ?? OpenBotBleLink()
         scanner = link
-        statusText = "Scanning for the OpenBot BLE service..."
+        discovered = []
+        statusText = "正在搜索 OpenBot 蓝牙底盘…"
         scanning = true
-        link.startScan { [weak self] peripheral, name, rssi in
-            DispatchQueue.main.async {
-                guard let self = self else { return }
-                self.statusText = "Found " + name + "  \(rssi) dBm"
-            }
+        link.startScan { [weak self, weak link] _, _, _ in
+            guard let self = self else { return }
+            self.discovered = (link?.discovered ?? []).map { DiscoveredRobot(id: $0.id, name: $0.name, rssi: $0.rssi) }
         }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 8.0) { [weak self] in
+        DispatchQueue.main.asyncAfter(deadline: .now() + 8) { [weak self] in
             guard let self = self else { return }
             self.scanning = false
             self.scanner?.stopScan()
-            if self.scanner?.discovered.isEmpty ?? true {
-                self.statusText = "No OpenBot found. Check that the ESP32 is powered and in range."
-            }
+            if self.discovered.isEmpty { self.statusText = "未找到底盘，请检查蓝牙权限、电源和距离。" }
         }
-    }
-
-    var discovered: [DiscoveredRobot] {
-        (scanner?.discovered ?? []).map { DiscoveredRobot(id: $0.id, name: $0.name, rssi: $0.rssi) }
     }
 
     func select(_ robot: DiscoveredRobot) {
         selectedRobot = robot
         useBle = true
-        statusText = "Selected " + robot.label
+        scanner?.stopScan()
+        scanning = false
+        statusText = "已选择 " + robot.label
     }
 
-    /// The link the AR screen drives. Falls back to the bench mock.
     func makeLink() -> RobotLink {
         guard useBle, let robot = selectedRobot else { return MockRobotLink() }
-        let link = OpenBotBleLink(targetIdentifier: robot.id)
-        link.connect(identifier: robot.id)
-        return link
+        return OpenBotBleLink(targetIdentifier: robot.id)
     }
 
     func describeLink() -> String {
-        if !useBle { return "mock link (commands are only shown on screen)" }
-        guard let robot = selectedRobot else { return "mock link (no OpenBot selected)" }
-        return "OpenBot " + robot.name
-    }
-
-    func setStatus(_ text: String) {
-        statusText = text
+        if !useBle { return "仅预览与模拟轮速，不驱动底盘" }
+        return selectedRobot.map { "OpenBot " + $0.name } ?? "未选择底盘"
     }
 }

@@ -2,51 +2,27 @@ package com.openbene.arindoornav.ar
 
 import android.content.Context
 import android.graphics.BitmapFactory
-import android.util.Log
 import com.google.ar.core.AugmentedImageDatabase
 import com.google.ar.core.Session
 
-/** One printed reference sheet, with the physical width ARKit used to know. */
 data class AnchorSheet(val name: String, val asset: String, val widthM: Float)
 
-/**
- * The two sheets the original ARIndoorNav ships in ARResources.arresourcegroup,
- * with the same physical widths: pi is 3 in wide and 1 is 5 in wide. ARKit read
- * the width from the asset catalog; ARCore wants metres, so the numbers below are
- * the only thing that has to match the paper. Everything else about the sheets is
- * unchanged, including the file names, so the same print works on both phones.
- */
 object AnchorSheets {
-
     val ALL = listOf(
-        AnchorSheet("pi", "anchors/pi.jpg", 0.0762f),
-        AnchorSheet("1", "anchors/1.jpeg", 0.127f),
+        AnchorSheet("entrance", "anchors/openbene_mk_entrance.png", .2f),
+        AnchorSheet("junction", "anchors/openbene_mk_junction.png", .2f),
+        AnchorSheet("room101", "anchors/openbene_mk_room101.png", .2f),
+        AnchorSheet("room102", "anchors/openbene_mk_room102.png", .2f),
+        AnchorSheet("pi", "anchors/pi.jpg", .0762f),
+        AnchorSheet("1", "anchors/1.jpeg", .127f),
     )
-
-    fun names(): String = ALL.joinToString(", ") { it.name }
-
-    fun describe(): String = ALL.joinToString(", ") { it.name + " " + it.widthM + " m" }
-
-    fun isAnchor(name: String?): Boolean = ALL.any { it.name == name }
-
-    /** Builds the runtime database from the bundled sheets; no arcoreimg step. */
-    fun buildDatabase(context: Context, session: Session): AugmentedImageDatabase? {
-        val database = AugmentedImageDatabase(session)
-        var added = 0
-        for (sheet in ALL) {
-            val bitmap = try {
-                context.assets.open(sheet.asset).use { stream -> BitmapFactory.decodeStream(stream) }
-            } catch (error: Exception) {
-                Log.w(TAG, "anchor sheet missing: " + sheet.asset, error)
-                null
-            } ?: continue
-            database.addImage(sheet.name, bitmap, sheet.widthM)
-            added += 1
-        }
-        if (added == 0) return null
-        Log.i(TAG, "augmented image database holds " + added + " anchor sheets")
-        return database
+    fun sheet(name: String) = ALL.firstOrNull { it.name == name }
+    fun buildDatabase(context: Context, session: Session, name: String, widthM: Float): AugmentedImageDatabase {
+        require(widthM.isFinite() && widthM in .01f..2f) { "锚点纸张宽度无效" }
+        val selected = requireNotNull(sheet(name)) { "未知锚点图片：$name" }
+        val bitmap = context.assets.open(selected.asset).use { requireNotNull(BitmapFactory.decodeStream(it)) }
+        return try {
+            AugmentedImageDatabase(session).apply { addImage(selected.name, bitmap, widthM) }
+        } finally { bitmap.recycle() }
     }
-
-    private const val TAG = "AnchorSheets"
 }

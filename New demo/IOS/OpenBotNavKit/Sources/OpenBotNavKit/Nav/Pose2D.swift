@@ -2,7 +2,7 @@ import Foundation
 
 /// Wrap an angle in degrees into (-180, 180].
 public func wrapDeg(_ angleDeg: Double) -> Double {
-    var wrapped = (angleDeg + 180.0).truncatingRemainder(dividingBy: 360.0)
+    var wrapped = angleDeg.truncatingRemainder(dividingBy: 360.0)
     if wrapped <= -180.0 { wrapped += 360.0 }
     if wrapped > 180.0 { wrapped -= 360.0 }
     return wrapped
@@ -11,7 +11,7 @@ public func wrapDeg(_ angleDeg: Double) -> Double {
 /// Wrap an angle in radians into (-pi, pi].
 public func wrapRad(_ angleRad: Double) -> Double {
     let twoPi = 2.0 * Double.pi
-    var wrapped = (angleRad + Double.pi).truncatingRemainder(dividingBy: twoPi)
+    var wrapped = angleRad.truncatingRemainder(dividingBy: twoPi)
     if wrapped <= -Double.pi { wrapped += twoPi }
     if wrapped > Double.pi { wrapped -= twoPi }
     return wrapped
@@ -19,7 +19,7 @@ public func wrapRad(_ angleRad: Double) -> Double {
 
 /// A planar pose in the demo map frame: x points east, y points north and yaw is
 /// measured counter-clockwise from +x. Mirrors openbene_nav.model.Pose2D.
-public struct Pose2D: Equatable {
+public struct Pose2D: Equatable, Codable {
     public var x: Double
     public var y: Double
     public var yawRad: Double

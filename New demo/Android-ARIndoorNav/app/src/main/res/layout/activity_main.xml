@@ -87,6 +87,12 @@
             android:text="@string/scan_button" />
 
         <Button
+            android:id="@+id/pwmButton"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="PWM 调节与测试" />
+
+        <Button
             android:id="@+id/followButton"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"

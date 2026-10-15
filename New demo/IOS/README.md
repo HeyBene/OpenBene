@@ -1,36 +1,81 @@
-# iOS demo（Swift + ARKit + Vision + CoreBluetooth）
+# iOS 本地采集与锚点航线
 
-手机装在 OpenBot 上，ARKit 图像锚点负责定位、Vision 负责读二维码，执行器通过 CoreBluetooth 驱动底盘。导航内核是一个独立的 SwiftPM target，可以脱离 App 测试，跟随（tracking）控制器也在里面。
+Swift + ARKit + CoreBluetooth。地图由用户现场采集，以 JSON 文件保存在本机，不加载预设房间或预设地图。采集与执行共享同一套锚点坐标系。
 
 ## 构建
 
-```bash
+```sh
 brew install xcodegen
-cd IOS && xcodegen generate && open OpenBotAnchorNav.xcodeproj
+cd IOS
+swift test
+xcodegen generate
+open OpenBotAnchorNav.xcodeproj
 ```
 
-选择真机运行（ARKit 需要真机）。也可以用 `cd IOS && swift test` 只跑算法测试。
+在 Xcode 中选择自己的签名 Team，连接 iPhone 后运行。Bundle ID 为 `com.openbene.anchornav`，部署目标 iOS 15。每次重新生成工程后检查签名 Team。
 
-`project.yml` 里 `OpenBotNavKit` 是一个 framework target，App 与单元测试 target 都链接它（测试用 `@testable import OpenBotNavKit`），`swift test` 走的是同一份源码。iOS 部分还没有在 macOS/Xcode 上编译过，第一次构建请留意报错。
+`Info.plist` 已包含相机和蓝牙用途说明，以及“文件”App 访问配置。它由仓库维护，XcodeGen 仅通过 `INFOPLIST_FILE` 引用；不要用空的 `info.properties` 覆盖它。
 
-## 代码结构
+## 采集自己的地图
 
-| 路径 | 作用 |
-| --- | --- |
-| `OpenBotNavKit/Sources/OpenBotNavKit/Nav` | 地图模型、Dijkstra、引导、位姿估计、执行状态机（与 Python/Kotlin 同源） |
-| `OpenBotNavKit/Sources/OpenBotNavKit/Nav/FollowController.swift` | 跟随控制器（与 Python/Kotlin 同源）：归一化目标框 + 声呐 → 左右轮速 |
-| `OpenBotNavKit/Sources/OpenBotNavKit/Robot` | BLE 协议编解码、Mock 链路、模拟机器人 |
-| `OpenBotNavKit/Sources/OpenBotNavKit/Geometry` | `MarkerGeometry.swift`：二维码四角 → 锚点位姿 |
-| `OpenBotNavKit/Tests` | `swift test` 用的测试（路由距离、引导文案、位姿、锚点数学、跟随控制器、仿真跑完全程） |
-| `OpenBotAnchorNav/App` | 目的地选择与状态 |
-| `OpenBotAnchorNav/AR` | AR 会话控制器、AR 视图、俯视地图 |
-| `OpenBotAnchorNav/Robot` | CoreBluetooth 链路 |
-| `OpenBotAnchorNav/Resources` | 地图 JSON 与贴纸 PNG（由 `shared/tools/sync_demo_assets.py` 同步） |
+1. 首页点击 **采集新地图**，选择一张定位图片。默认完整图片宽度为 **20 cm**；可以分享/打印图片，如果改变打印宽度，在界面填写实际宽度。
+2. 将完整的图片平放并固定在地面。它用于建立坐标系，没有预设的房间位置。采集和以后应用地图时，图片的位置、尺寸、方向需要保持不变。
+3. 点击 **开始采集**，启动时显示准备进度；用相机对准完整标记图，等到“锚点已固定”。当前定位使用 ARKit 图像锚点，需要完整图片，而不是只裁出中间二维码。首次识别后可以离开图片，继续使用相机位姿采集。
+4. 到实际起始位置，点击 **采集起点**，记录当前位置与朝向。锚点中心是坐标原点；实际起点可以在锚点附近，不必与图片中心重合。
+5. 移到第一个节点，面向希望到达后采用的方向，填写名称并点击 **添加节点与朝向**。
+6. 按顺序采集其余节点。画面会显示相邻节点的连线和每个节点记录的朝向箭头。点错可 **撤销**，无须重录整张地图。
+7. 点击 **保存地图**，输入地图名称并保存到本机。重新打开 App 可继续使用。
 
-## 运行时提示
+位置与朝向以手机相机为参考。执行时需将手机固定在底盘上，与采集时保持相同的安装位置和朝向；相邻节点之间暂时假设直线可达。
 
-* 参考图像在运行时从 PNG 现场创建（`ARReferenceImage(cgImage:orientation:physicalWidth:)`），物理宽度取地图里的 `size_m`。
-* `ArNavigationController` 在同一帧里同时尝试图像锚点与二维码：图像锚点优先，二维码作为冷启动/兜底，两者都走同一个 `ArObservation`。
-* 会话中断（来电、切后台）会立刻停车。
-* 跟随模式：底部 Route / Follow 分段控件切到 Follow 后，目标框来自 Vision 的 `VNDetectHumanRectanglesRequest`（系统自带，无需打包模型），与二维码扫描共用同一帧相机图像。跟随不需要锚点与定位，切换时会先停车；预设是默认的 `FollowConfig`（目标框高度 0.55），现场标定后再落地。
-* 声呐默认不订阅：本仓库的 520 底盘没装超声模块，固件仍会上报由 trigger 脉冲串扰产生的 1-3 cm 假距离，声呐保护会把机器人钉在原地。开关是 `OpenBotBleLink.sonarInstalled`（默认 `false`），装上模块后改成 `true` 即恢复 35 cm 停车。
+## 应用航线与底盘执行
+
+1. 首页选择已保存地图。可以先保持 **通过蓝牙驱动 OpenBot** 关闭，此时只显示航线和模拟轮速，不向真实底盘发送命令。
+2. 需要驱动时，打开该开关，点击 **搜索底盘** 并选中自己的 OpenBot。
+3. 点击 **应用地图并显示航线**。重新识别采集时使用的定位图片，再把机器人移回采集起点。定位可用、底盘已连接且距起点不超过 **30 cm** 时，“开始执行”可用。
+4. 点击 **开始执行**。按采集顺序对每个节点执行：
+   - 原地转向当前节点的连线方向，停车等待 **2 秒**；
+   - 直行到节点附近，小角度偏差用左右轮差速修正，方向偏差超过 6° 时停车并原地转向；
+   - 到点停车等待 **2 秒**，再原地转到该节点记录的朝向；
+   - 停车等待 **2 秒**，再转向下一段航线；最后一个节点的位置与朝向完成后立即停车结束。
+5. **停车**立即停止本次执行；**退出**停止并关闭蓝牙链路。停止后重新执行，需要移回起点。
+
+默认节点位置容差 **30 cm**、节点朝向容差 **5°**，直行前航线方向容差 **3°**。控制参数位于 `WaypointConfig`，现场尚未标定。首次识别后地图坐标固定，离开二维码或再看到二维码都不会重新校准节点。跟踪暂时受限或相机帧中断时保留地图并停车，跟踪恢复后需回起点手动开始。切后台或 AR 会话中断后需退出页面重新进入。界面不实现自动避障或绕行。
+
+导航默认直行、左转、右转 PWM 均为 **160**，现在可在 **PWM 调节与测试** 面板分别调整并保存。以默认值为例：原地转向左右 PWM 为 **−160 / +160** 或相反，直行基础 PWM 为 **160 / 160**，接近节点不降低基础输出；差速微调时单轮约 **133～187**，停车为 **0 / 0**。各动作切换停车等待 **2 秒**，包括偏航后从直行切回原地转向。等待期间定位或蓝牙异常、手动停车均取消后续动作；等待结束后按最新位姿决定动作。等待采用计时状态，不阻塞相机和界面。参数需要按现场情况测试，不代表已完成底盘标定。
+
+## 调整 PWM 与短时测试
+
+1. 在首页启用蓝牙、搜索并选中自己的底盘，再点 **PWM 调节与测试**。不需要地图或识别二维码；没有选择底盘时仍可设置参数，但测试按钮禁用。
+2. 分别调整 **直行基础 PWM**、**原地左转 PWM**、**原地右转 PWM**，范围 **0～255**。滑块可快速调整，步进器以 1 为单位微调，默认均为 160。改变数值会先停止当前测试。
+3. 先架空底盘，再点 **前进 1 秒**、**左转 1 秒**、**右转 1 秒**。每次最多发送 1 秒的测试指令，随后自动停车；也可随时点 **停车**。面板显示电池电压（有遥测时）、最近提交的控车帧及连接状态。退出面板、切后台或失去连接都会停止测试；不会自动再次启动。
+4. 调整满意后点 **保存并应用**，参数保存在本机，重启 App 和更新安装仍保留。只修改滑块不会覆盖已保存值。**恢复 160 / 160 / 160** 先恢复面板数值，再保存才会生效。从旧版本升级时，原转向值会同时沿用到左转、右转，直行值保持原样。
+5. 导航页可点 **调节 PWM**，会先停车；保存后需要回到采集起点，手动重新开始。此入口只设置参数；独立短时测试位于首页面板。
+
+直行设置的是基础输出，航线微调时两轮会略有不同，编码仍限制在 -255～255。左转用左转设置 L，发送 c-L,L；右转用右转设置 R，发送 cR,-R。每次转向的两轮仍使用相同绝对值、相反方向；这里分别校准左转和右转，不是单独设置左右轮。短时测试和导航中的初始转向、纠偏转向、到点朝向调整都使用对应方向的值。修改后仍保留动作之间停车 2 秒；设置只应用于节点航线导航，不改变原有跟随算法。短时测试使用面板当前值，导航使用已保存值。
+
+同一 AR 页面仍保留原有 **跟随** 模式：切换先停车；人体框来自 Vision，算法为原 `FollowController`。声呐默认不订阅，收到的 `s` 帧也会忽略，因为当前 520 底盘没有安装超声模块；实际安装后才将 `OpenBotBleLink.sonarInstalled` 设置为 `true`。`w` 帧仅显示，所有执行状态机均不使用轮速积分作为位姿。
+
+## 本地文件
+
+- 每张地图为 `Documents/Maps/<UUID>.json`，保存锚点规格、起点、按顺序排列的节点，以及各点的位置和朝向。
+- 首页可 **导出地图 JSON**、**删除此地图**。地图现场采集，不提供地图导入入口。
+- 可在“文件”App 的 **我的 iPhone → Anchor Nav → Maps** 中备份或管理文件，回到 App 后会重新加载。
+- 只支持这版 App 生成的地图格式；不加载旧预设 `demo_floor.json`。损坏或不兼容的文件保留原样，并报告加载问题。
+- 卸载 App 会删除应用内文件，需要保留的地图请先导出。
+
+## 代码与验证
+
+- `RecordedMap` / `MapCapture`：记录起点、节点与朝向，构造有序直线路径。
+- `RecordedMapStore`：本机文件保存、加载、导出与删除。
+- `AnchorARSession` / `FixedAnchorFrame`：首次识别固定图片锚点，持续使用 ARKit 相机位姿，统一采集与执行坐标。
+- `WaypointExecutor`：转向航线、直行、节点朝向调整与顺序推进。
+- 原 `RouteExecutor`、路由器、锚点数学与跟随算法保留在内核中；旧示例地图只作为算法测试夹具存在，不打包为 App 的默认地图。
+
+2026-10-15 验证：SwiftPM **76 项测试通过**，含锚点固定、离开标记后的连续位姿、跟踪受限保留坐标、虚假超声过滤、BLE 分包与 CRLF、轮速隔离、差速方向、多节点执行、两秒阶段间隔、左右转向独立 PWM、旧设置迁移和短时测试自动停止。Xcode 26.3 的真机签名 App 构建通过。现场识别和底盘标定状态见 [NOTES.md](NOTES.md)。
+
+```sh
+xcodebuild -project OpenBotAnchorNav.xcodeproj -scheme OpenBotAnchorNav \
+  -configuration Debug -destination 'generic/platform=iOS' \
+  CODE_SIGNING_ALLOWED=NO build-for-testing
+```

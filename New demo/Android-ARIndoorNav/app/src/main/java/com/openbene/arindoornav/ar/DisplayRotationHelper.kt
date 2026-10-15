@@ -17,7 +17,7 @@ class DisplayRotationHelper(context: Context) : DisplayManager.DisplayListener {
     private val displayManager =
         context.getSystemService(Context.DISPLAY_SERVICE) as DisplayManager
 
-    private var viewportChanged = false
+    @Volatile private var viewportChanged = false
     private var viewportWidth = 0
     private var viewportHeight = 0
 
@@ -51,7 +51,7 @@ class DisplayRotationHelper(context: Context) : DisplayManager.DisplayListener {
      * phones, and the activity is locked to portrait.
      */
     fun cameraImageRotationDegrees(sensorOrientationDegrees: Int, frontFacing: Boolean = false): Int {
-        var rotation = (sensorOrientationDegrees - display.rotation + 360) % 360
+        var rotation = (sensorOrientationDegrees - display.rotation * 90 + 360) % 360
         if (frontFacing) rotation = (360 - rotation + 360) % 360
         return rotation
     }

@@ -1,4 +1,5 @@
 import SwiftUI
+import OpenBotNavKit
 
 /// Plan view of the demo floor: graph edges, the active route, the markers that
 /// were used for localisation and the estimated robot pose.

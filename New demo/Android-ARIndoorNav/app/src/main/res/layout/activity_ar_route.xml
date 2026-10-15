@@ -102,6 +102,12 @@
             android:text="@string/start_driving_button" />
 
         <Button
+            android:id="@+id/pwmButton"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="调节 PWM" />
+
+        <Button
             android:id="@+id/stopButton"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"

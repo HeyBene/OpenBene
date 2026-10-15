@@ -22,6 +22,10 @@
     <string>1</string>
     <key>LSRequiresIPhoneOS</key>
     <true/>
+    <key>UIFileSharingEnabled</key>
+    <true/>
+    <key>LSSupportsOpeningDocumentsInPlace</key>
+    <true/>
     <key>NSCameraUsageDescription</key>
     <string>AR navigation uses the camera to track the printed floor markers and see where the robot is going.</string>
     <key>NSBluetoothAlwaysUsageDescription</key>

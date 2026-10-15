@@ -1,203 +1,246 @@
 package com.openbene.arindoornav.robot
 
 import android.annotation.SuppressLint
-import android.bluetooth.BluetoothAdapter
-import android.bluetooth.BluetoothDevice
-import android.bluetooth.BluetoothGatt
-import android.bluetooth.BluetoothGattCallback
-import android.bluetooth.BluetoothGattCharacteristic
-import android.bluetooth.BluetoothGattDescriptor
-import android.bluetooth.BluetoothManager
-import android.bluetooth.BluetoothProfile
+import android.bluetooth.*
 import android.bluetooth.le.ScanCallback
-import android.bluetooth.le.ScanFilter
 import android.bluetooth.le.ScanResult
 import android.bluetooth.le.ScanSettings
 import android.content.Context
 import android.os.Build
+import android.os.Handler
+import android.os.Looper
 import android.os.ParcelUuid
-import android.util.Log
+import android.os.SystemClock
+import java.util.ArrayDeque
 import java.util.UUID
 
-/**
- * The 520 chassis in this demo has no ultrasonic module fitted, but the
- * firmware keeps pinging anyway: the echo pin is left floating, picks up the
- * trigger pulse and reports 1-3 cm, which the obstacle guard reads as a wall
- * and refuses to drive through. Subscribe to the sonar stream only when the
- * module is actually installed.
- */
-private const val SONAR_INSTALLED = false
-
-/**
- * BLE link to the OpenBot ESP32 firmware, matching the UUIDs used by
- * openbene_sdk/src/openbene/esp32_ble.py: one service, an RX characteristic for
- * commands and a TX characteristic for telemetry notifications.
- */
-class OpenBotBleLink(private val context: Context) : RobotLink {
+/** Android GATT operations are serialized; all state and callbacks run on main. */
+@SuppressLint("MissingPermission")
+class OpenBotBleLink(context: Context) : RobotLink {
     override val telemetry = Telemetry(sourceName = "ble")
-
-    private val adapter: BluetoothAdapter? =
-        (context.getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager)?.adapter
-
+    var lastControlFrame: String? = null; private set
+    var lastError: String? = null; private set
+    private val appContext = context.applicationContext
+    private val handler = Handler(Looper.getMainLooper())
+    private val adapter = (appContext.getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager)?.adapter
     private var gatt: BluetoothGatt? = null
-    private var rxCharacteristic: BluetoothGattCharacteristic? = null
-    private var txCharacteristic: BluetoothGattCharacteristic? = null
-    private val lineBuffer = StringBuilder()
+    private var rx: BluetoothGattCharacteristic? = null
+    private var scanCallback: ScanCallback? = null
+    private var stream = TelemetryStream()
+    private var busy = false
+    private var closing = false
+    private var pendingControl: ByteArray? = null
+    private var stopPending = false
+    private var heartbeatDue = false
+    private val setup = ArrayDeque<ByteArray>()
+    private var lastControlAt = -1000L
+    private var lastWasStop = true
+    private var lastStopAt = -1000L
+    private val heartbeat = object : Runnable {
+        override fun run() {
+            if (!telemetry.connected || closing) return
+            heartbeatDue = true; drain()
+            handler.postDelayed(this, 250)
+        }
+    }
+    private val drainTask = Runnable { drain() }
+    private val writeTimeout = Runnable {
+        if (busy) fail("蓝牙写入超时，已断开；请重新连接。")
+    }
 
-    @SuppressLint("MissingPermission")
     fun startScan(onFound: (BluetoothDevice, Int) -> Unit) {
-        val scanner = adapter?.bluetoothLeScanner ?: return
-        val settings = ScanSettings.Builder()
-            .setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY)
-            .build()
-        // The ESP32 firmware advertises its name rather than the GATT service, so
-        // results are matched the same way openbene_sdk does: by device name, with
-        // the advertised service UUID accepted as a second signal.
-        val serviceUuid = ParcelUuid(UUID.fromString(OpenBotProtocol.SERVICE_UUID))
-        scanner.startScan(null, settings, object : ScanCallback() {
+        stopScan()
+        val scanner = adapter?.takeIf { it.isEnabled }?.bluetoothLeScanner
+        if (scanner == null) { lastError = "请开启手机蓝牙。"; return }
+        val callback = object : ScanCallback() {
             override fun onScanResult(callbackType: Int, result: ScanResult) {
-                val device = result.device ?: return
-                val name = runCatching { device.name }.getOrNull()
-                val advertisesService = result.scanRecord?.serviceUuids?.contains(serviceUuid) == true
-                if (isOpenBotName(name) || advertisesService) onFound(device, result.rssi)
+                val name = result.scanRecord?.deviceName ?: runCatching { result.device.name }.getOrNull()
+                val service = ParcelUuid(UUID.fromString(OpenBotProtocol.SERVICE_UUID))
+                if (isOpenBotName(name) || result.scanRecord?.serviceUuids?.contains(service) == true)
+                    handler.post { onFound(result.device, result.rssi) }
             }
-        })
+            override fun onScanFailed(errorCode: Int) { handler.post { lastError = "蓝牙搜索失败：$errorCode" } }
+        }
+        scanCallback = callback
+        runCatching { scanner.startScan(null, ScanSettings.Builder().setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY).build(), callback) }
+            .onFailure { lastError = it.message }
     }
 
-    @SuppressLint("MissingPermission")
-    fun connect(device: BluetoothDevice) {
-        gatt = device.connectGatt(context, false, callback, BluetoothDevice.TRANSPORT_LE)
+    fun stopScan() {
+        scanCallback?.let { callback -> runCatching { adapter?.bluetoothLeScanner?.stopScan(callback) } }
+        scanCallback = null
     }
 
-    /** Connect to a device picked from [startScan] by MAC address. */
-    @SuppressLint("MissingPermission")
     fun connectToAddress(address: String): Boolean {
-        val device = runCatching { adapter?.getRemoteDevice(address) }.getOrNull() ?: return false
-        connect(device)
-        return true
+        return runCatching {
+            if (adapter?.isEnabled != true) { lastError = "请先开启蓝牙。"; return false }
+            val device = adapter.getRemoteDevice(address)
+            closing = false
+            gatt = device.connectGatt(appContext, false, callback, BluetoothDevice.TRANSPORT_LE)
+            gatt != null
+        }.getOrElse { lastError = it.message; false }
     }
 
     override fun drive(left: Double, right: Double) {
-        write(OpenBotProtocol.ctrlCmd(left, right))
+        check(Looper.myLooper() == Looper.getMainLooper())
+        if (!telemetry.connected || closing) return
+        if (!left.isFinite() || !right.isFinite() || (left == 0.0 && right == 0.0)) { stop(); return }
+        pendingControl = OpenBotProtocol.ctrlCmd(left, right)
+        drain()
     }
 
-    override fun stop() = drive(0.0, 0.0)
+    override fun stop() {
+        if (rx == null || gatt == null) return
+        val now = SystemClock.elapsedRealtime()
+        if (lastWasStop && pendingControl == null && !stopPending && now - lastStopAt < 250) return
+        stopPending = true; pendingControl = null
+        drain()
+    }
 
-    @SuppressLint("MissingPermission")
     override fun close() {
-        runCatching { gatt?.disconnect() }
-        runCatching { gatt?.close() }
-        gatt = null
+        if (closing) return
+        closing = true
+        stopScan()
+        handler.removeCallbacks(heartbeat)
+        setup.clear(); heartbeatDue = false
+        stop()
         telemetry.connected = false
+        val previous = gatt
+        handler.postDelayed({
+            runCatching { previous?.disconnect(); previous?.close() }
+            if (gatt === previous) { gatt = null; rx = null; busy = false }
+            handler.removeCallbacks(writeTimeout)
+        }, 250)
     }
 
-    @SuppressLint("MissingPermission")
-    private fun write(payload: ByteArray) {
-        val characteristic = rxCharacteristic ?: return
-        val activeGatt = gatt ?: return
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            activeGatt.writeCharacteristic(
-                characteristic,
-                payload,
-                BluetoothGattCharacteristic.WRITE_TYPE_NO_RESPONSE,
-            )
-        } else {
-            @Suppress("DEPRECATION")
-            characteristic.writeType = BluetoothGattCharacteristic.WRITE_TYPE_NO_RESPONSE
-            @Suppress("DEPRECATION")
-            characteristic.value = payload
-            @Suppress("DEPRECATION")
-            activeGatt.writeCharacteristic(characteristic)
-        }
+    private fun ready() {
+        telemetry.connected = true
+        stream = TelemetryStream()
+        setup.add(OpenBotProtocol.sensorStreamCmd('v', 500))
+        setup.add(OpenBotProtocol.sensorStreamCmd('w', 250))
+        if (SONAR_INSTALLED) setup.add(OpenBotProtocol.sensorStreamCmd('s', 250))
+        setup.add(OpenBotProtocol.featureCmd())
+        stopPending = true
+        handler.removeCallbacks(heartbeat); heartbeat.run()
     }
 
-    @SuppressLint("MissingPermission")
-    private fun enableTelemetry() {
-        val activeGatt = gatt ?: return
-        val tx = txCharacteristic ?: return
-        activeGatt.setCharacteristicNotification(tx, true)
-        val descriptor = tx.getDescriptor(DESCRIPTOR_CONFIG_UUID)
-        if (descriptor != null) {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                activeGatt.writeDescriptor(descriptor, BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE)
-            } else {
-                @Suppress("DEPRECATION")
-                descriptor.value = BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE
-                @Suppress("DEPRECATION")
-                activeGatt.writeDescriptor(descriptor)
+    private fun drain() {
+        if (busy) return
+        val active = gatt ?: return
+        val characteristic = rx ?: return
+        val control = pendingControl
+        val isStop = stopPending
+        val now = SystemClock.elapsedRealtime()
+        val payload = when {
+            isStop -> STOP.also { stopPending = false }
+            closing -> return
+            heartbeatDue -> OpenBotProtocol.heartbeatCmd(750).also { heartbeatDue = false }
+            setup.isNotEmpty() -> setup.removeFirst()
+            control != null -> {
+                val wait = 40 - (now - lastControlAt)
+                if (wait > 0) {
+                    handler.removeCallbacks(drainTask); handler.postDelayed(drainTask, wait); return
+                }
+                pendingControl = null; control
             }
+            else -> return
         }
-        write(OpenBotProtocol.heartbeatCmd(500))
-        write(OpenBotProtocol.sensorStreamCmd('v', 500))
-        write(OpenBotProtocol.sensorStreamCmd('w', 250))
-        if (SONAR_INSTALLED) write(OpenBotProtocol.sensorStreamCmd('s', 250))
-        write(OpenBotProtocol.featureCmd())
+        val supportsNoResponse = characteristic.properties and BluetoothGattCharacteristic.PROPERTY_WRITE_NO_RESPONSE != 0
+        val type = if (supportsNoResponse) BluetoothGattCharacteristic.WRITE_TYPE_NO_RESPONSE else BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT
+        busy = true
+        val accepted = runCatching {
+            if (Build.VERSION.SDK_INT >= 33) active.writeCharacteristic(characteristic, payload, type) == BluetoothStatusCodes.SUCCESS
+            else {
+                @Suppress("DEPRECATION")
+                characteristic.writeType = type
+                @Suppress("DEPRECATION")
+                characteristic.value = payload
+                @Suppress("DEPRECATION")
+                active.writeCharacteristic(characteristic)
+            }
+        }.getOrDefault(false)
+        if (!accepted) { fail("蓝牙写入未接受，已断开；请检查权限并重连。"); return }
+        if (payload.firstOrNull()?.toInt() == 'c'.code) {
+            lastControlFrame = payload.toString(Charsets.US_ASCII).trim()
+            lastControlAt = now; lastWasStop = isStop
+            if (isStop) lastStopAt = now
+        }
+        handler.removeCallbacks(writeTimeout)
+        handler.postDelayed(writeTimeout, 1000)
+    }
+
+    private fun fail(reason: String) {
+        lastError = reason; telemetry.connected = false
+        pendingControl = null; stopPending = false; setup.clear(); heartbeatDue = false; busy = false
+        handler.removeCallbacks(heartbeat); handler.removeCallbacks(writeTimeout)
+        val previous = gatt; gatt = null; rx = null
+        runCatching { previous?.disconnect(); previous?.close() }
     }
 
     private val callback = object : BluetoothGattCallback() {
-        @SuppressLint("MissingPermission")
-        override fun onConnectionStateChange(gatt: BluetoothGatt, status: Int, newState: Int) {
-            when (newState) {
-                BluetoothProfile.STATE_CONNECTED -> {
-                    telemetry.connected = true
-                    gatt.discoverServices()
-                }
-                BluetoothProfile.STATE_DISCONNECTED -> {
-                    telemetry.connected = false
-                    Log.i(TAG, "OpenBot disconnected, status=" + status)
-                }
+        override fun onConnectionStateChange(active: BluetoothGatt, status: Int, newState: Int) {
+            handler.post {
+                if (gatt !== active) return@post
+                if (status != BluetoothGatt.GATT_SUCCESS || newState == BluetoothProfile.STATE_DISCONNECTED) {
+                    fail("底盘已断开（状态 $status）。")
+                } else if (newState == BluetoothProfile.STATE_CONNECTED) active.discoverServices()
             }
         }
-
-        override fun onServicesDiscovered(gatt: BluetoothGatt, status: Int) {
-            val service = gatt.getService(UUID.fromString(OpenBotProtocol.SERVICE_UUID)) ?: return
-            rxCharacteristic = service.getCharacteristic(UUID.fromString(OpenBotProtocol.CHAR_RX_UUID))
-            txCharacteristic = service.getCharacteristic(UUID.fromString(OpenBotProtocol.CHAR_TX_UUID))
-            enableTelemetry()
+        override fun onServicesDiscovered(active: BluetoothGatt, status: Int) {
+            handler.post {
+                if (gatt !== active || closing) return@post
+                val service = active.getService(UUID.fromString(OpenBotProtocol.SERVICE_UUID))
+                rx = service?.getCharacteristic(UUID.fromString(OpenBotProtocol.CHAR_RX_UUID))
+                val tx = service?.getCharacteristic(UUID.fromString(OpenBotProtocol.CHAR_TX_UUID))
+                if (status != BluetoothGatt.GATT_SUCCESS || rx == null || tx == null ||
+                    rx!!.properties and (BluetoothGattCharacteristic.PROPERTY_WRITE or BluetoothGattCharacteristic.PROPERTY_WRITE_NO_RESPONSE) == 0) {
+                    fail("OpenBot 服务或 RX/TX 特征不可用。"); return@post
+                }
+                active.setCharacteristicNotification(tx, true)
+                val descriptor = tx.getDescriptor(CCCD)
+                if (descriptor == null) { ready(); return@post }
+                val accepted = if (Build.VERSION.SDK_INT >= 33)
+                    active.writeDescriptor(descriptor, BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE) == BluetoothStatusCodes.SUCCESS
+                else {
+                    @Suppress("DEPRECATION")
+                    descriptor.value = BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE
+                    @Suppress("DEPRECATION")
+                    active.writeDescriptor(descriptor)
+                }
+                if (!accepted) fail("无法启用底盘遥测通知。")
+            }
         }
-
-        override fun onCharacteristicChanged(
-            gatt: BluetoothGatt,
-            characteristic: BluetoothGattCharacteristic,
-            value: ByteArray,
-        ) {
-            handlePayload(value)
+        override fun onDescriptorWrite(active: BluetoothGatt, descriptor: BluetoothGattDescriptor, status: Int) {
+            handler.post {
+                if (gatt !== active || closing) return@post
+                if (status == BluetoothGatt.GATT_SUCCESS) ready() else fail("底盘通知订阅失败：$status")
+            }
         }
-
-        @Deprecated("Deprecated in Android 13, kept for older devices")
-        override fun onCharacteristicChanged(gatt: BluetoothGatt, characteristic: BluetoothGattCharacteristic) {
+        override fun onCharacteristicWrite(active: BluetoothGatt, characteristic: BluetoothGattCharacteristic, status: Int) {
+            handler.post {
+                if (gatt !== active) return@post
+                handler.removeCallbacks(writeTimeout); busy = false
+                if (status != BluetoothGatt.GATT_SUCCESS) fail("蓝牙写入错误：$status") else drain()
+            }
+        }
+        override fun onCharacteristicChanged(active: BluetoothGatt, characteristic: BluetoothGattCharacteristic, value: ByteArray) {
+            handler.post { if (gatt === active) stream.receive(value, telemetry, SystemClock.elapsedRealtime() / 1000.0, SONAR_INSTALLED) }
+        }
+        @Deprecated("Android 12 and earlier callback")
+        override fun onCharacteristicChanged(active: BluetoothGatt, characteristic: BluetoothGattCharacteristic) {
             @Suppress("DEPRECATION")
-            val value = characteristic.value ?: return
-            handlePayload(value)
-        }
-    }
-
-    private fun handlePayload(value: ByteArray) {
-        val text = String(value, Charsets.UTF_8).replace("\u0000", "")
-        lineBuffer.append(text)
-        val now = System.currentTimeMillis() / 1000.0
-        while (true) {
-            val index = lineBuffer.indexOf("\n")
-            if (index < 0) break
-            val line = lineBuffer.substring(0, index)
-            lineBuffer.delete(0, index + 1)
-            OpenBotProtocol.applyLine(telemetry, line, now)
-        }
-        // Firmware notifications arrive as complete payloads without a trailing
-        // newline, so flush whatever is buffered as one message.
-        if (lineBuffer.isNotEmpty()) {
-            OpenBotProtocol.applyLine(telemetry, lineBuffer.toString(), now)
-            lineBuffer.setLength(0)
+            val value = characteristic.value?.clone() ?: return
+            handler.post { if (gatt === active) stream.receive(value, telemetry, SystemClock.elapsedRealtime() / 1000.0, SONAR_INSTALLED) }
         }
     }
 
     companion object {
-        private const val TAG = "OpenBotBleLink"
-        private val DESCRIPTOR_CONFIG_UUID: UUID = UUID.fromString("00002902-0000-1000-8000-00805f9b34fb")
-
+        const val SONAR_INSTALLED = false
+        private val STOP = OpenBotProtocol.ctrlCmd(0.0, 0.0)
+        private val CCCD = UUID.fromString("00002902-0000-1000-8000-00805f9b34fb")
         fun isOpenBotName(name: String?): Boolean {
-            val lowered = name?.lowercase() ?: return false
-            return lowered.contains("openbot") || lowered.contains("rtr_520") || lowered.contains("rtr 520")
+            val text = name?.lowercase() ?: return false
+            return text.contains("openbot") || text.contains("rtr_520") || text.contains("rtr 520")
         }
     }
 }

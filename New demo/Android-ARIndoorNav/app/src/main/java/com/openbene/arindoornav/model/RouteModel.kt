@@ -2,23 +2,23 @@ package com.openbene.arindoornav.model
 
 import org.json.JSONArray
 import org.json.JSONObject
+import com.openbene.arindoornav.ar.Planar
+import com.openbene.arindoornav.nav.NavPoint
+import kotlin.math.atan2
 
 /** The three node types of the original ARIndoorNav chain. */
 const val TYPE_START = "start"
 const val TYPE_INTERMEDIATE = "intermediate"
 const val TYPE_DESTINATION = "destination"
 
-/**
- * One node of a recorded chain, exactly as the original ARIndoorNav stored it:
- * the offset is the displacement from the previous node (or from the anchor sheet
- * for the first node) in the frame the AR session had while the node was
- * recorded. The original never stored an orientation, an image or a timestamp.
- */
+/** Anchor-local incremental position, captured camera yaw and display name. */
 data class RouteNode(
     val type: String,
     val xOffset: Double,
     val yOffset: Double,
     val zOffset: Double,
+    val yawRad: Double? = null,
+    val name: String = "",
 )
 
 /** One route: the destination name, the sheet it was recorded on, and its chain. */
@@ -26,13 +26,26 @@ data class StoredRoute(
     val destination: String,
     val beaconName: String,
     val nodes: List<RouteNode>,
+    val anchorWidthM: Float = 0.2f,
 ) {
     val nodeCount: Int get() = nodes.size
+
+    fun navPoints(): List<NavPoint> {
+        var x = 0.0; var z = 0.0
+        val positions = nodes.map { x += it.xOffset; z += it.zOffset; Planar(x, -z, 0.0) }
+        return nodes.mapIndexed { index, node ->
+            val current = positions[index]
+            val from = if (index < nodes.lastIndex) current else positions.getOrElse(index - 1) { current }
+            val to = positions.getOrElse(index + 1) { current }
+            val yaw = node.yawRad ?: atan2(to.y - from.y, to.x - from.x)
+            NavPoint(node.name.ifBlank { if (index == 0) "起点" else "节点 $index" }, current.copy(yawRad = yaw))
+        }
+    }
 
     /** Horizontal length of the chain, shown in the route list. */
     fun pathLengthM(): Double {
         var total = 0.0
-        for (node in nodes) total += Math.hypot(node.xOffset, node.zOffset)
+        for (node in nodes.drop(1)) total += Math.hypot(node.xOffset, node.zOffset)
         return total
     }
 
@@ -44,13 +57,17 @@ data class StoredRoute(
                     .put("type", node.type)
                     .put("x_offset", node.xOffset)
                     .put("y_offset", node.yOffset)
-                    .put("z_offset", node.zOffset),
+                    .put("z_offset", node.zOffset)
+                    .put("yaw_rad", node.yawRad)
+                    .put("name", node.name),
             )
         }
         return JSONObject()
             .put("beacon_name", beaconName)
             .put("destination", destination)
             .put("node_count", nodes.size)
+            .put("anchor_width_m", anchorWidthM.toDouble())
+            .put("version", 2)
             .put("nodes", JSONObject().put("index", index))
     }
 
@@ -66,6 +83,8 @@ data class StoredRoute(
                         xOffset = item.optDouble("x_offset", 0.0),
                         yOffset = item.optDouble("y_offset", 0.0),
                         zOffset = item.optDouble("z_offset", 0.0),
+                        yawRad = if (item.has("yaw_rad") && !item.isNull("yaw_rad")) item.getDouble("yaw_rad") else null,
+                        name = item.optString("name", ""),
                     ),
                 )
             }
@@ -73,15 +92,14 @@ data class StoredRoute(
                 destination = json.optString("destination", name),
                 beaconName = json.optString("beacon_name", ""),
                 nodes = nodes,
+                anchorWidthM = json.optDouble("anchor_width_m",
+                    when (json.optString("beacon_name")) { "pi" -> 0.0762; "1" -> 0.127; else -> 0.2 }).toFloat(),
             )
         }
     }
 }
 
-/**
- * Reads and writes the JSON the original app kept in Firebase, so a record
- * exported from the original database can be dropped into this app unchanged.
- */
+/** Version 2 local JSON, with compatibility for older position-only captures. */
 object RouteCodec {
 
     fun encode(routes: List<StoredRoute>): String {

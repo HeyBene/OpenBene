@@ -13,22 +13,20 @@ object AppState {
     var bleDeviceAddress: String? = null
     var bleDeviceName: String? = null
 
-    /** Builds the link the AR screen drives, falling back to the bench mock. */
+    /** Creates a real link when selected; a connection failure never enables preview. */
     fun createLink(context: Context): RobotLink {
         val address = bleDeviceAddress
         if (!useBle || address == null) return MockRobotLink()
         val link = OpenBotBleLink(context)
         if (!link.connectToAddress(address)) {
-            Log.w(TAG, "no Bluetooth adapter or unknown address, using the mock link")
-            link.close()
-            return MockRobotLink()
+            Log.w(TAG, "Bluetooth is not ready; keep the real link disconnected")
         }
         return link
     }
 
     fun describeLink(): String = when {
-        !useBle -> "mock link (commands are only shown on screen)"
-        bleDeviceAddress == null -> "mock link (no OpenBot selected)"
+        !useBle -> "仅预览，不驱动底盘"
+        bleDeviceAddress == null -> "尚未选择底盘"
         else -> "OpenBot " + (bleDeviceName ?: bleDeviceAddress)
     }
 

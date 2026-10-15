@@ -6,6 +6,19 @@ import XCTest
 /// feeds them. Mirrors the Python harness in shared/navcore.
 final class ExecutorTests: XCTestCase {
 
+    func testWheelTelemetryNeverMovesRouteEstimator() throws {
+        let harness = try Harness(room: "Room 101", startPose: Pose2D(x: 0, y: 0))
+        let marker = try harness.map.marker("mk_entrance")
+        try harness.estimator.align(TestSupport.observation(marker: marker, truePose: harness.link.truePose))
+        harness.executor.noteMarker(marker.id)
+        let original = harness.estimator.pose
+        harness.link.telemetry.rpmLeft = 100000
+        harness.link.telemetry.rpmRight = -100000
+        for time in 0...20 { harness.executor.tick(nowS: Double(time), dtS: 1) }
+        XCTAssertEqual(harness.estimator.pose, original)
+        XCTAssertEqual(harness.estimator.odometryUpdates, 0)
+    }
+
     private final class Harness {
         let map: MapData
         let link: SimulatedRobotLink
@@ -30,12 +43,15 @@ final class ExecutorTests: XCTestCase {
         func step(noise: (position: Double, yawDeg: Double) = (0.0, 0.0)) -> ExecutorStatus {
             link.tick(dtS: dtS)
             let truePose = link.truePose
+            // Continuous camera poses, rather than wheel telemetry, provide
+            // motion after the initial image observation.
+            estimator.updateFromAr(TestSupport.arFromMap.compose(truePose), timestampS: timeS)
             for marker in map.markers {
                 let distance = truePose.distanceTo(marker.pose)
                 let heading = abs(truePose.headingErrorTo(marker.pose))
                 if distance < 1.2 && heading < 40.0 * Double.pi / 180.0 {
                     if let expected = executor.expectedMarkerId, expected != marker.id { continue }
-                    try? estimator.align(TestSupport.observation(marker: marker, truePose: truePose, noise: noise))
+                    _ = try? estimator.align(TestSupport.observation(marker: marker, truePose: truePose, noise: noise))
                     executor.noteMarker(marker.id)
                     break
                 }

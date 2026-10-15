@@ -70,7 +70,6 @@ public final class RouteExecutor {
     private var legMarkerFixed = false
     private var driftWarning = false
     private var scanStartedS: Double?
-    private var lastOdometryS: Double?
 
     public init(mapData: MapData, estimator: PoseEstimator, link: RobotLink, config: ExecutorConfig = ExecutorConfig()) {
         self.mapData = mapData
@@ -85,7 +84,6 @@ public final class RouteExecutor {
         pointIndex = 0
         usedMarkers = []
         scanStartedS = nil
-        lastOdometryS = nil
         driftWarning = false
         try beginLeg()
         if estimator.aligned {
@@ -109,8 +107,6 @@ public final class RouteExecutor {
             link.stop()
             return status()
         }
-
-        integrateOdometry(nowS: nowS)
 
         if link.telemetry.bumper != nil {
             link.stop()
@@ -303,17 +299,6 @@ public final class RouteExecutor {
             right /= scale
         }
         link.drive(left: left, right: right)
-    }
-
-    private func integrateOdometry(nowS: Double) {
-        defer { lastOdometryS = nowS }
-        guard let last = lastOdometryS else { return }
-        let elapsed = max(0.0, nowS - last)
-        estimator.integrateOdometry(
-            rpmLeft: link.telemetry.rpmLeft,
-            rpmRight: link.telemetry.rpmRight,
-            dtS: elapsed
-        )
     }
 
     private func obstacleAhead() -> Bool {

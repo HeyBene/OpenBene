@@ -9,668 +9,445 @@ import android.hardware.camera2.CameraManager
 import android.opengl.GLES20
 import android.opengl.GLSurfaceView
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
+import android.os.SystemClock
 import android.util.Log
 import android.view.View
-import android.widget.Button
-import android.widget.EditText
-import android.widget.LinearLayout
-import android.widget.TextView
-import android.widget.Toast
+import android.view.WindowManager
+import android.widget.*
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
-import com.google.ar.core.ArCoreApk
-import com.google.ar.core.AugmentedImage
-import com.google.ar.core.Config
-import com.google.ar.core.Frame
-import com.google.ar.core.Pose
-import com.google.ar.core.Session
-import com.google.ar.core.TrackingState
-import com.google.ar.core.exceptions.CameraNotAvailableException
-import com.google.ar.core.exceptions.NotYetAvailableException
-import com.openbene.arindoornav.AppState
+import com.google.ar.core.*
+import com.openbene.arindoornav.*
 import com.openbene.arindoornav.R
-import com.openbene.arindoornav.RouteStore
-import com.openbene.arindoornav.model.RouteNode
-import com.openbene.arindoornav.model.StoredRoute
-import com.openbene.arindoornav.model.TYPE_DESTINATION
-import com.openbene.arindoornav.model.TYPE_INTERMEDIATE
-import com.openbene.arindoornav.model.TYPE_START
-import com.openbene.arindoornav.nav.DriverConfig
-import com.openbene.arindoornav.nav.FollowCommand
-import com.openbene.arindoornav.nav.FollowConfig
-import com.openbene.arindoornav.nav.FollowController
-import com.openbene.arindoornav.nav.NodeDriver
+import com.openbene.arindoornav.model.*
+import com.openbene.arindoornav.nav.*
+import com.openbene.arindoornav.robot.OpenBotBleLink
 import com.openbene.arindoornav.robot.PersonBoxDetector
 import com.openbene.arindoornav.robot.RobotLink
-import java.util.Locale
+import java.util.concurrent.Executors
 import javax.microedition.khronos.egl.EGLConfig
 import javax.microedition.khronos.opengles.GL10
+import kotlin.math.cos
+import kotlin.math.sin
 
-/**
- * The AR screen, with the three modes the original ARIndoorNav work is split into:
- *
- * * capture: the first tracked sheet becomes the world origin, Add records the
- *   current camera position as the next node of the chain, End closes the chain and
- *   Save writes it to the routes file;
- * * navigate: the same sheet is scanned again, the chain is rebuilt from the stored
- *   offsets and the OpenBot can be driven along it;
- * * follow: OpenBot tracking, the robot drives towards the person in front of it.
- *
- * The anchor is locked to the first tracked sheet of the session and is never
- * re-locked, exactly like the original: one anchor, then ARCore tracking only.
- */
+/** GL produces immutable snapshots; UI, capture, navigation and BLE run on main. */
 class ArRouteActivity : AppCompatActivity(), GLSurfaceView.Renderer {
-
-    private lateinit var surfaceView: GLSurfaceView
-    private lateinit var overlayView: NodeOverlayView
-    private lateinit var stateText: TextView
-    private lateinit var detailText: TextView
-    private lateinit var guidanceText: TextView
-    private lateinit var captureRow: LinearLayout
-    private lateinit var addButton: Button
-    private lateinit var undoButton: Button
-    private lateinit var endButton: Button
-    private lateinit var saveButton: Button
-    private lateinit var startButton: Button
-
-    private lateinit var displayRotationHelper: DisplayRotationHelper
+    private lateinit var surface: GLSurfaceView
+    private lateinit var overlay: NodeOverlayView
+    private lateinit var state: TextView
+    private lateinit var detail: TextView
+    private lateinit var guidance: TextView
+    private lateinit var add: Button
+    private lateinit var undo: Button
+    private lateinit var end: Button
+    private lateinit var save: Button
+    private lateinit var start: Button
+    private lateinit var rotation: DisplayRotationHelper
     private lateinit var store: RouteStore
-    private val backgroundRenderer = CameraBackgroundRenderer()
-    private val followDetector = PersonBoxDetector()
-    private val followConfig = FollowConfig.FACE_BOX
-    private val driverConfig = DriverConfig()
-
+    private lateinit var link: RobotLink
+    private val renderer = CameraBackgroundRenderer()
+    private val worker = Executors.newSingleThreadExecutor()
+    private val main = Handler(Looper.getMainLooper())
+    private val detector by lazy { PersonBoxDetector() }
+    private var detectorUsed = false
     private var mode = MODE_CAPTURE
-    private var destination = ""
-    private var storedRoute: StoredRoute? = null
-
-    private var session: Session? = null
-    private var installRequested = false
-    private var link: RobotLink? = null
-    private var sensorOrientationDegrees = 0
-
-    /** The anchor of this AR session: the pose of the first sheet that was tracked. */
-    private var anchorPose: Pose? = null
-    private var anchorName: String? = null
-
-    /** Capture state: the chain as it is being recorded, in the anchor frame. */
+    private var route: StoredRoute? = null
+    private var sheetName = "entrance"
+    private var widthM = .2f
+    private var requestedInstall = false
+    private var creating = false
+    private var resumed = false
+    private var surfaceResumed = false
+    private var interrupted = false
+    @Volatile private var destroyed = false
+    @Volatile private var session: Session? = null
+    @Volatile private var sessionRunning = false
+    // Only the GL thread writes these fields. Never refine/reset after first recognition.
+    private var glAnchor: Pose? = null
+    private var glTimestamp = 0L
+    private var lastDetectionS = -10.0
+    @Volatile private var latest: Snapshot? = null
+    @Volatile private var renderError: String? = null
+    private var anchor: Pose? = null
     private val captured = ArrayList<RouteNode>()
-    private val anchorPoints = ArrayList<FloatArray>()
-    private var startNodeSet = false
-    private var destinationSet = false
+    private val localPoints = ArrayList<FloatArray>()
+    private var executor: WaypointExecutor? = null
+    private var followArmed = false
+    private var errorMessage: String? = null
+    private var sensorRotation = 0
+    private var startupTitle = "正在检查 ARCore 服务"
+    private var startupHint = "相机尚未启动，请稍候。"
+    private var startupError: String? = null
+    private var startupStartedS = 0.0
+    @Volatile private var firstCameraFrame = false
 
-    /**
-     * Positions of the chain in AR world coordinates. Rebuilt as a fresh list when
-     * the chain changes, so the GL thread always reads a complete one.
-     */
-    @Volatile
-    private var worldPoints: List<FloatArray> = emptyList()
-
-    private var lastCameraPose: Pose? = null
-    private var lastPlanar: Planar? = null
-    private var targetIndex = 0
-    private var drivingArmed = false
-    private var blocked = false
-    private var driverAction = ""
-    private var lastFollowCommand: FollowCommand? = null
-    private var lastCameraRequestS = -10.0
-    private var lastUiUpdateS = -10.0
+    private data class Snapshot(val camera: Pose, val anchor: Pose?, val tracking: Boolean,
+        val viewProjection: FloatArray, val focal: Float, val receivedS: Double)
+    private fun now() = SystemClock.elapsedRealtime() / 1000.0
+    private fun fresh(s: Snapshot?) = s != null && now() - s.receivedS in 0.0..0.6 && s.tracking &&
+        !interrupted && startupError == null && renderError == null
+    private fun TextView.show(value: CharSequence?) { if (text.toString() != value?.toString()) text = value }
+    private fun relative(s: Snapshot) = s.anchor?.inverse()?.compose(s.camera)
+    private fun pose(s: Snapshot?) = if (s != null && fresh(s)) relative(s)?.let { ArMath.planarOf(it) } else null
+    private fun available() = !AppState.useBle || link.telemetry.connected
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         setContentView(R.layout.activity_ar_route)
-
-        surfaceView = findViewById(R.id.surfaceView)
-        overlayView = findViewById(R.id.nodeOverlayView)
-        stateText = findViewById(R.id.stateText)
-        detailText = findViewById(R.id.detailText)
-        guidanceText = findViewById(R.id.guidanceText)
-        captureRow = findViewById(R.id.captureRow)
-        addButton = findViewById(R.id.addButton)
-        undoButton = findViewById(R.id.undoButton)
-        endButton = findViewById(R.id.endButton)
-        saveButton = findViewById(R.id.saveButton)
-        startButton = findViewById(R.id.startDrivingButton)
-        val stopButton: Button = findViewById(R.id.stopButton)
-
-        displayRotationHelper = DisplayRotationHelper(this)
-        store = RouteStore(this)
+        surface = findViewById(R.id.surfaceView); overlay = findViewById(R.id.nodeOverlayView)
+        state = findViewById(R.id.stateText); detail = findViewById(R.id.detailText)
+        guidance = findViewById(R.id.guidanceText); add = findViewById(R.id.addButton)
+        undo = findViewById(R.id.undoButton); end = findViewById(R.id.endButton)
+        save = findViewById(R.id.saveButton); start = findViewById(R.id.startDrivingButton)
+        store = RouteStore(this); rotation = DisplayRotationHelper(this)
         mode = intent.getStringExtra(EXTRA_MODE) ?: MODE_CAPTURE
-        destination = intent.getStringExtra(EXTRA_DESTINATION) ?: ""
-        sensorOrientationDegrees = readSensorOrientation()
-
         if (mode == MODE_NAVIGATE) {
-            val route = store.find(destination)
-            if (route == null) {
-                Toast.makeText(
-                    this,
-                    getString(R.string.route_load_failed, destination),
-                    Toast.LENGTH_LONG,
-                ).show()
-                finish()
-                return
+            route = runCatching { store.find(intent.getStringExtra(EXTRA_DESTINATION) ?: "") }.getOrNull()
+            if (route == null || route!!.nodes.size < 2) {
+                Toast.makeText(this, "航线读取失败", Toast.LENGTH_LONG).show(); finish(); return
             }
-            storedRoute = route
         }
-
+        sheetName = route?.beaconName ?: intent.getStringExtra("anchor") ?: "entrance"
+        widthM = route?.anchorWidthM ?: intent.getFloatExtra("width", .2f)
         link = AppState.createLink(this)
-
-        addButton.setOnClickListener {
-            recordNode(if (startNodeSet) TYPE_INTERMEDIATE else TYPE_START)
+        route?.let { executor = WaypointExecutor(it.navPoints(), link, PwmStore(this).load()) }
+        sensorRotation = readSensorOrientation()
+        add.setOnClickListener { record(if (captured.isEmpty()) TYPE_START else TYPE_INTERMEDIATE) }
+        end.setOnClickListener { record(TYPE_DESTINATION) }
+        undo.setOnClickListener {
+            if (captured.isNotEmpty()) { captured.removeAt(captured.lastIndex); localPoints.removeAt(localPoints.lastIndex) }
+            updateButtons()
         }
-        undoButton.setOnClickListener { undoLastNode() }
-        endButton.setOnClickListener { recordNode(TYPE_DESTINATION) }
-        saveButton.setOnClickListener { askForNameAndSave() }
-        startButton.setOnClickListener { armDriving() }
-        stopButton.setOnClickListener {
-            stopEverything()
-            finish()
+        save.setOnClickListener { askSave() }
+        start.setOnClickListener {
+            val snapshot = latest
+            if (!available()) { errorMessage = "蓝牙尚未连接。"; return@setOnClickListener }
+            if (!fresh(snapshot)) { errorMessage = "请等待稳定定位；若已切换到后台，请返回并重新打开。"; return@setOnClickListener }
+            if (mode == MODE_FOLLOW) { followArmed = true; errorMessage = null }
+            else {
+                val current = pose(snapshot)
+                if (current == null) errorMessage = "请先识别锚点。"
+                else runCatching { executor?.start(current) }.onSuccess { errorMessage = null }
+                    .onFailure { errorMessage = it.message }
+            }
         }
-
-        captureRow.visibility = if (mode == MODE_CAPTURE) View.VISIBLE else View.GONE
-        startButton.visibility = if (mode == MODE_CAPTURE) View.GONE else View.VISIBLE
-        guidanceText.text = when (mode) {
-            MODE_CAPTURE -> getString(R.string.capture_hint_need_anchor)
-            MODE_FOLLOW -> getString(R.string.follow_ready)
-            else -> getString(R.string.navigate_hint)
+        findViewById<Button>(R.id.stopButton).apply {
+            text = "立即停车 / 返回"
+            setOnClickListener {
+                if (executor?.active == true || followArmed) stopDriving("已手动停车。") else finish()
+            }
         }
-        updateCaptureButtons()
-
-        surfaceView.preserveEGLContextOnPause = true
-        surfaceView.setEGLContextClientVersion(2)
-        surfaceView.setEGLConfigChooser(8, 8, 8, 8, 16, 0)
-        surfaceView.setRenderer(this)
-        surfaceView.renderMode = GLSurfaceView.RENDERMODE_CONTINUOUSLY
-
-        if (!hasCameraPermission()) {
-            ActivityCompat.requestPermissions(this, arrayOf(Manifest.permission.CAMERA), REQUEST_CAMERA)
+        findViewById<Button>(R.id.pwmButton).apply {
+            visibility = if (mode == MODE_NAVIGATE) View.VISIBLE else View.GONE
+            setOnClickListener { showPwmSettings() }
         }
+        findViewById<View>(R.id.captureRow).visibility = if (mode == MODE_CAPTURE) View.VISIBLE else View.GONE
+        start.visibility = if (mode == MODE_CAPTURE) View.GONE else View.VISIBLE
+        surface.preserveEGLContextOnPause = true
+        surface.setEGLContextClientVersion(2)
+        surface.setEGLConfigChooser(8, 8, 8, 8, 16, 0)
+        surface.setRenderer(this)
+        surface.renderMode = GLSurfaceView.RENDERMODE_CONTINUOUSLY
+        surface.onPause()
+        updateButtons()
+        if (!hasCamera()) ActivityCompat.requestPermissions(this, arrayOf(Manifest.permission.CAMERA), 23)
     }
 
     override fun onResume() {
-        super.onResume()
-        displayRotationHelper.onResume()
-        if (session == null && hasCameraPermission() && ensureArCore()) {
-            createSession()
-        }
-        session?.let { active ->
-            try {
-                active.resume()
-            } catch (error: CameraNotAvailableException) {
-                Log.e(TAG, "camera not available", error)
-                Toast.makeText(this, R.string.ar_not_supported, Toast.LENGTH_LONG).show()
-                finish()
-            }
-        }
-        surfaceView.onResume()
+        super.onResume(); resumed = true
+        if (!::link.isInitialized) return
+        rotation.onResume(); main.post(tick); prepareSession()
     }
-
     override fun onPause() {
+        resumed = false; main.removeCallbacks(tick)
+        if (::link.isInitialized) stopDriving("已离开 AR 会话，请返回并重新打开航线。")
+        if (surfaceResumed) {
+            surface.onPause(); sessionRunning = false; session?.pause(); surfaceResumed = false; interrupted = true
+        }
+        if (::rotation.isInitialized) rotation.onPause()
         super.onPause()
-        surfaceView.onPause()
-        session?.pause()
-        displayRotationHelper.onPause()
-        link?.stop()
     }
-
     override fun onDestroy() {
+        destroyed = true
+        if (::link.isInitialized) { stopDriving(); link.close() }
+        if (detectorUsed) detector.close()
+        val old = session; session = null
+        worker.execute { old?.close() }; worker.shutdown()
         super.onDestroy()
-        stopEverything()
-        followDetector.close()
-        session?.close()
-        session = null
-        link?.close()
-        link = null
     }
-
-    private fun stopEverything() {
-        drivingArmed = false
-        link?.stop()
-    }
-
-    // ------------------------------------------------------------------ ARCore
-
-    private fun hasCameraPermission(): Boolean =
-        ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) ==
-            PackageManager.PERMISSION_GRANTED
-
-    private fun ensureArCore(): Boolean {
-        return try {
-            when (ArCoreApk.getInstance().requestInstall(this, !installRequested)) {
-                ArCoreApk.InstallStatus.INSTALL_REQUESTED -> {
-                    installRequested = true
-                    false
-                }
-                ArCoreApk.InstallStatus.INSTALLED -> true
-            }
-        } catch (error: Exception) {
-            Log.e(TAG, "ARCore is not available", error)
-            Toast.makeText(this, R.string.ar_not_supported, Toast.LENGTH_LONG).show()
-            false
+    override fun onRequestPermissionsResult(code: Int, permissions: Array<out String>, results: IntArray) {
+        super.onRequestPermissionsResult(code, permissions, results)
+        if (code == 23) {
+            if (hasCamera() && resumed) prepareSession()
+            else if (!hasCamera()) { Toast.makeText(this, R.string.camera_permission_needed, Toast.LENGTH_LONG).show(); finish() }
         }
     }
-
-    private fun createSession() {
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        // Some OEM setup windows return focus without a full Activity resume.
+        if (hasFocus && resumed && requestedInstall && session == null && !creating && startupError == null) {
+            main.post { if (resumed && !destroyed) prepareSession() }
+        }
+    }
+    private fun hasCamera() = ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED
+    private fun prepareSession() {
+        if (!resumed || destroyed || startupError != null) return
+        if (!hasCamera()) {
+            setStartup("等待相机权限", "请允许相机权限，再开始采集。")
+            return
+        }
+        sensorRotation = readSensorOrientation()
+        if (session != null) { resumeSession(); return }
+        if (creating) return
         try {
-            val active = Session(this)
-            val config = Config(active)
-            config.focusMode = Config.FocusMode.AUTO
-            config.updateMode = Config.UpdateMode.LATEST_CAMERA_IMAGE
-            // Only image anchors are used, so plane finding and depth stay off.
-            config.planeFindingMode = Config.PlaneFindingMode.DISABLED
-            config.lightEstimationMode = Config.LightEstimationMode.DISABLED
-            config.depthMode = Config.DepthMode.DISABLED
-            AnchorSheets.buildDatabase(this, active)?.let { config.augmentedImageDatabase = it }
-            active.configure(config)
-            session = active
-        } catch (error: Exception) {
-            Log.e(TAG, "could not create the AR session", error)
-            Toast.makeText(this, R.string.ar_not_supported, Toast.LENGTH_LONG).show()
-            finish()
-        }
-    }
-
-    /** Rotation of the back camera sensor, for the follow-mode detector. */
-    private fun readSensorOrientation(): Int {
-        return try {
-            val manager = getSystemService(Context.CAMERA_SERVICE) as CameraManager
-            for (id in manager.cameraIdList) {
-                val characteristics = manager.getCameraCharacteristics(id)
-                val facing = characteristics.get(CameraCharacteristics.LENS_FACING)
-                if (facing == CameraCharacteristics.LENS_FACING_BACK) {
-                    return characteristics.get(CameraCharacteristics.SENSOR_ORIENTATION) ?: 0
-                }
+            val api = ArCoreApk.getInstance()
+            val availability = api.checkAvailability(applicationContext)
+            Log.i(TAG, "ARCore availability=$availability device=${android.os.Build.MODEL} requested=$requestedInstall")
+            setStartup("正在检查 ARCore 服务", "检查安装状态和设备初始化；安装了服务仍需完成设备准备。")
+            val status = api.requestInstall(this, !requestedInstall)
+            Log.i(TAG, "ARCore requestInstall=$status")
+            if (status == ArCoreApk.InstallStatus.INSTALL_REQUESTED) {
+                requestedInstall = true
+                setStartup("等待 ARCore 完成设备准备", "相机尚未启动。请完成 ARCore 的安装/设备准备后返回；若一直停留，请确认机型受支持，并检查 ARCore 联网情况。")
+                return
             }
-            0
-        } catch (error: Exception) {
-            Log.w(TAG, "cannot read the sensor orientation", error)
-            0
+        } catch (e: Exception) { fatal("ARCore 检查失败", e); return }
+        creating = true
+        setStartup("正在创建 AR 会话", "正在加载相机配置与锚点图片，相机尚未输出画面。")
+        worker.execute {
+            var active: Session? = null
+            try {
+                Log.i(TAG, "Session creation starting")
+                active = Session(applicationContext)
+                Log.i(TAG, "Session created; building image database")
+                val config = Config(active).apply {
+                    focusMode = Config.FocusMode.AUTO
+                    updateMode = Config.UpdateMode.LATEST_CAMERA_IMAGE
+                    planeFindingMode = Config.PlaneFindingMode.DISABLED
+                    lightEstimationMode = Config.LightEstimationMode.DISABLED
+                    depthMode = Config.DepthMode.DISABLED
+                    if (mode != MODE_FOLLOW) augmentedImageDatabase = AnchorSheets.buildDatabase(applicationContext, active, sheetName, widthM)
+                }
+                active.configure(config)
+                Log.i(TAG, "Session configured")
+                val ready = active
+                main.post {
+                    if (destroyed || startupError != null) { Thread { ready.close() }.start() }
+                    else { creating = false; session = ready; if (resumed) resumeSession() }
+                }
+            } catch (e: Exception) {
+                active?.close()
+                main.post { creating = false; if (!destroyed) fatal("AR 会话创建失败", e) }
+            }
         }
     }
-
-    // --------------------------------------------------------------- renderer
+    private fun resumeSession() {
+        if (surfaceResumed || !resumed || startupError != null) return
+        try {
+            setStartup("正在打开 ARCore 相机", "正在等待相机输出第一帧画面。")
+            session?.resume(); sessionRunning = true; surface.onResume(); surfaceResumed = true
+            Log.i(TAG, "Camera resumed; waiting for first frame")
+        }
+        catch (e: Exception) { fatal("相机无法启动", e) }
+    }
+    private fun setStartup(title: String, hint: String) {
+        startupTitle = title; startupHint = hint; startupStartedS = now()
+        Log.i(TAG, "$title: $hint")
+    }
+    private fun fatal(message: String, error: Exception) {
+        Log.e(TAG, message, error)
+        val explanation = when (error) {
+            is com.google.ar.core.exceptions.UnavailableDeviceNotCompatibleException ->
+                "当前手机 ${android.os.Build.MODEL} 的设备/系统环境不兼容 ARCore，无法启动采集相机。仅安装 ARCore 服务不能解决，请使用受支持的手机测试。"
+            is com.google.ar.core.exceptions.UnavailableApkTooOldException ->
+                "Google Play Services for AR 版本过旧，请更新后返回重试。"
+            is com.google.ar.core.exceptions.UnavailableSdkTooOldException ->
+                "应用内 ARCore SDK 版本不受当前服务支持，需要更新应用。"
+            is com.google.ar.core.exceptions.UnavailableArcoreNotInstalledException ->
+                "请先安装 Google Play Services for AR，并完成首次设备准备。"
+            is SecurityException -> "相机权限不可用，请在系统设置中允许本应用使用相机。"
+            else -> "请返回后重试，并保留下方错误信息。"
+        }
+        startupError = "$explanation\n$message：${error.javaClass.simpleName}${error.message?.let { ": $it" } ?: ""}"
+        stopDriving("相机不可用，已停车。")
+        state.text = "AR 相机未能启动"
+        guidance.text = startupError
+    }
+    private fun stopDriving(message: String = "已停车。") {
+        executor?.stop(message); followArmed = false
+        if (::link.isInitialized) link.stop()
+    }
 
     override fun onSurfaceCreated(gl: GL10?, config: EGLConfig?) {
-        GLES20.glClearColor(0.05f, 0.07f, 0.1f, 1.0f)
-        backgroundRenderer.createOnGlThread(this)
+        GLES20.glClearColor(.05f, .07f, .1f, 1f); renderer.createOnGlThread(this)
     }
-
     override fun onSurfaceChanged(gl: GL10?, width: Int, height: Int) {
-        GLES20.glViewport(0, 0, width, height)
-        displayRotationHelper.onSurfaceChanged(width, height)
+        GLES20.glViewport(0, 0, width, height); rotation.onSurfaceChanged(width, height)
     }
-
     override fun onDrawFrame(gl: GL10?) {
-        val active = session
-        if (active == null) {
-            GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT or GLES20.GL_DEPTH_BUFFER_BIT)
-            return
-        }
-        displayRotationHelper.updateSessionIfNeeded(active)
-        try {
-            active.setCameraTextureName(backgroundRenderer.cameraTextureId)
-        } catch (error: Exception) {
-            Log.w(TAG, "camera texture not ready", error)
-            return
-        }
-
-        val frame = try {
-            active.update()
-        } catch (error: CameraNotAvailableException) {
-            Log.w(TAG, "camera is not available", error)
-            return
-        }
-
         GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT or GLES20.GL_DEPTH_BUFFER_BIT)
-        val tracking = frame.camera.trackingState == TrackingState.TRACKING
-        if (!tracking && mode != MODE_FOLLOW) {
-            // The pose is not usable this frame: hold the wheels until it recovers.
-            // Follow mode only needs the camera image, so it keeps running.
-            link?.stop()
-            return
-        }
-        backgroundRenderer.draw(frame)
-        onArFrame(active, frame, frame.timestamp / 1_000_000_000.0)
-    }
-
-    // -------------------------------------------------------------- AR frame
-
-    private fun onArFrame(active: Session, frame: Frame, nowS: Double) {
-        if (frame.camera.trackingState == TrackingState.TRACKING) {
-            lastCameraPose = frame.camera.pose
-            lastPlanar = ArMath.planarOf(frame.camera.pose)
-        }
-
-        lockAnchorIfNeeded(active)
-
-        if (mode == MODE_FOLLOW) {
-            val interval = FOLLOW_INTERVAL_S
-            if (nowS - lastCameraRequestS > interval) {
-                lastCameraRequestS = nowS
-                requestFollowBox(frame, nowS)
-            }
-            if (drivingArmed) tickFollow(nowS)
-        } else if (mode == MODE_NAVIGATE && drivingArmed) {
-            tickDrive()
-        }
-
-        val viewMatrix = FloatArray(16)
-        val projectionMatrix = FloatArray(16)
-        frame.camera.getViewMatrix(viewMatrix, 0)
-        frame.camera.getProjectionMatrix(projectionMatrix, 0, 0.05f, 30.0f)
-        overlayView.update(
-            nodes = worldPoints,
-            viewProjection = ArMath.multiply(projectionMatrix, viewMatrix),
-            focalPx = ArMath.focalPixels(projectionMatrix, surfaceView.height),
-            currentIndex = if (mode == MODE_NAVIGATE) targetIndex else -1,
-            anchorName = anchorName,
-        )
-        updateUi(nowS)
-    }
-
-    /**
-     * The first sheet that is tracked in this session becomes the world origin of
-     * the chain. A second sheet is ignored, as in the original app.
-     */
-    private fun lockAnchorIfNeeded(active: Session) {
-        if (anchorPose != null) return
-        for (image in active.getAllTrackables(AugmentedImage::class.java)) {
-            if (image.trackingState != TrackingState.TRACKING) continue
-            val name = image.name ?: continue
-            if (!AnchorSheets.isAnchor(name)) continue
-            anchorPose = image.centerPose
-            anchorName = name
-            onAnchorLocked()
-            return
-        }
-    }
-
-    private fun onAnchorLocked() {
-        if (mode == MODE_NAVIGATE) {
-            rebuildChainFromRoute()
-            targetIndex = 0
-            guidanceText.text = getString(R.string.navigate_hint)
-        }
-        if (mode == MODE_CAPTURE) {
-            updateCaptureButtons()
-            guidanceText.text = getString(R.string.capture_hint_start)
-        }
-    }
-
-    // --------------------------------------------------------------- capture
-
-    private fun recordNode(type: String) {
-        if (mode != MODE_CAPTURE || destinationSet) return
-        val anchor = anchorPose
-        if (anchor == null) {
-            guidanceText.text = getString(R.string.capture_hint_need_anchor)
-            return
-        }
-        val camera = lastCameraPose
-        if (camera == null) {
-            guidanceText.text = getString(R.string.waiting_for_tracking)
-            return
-        }
-
-        // Camera pose in the anchor frame: the same quantity the original app took
-        // from the ARKit session after it moved the world origin onto the sheet.
-        val position = anchor.inverse().compose(camera).translation
-        val previous = anchorPoints.lastOrNull()
-        val node = if (previous == null) {
-            RouteNode(type, position[0].toDouble(), position[1].toDouble(), position[2].toDouble())
-        } else {
-            RouteNode(
-                type,
-                (position[0] - previous[0]).toDouble(),
-                (position[1] - previous[1]).toDouble(),
-                (position[2] - previous[2]).toDouble(),
-            )
-        }
-        captured.add(node)
-        anchorPoints.add(floatArrayOf(position[0], position[1], position[2]))
-
-        when (type) {
-            TYPE_START -> startNodeSet = true
-            TYPE_DESTINATION -> destinationSet = true
-        }
-        rebuildWorldPoints()
-        updateCaptureButtons()
-        guidanceText.text = if (destinationSet) {
-            getString(R.string.capture_hint_ended)
-        } else {
-            getString(R.string.capture_hint_more)
-        }
-    }
-
-    private fun undoLastNode() {
-        if (mode != MODE_CAPTURE || captured.isEmpty()) return
-        val removed = captured.removeAt(captured.size - 1)
-        anchorPoints.removeAt(anchorPoints.size - 1)
-        when (removed.type) {
-            TYPE_START -> startNodeSet = false
-            TYPE_DESTINATION -> destinationSet = false
-        }
-        rebuildWorldPoints()
-        updateCaptureButtons()
-        guidanceText.text = if (captured.isEmpty()) {
-            getString(R.string.capture_hint_start)
-        } else {
-            getString(R.string.capture_hint_more)
-        }
-    }
-
-    private fun updateCaptureButtons() {
-        if (mode != MODE_CAPTURE) return
-        val anchored = anchorPose != null
-        addButton.isEnabled = anchored && !destinationSet
-        endButton.isEnabled = anchored && startNodeSet && !destinationSet
-        undoButton.isEnabled = anchored && captured.isNotEmpty()
-        saveButton.isEnabled = destinationSet && captured.isNotEmpty()
-    }
-
-    private fun askForNameAndSave() {
-        if (captured.isEmpty()) return
-        val input = EditText(this)
-        input.hint = getString(R.string.save_dialog_hint)
-        input.setText(destination.ifEmpty { "route " + (store.load().size + 1) })
-        AlertDialog.Builder(this)
-            .setTitle(R.string.save_dialog_title)
-            .setView(input)
-            .setPositiveButton(android.R.string.ok) { _, _ -> saveRoute(input.text.toString().trim()) }
-            .setNegativeButton(android.R.string.cancel, null)
-            .show()
-    }
-
-    private fun saveRoute(name: String) {
-        if (name.isEmpty()) return
+        if (!sessionRunning) return
+        val active = session ?: return
         try {
-            store.upsert(StoredRoute(name, anchorName ?: "", captured.toList()))
-            Toast.makeText(this, getString(R.string.save_done, name), Toast.LENGTH_LONG).show()
-            finish()
-        } catch (error: Exception) {
-            Toast.makeText(
-                this,
-                getString(R.string.save_failed, error.message ?: ""),
-                Toast.LENGTH_LONG,
-            ).show()
-        }
-    }
-
-    // -------------------------------------------------------------- navigate
-
-    /**
-     * Rebuilds the chain from the stored offsets: every node sits one recorded
-     * offset away from the previous one, and the first one sits that far from the
-     * anchor sheet. This is the original app's placement, offset by offset.
-     */
-    private fun rebuildChainFromRoute() {
-        val route = storedRoute ?: return
-        anchorPoints.clear()
-        var accumulated = FloatArray(3)
-        for (node in route.nodes) {
-            accumulated = floatArrayOf(
-                accumulated[0] + node.xOffset.toFloat(),
-                accumulated[1] + node.yOffset.toFloat(),
-                accumulated[2] + node.zOffset.toFloat(),
-            )
-            anchorPoints.add(accumulated.copyOf())
-        }
-        rebuildWorldPoints()
-    }
-
-    private fun rebuildWorldPoints() {
-        val anchor = anchorPose
-        if (anchor == null) {
-            worldPoints = emptyList()
-            return
-        }
-        worldPoints = anchorPoints.map { anchor.transformPoint(it) }
-    }
-
-    private fun armDriving() {
-        if (mode == MODE_FOLLOW) {
-            drivingArmed = true
-            startButton.isEnabled = false
-            guidanceText.text = getString(R.string.follow_armed)
-            return
-        }
-        if (mode != MODE_NAVIGATE) return
-        if (worldPoints.isEmpty()) {
-            guidanceText.text = getString(R.string.navigate_hint)
-            return
-        }
-        targetIndex = 0
-        blocked = false
-        drivingArmed = true
-        startButton.isEnabled = false
-        guidanceText.text = getString(R.string.navigate_hint)
-    }
-
-    private fun tickDrive() {
-        val robotLink = link ?: return
-        val pose = lastPlanar ?: return
-        if (worldPoints.isEmpty()) return
-        if (targetIndex >= worldPoints.size) {
-            drivingArmed = false
-            robotLink.stop()
-            return
-        }
-
-        val target = ArMath.planarOfPoint(worldPoints[targetIndex])
-        if (pose.distanceTo(target) <= driverConfig.arriveToleranceM) {
-            robotLink.stop()
-            if (targetIndex == worldPoints.size - 1) {
-                drivingArmed = false
-                startButton.isEnabled = true
-                driverAction = "arrived at " + destination
-                guidanceText.text = driverAction
-            } else {
-                targetIndex += 1
+            rotation.updateSessionIfNeeded(active); active.setCameraTextureName(renderer.cameraTextureId)
+            val frame = active.update()
+            renderer.draw(frame)
+            if (frame.timestamp == 0L || frame.timestamp == glTimestamp) return
+            if (!firstCameraFrame) {
+                firstCameraFrame = true
+                Log.i(TAG, "First camera frame received timestamp=${frame.timestamp}")
             }
-            return
-        }
-
-        val command = NodeDriver.command(
-            pose = pose,
-            target = target,
-            sonarCm = robotLink.telemetry.sonarCm,
-            wasBlocked = blocked,
-            config = driverConfig,
-        )
-        blocked = command.blocked
-        driverAction = command.action
-        if (command.left == 0.0 && command.right == 0.0) {
-            robotLink.stop()
-        } else {
-            robotLink.drive(command.left, command.right)
-        }
-        guidanceText.text = String.format(
-            Locale.US,
-            "node %d/%d  %s",
-            targetIndex + 1,
-            worldPoints.size,
-            command.action,
-        )
-    }
-
-    // ---------------------------------------------------------------- follow
-
-    /** One detection per request goes to the follow controller; see follow.py. */
-    private fun requestFollowBox(frame: Frame, nowS: Double) {
-        val image = try {
-            frame.acquireCameraImage()
-        } catch (error: NotYetAvailableException) {
-            return
-        } catch (error: Exception) {
-            Log.w(TAG, "cannot grab the camera image", error)
-            return
-        }
-        val rotation = displayRotationHelper.cameraImageRotationDegrees(sensorOrientationDegrees)
-        followDetector.process(image, nowS, rotation)
-    }
-
-    private fun tickFollow(nowS: Double) {
-        val robotLink = link ?: return
-        val ageS = nowS - followDetector.latestAtS
-        val box = followDetector.latestBox?.takeIf { ageS <= FollowController.BOX_TTL_S }
-        val command = FollowController.followCommand(
-            box = box,
-            config = followConfig,
-            sonarCm = robotLink.telemetry.sonarCm,
-            secondsSinceSeen = ageS,
-        )
-        lastFollowCommand = command
-        if (command.left == 0.0 && command.right == 0.0) {
-            robotLink.stop()
-        } else {
-            robotLink.drive(command.left, command.right)
-        }
-        guidanceText.text = "follow mode: " + command.action
-    }
-
-    // -------------------------------------------------------------------- UI
-
-    private fun updateUi(nowS: Double) {
-        if (nowS - lastUiUpdateS < UI_INTERVAL_S) return
-        lastUiUpdateS = nowS
-
-        val anchor = anchorName
-        stateText.text = when {
-            mode == MODE_FOLLOW -> getString(R.string.state_following)
-            anchor == null -> getString(R.string.state_looking_for_anchor)
-            mode == MODE_CAPTURE -> getString(R.string.state_capturing, anchor)
-            else -> getString(R.string.state_navigating, destination)
-        }
-
-        val builder = StringBuilder()
-        builder.append("anchors: ").append(AnchorSheets.describe()).append('\n')
-        builder.append("link: ").append(AppState.describeLink()).append('\n')
-        when (mode) {
-            MODE_CAPTURE -> builder.append("nodes recorded: ").append(captured.size)
-            MODE_NAVIGATE -> {
-                builder.append("chain: ").append(worldPoints.size).append(" nodes")
-                if (drivingArmed) {
-                    builder.append(", target ").append(targetIndex + 1)
-                    lastPlanar?.let { pose ->
-                        if (targetIndex < worldPoints.size) {
-                            val distance = pose.distanceTo(ArMath.planarOfPoint(worldPoints[targetIndex]))
-                            builder.append(String.format(Locale.US, ", %.2f m", distance))
-                        }
-                    }
+            glTimestamp = frame.timestamp
+            val tracking = frame.camera.trackingState == TrackingState.TRACKING
+            if (tracking && glAnchor == null && mode != MODE_FOLLOW) {
+                val image = active.getAllTrackables(AugmentedImage::class.java).firstOrNull {
+                    it.name == sheetName && it.trackingState == TrackingState.TRACKING &&
+                        it.trackingMethod == AugmentedImage.TrackingMethod.FULL_TRACKING &&
+                        it.centerPose.rotateVector(floatArrayOf(0f, 1f, 0f))[1] > .85f
+                }
+                if (image != null) glAnchor = image.centerPose
+            }
+            val view = FloatArray(16); val projection = FloatArray(16)
+            frame.camera.getViewMatrix(view, 0); frame.camera.getProjectionMatrix(projection, 0, .05f, 30f)
+            latest = Snapshot(frame.camera.pose, glAnchor, tracking, ArMath.multiply(projection, view),
+                ArMath.focalPixels(projection, surface.height), now())
+            if (mode == MODE_FOLLOW && now() - lastDetectionS >= .2) {
+                lastDetectionS = now()
+                runCatching { frame.acquireCameraImage() }.getOrNull()?.let {
+                    detectorUsed = true
+                    detector.process(it, lastDetectionS, rotation.cameraImageRotationDegrees(sensorRotation))
                 }
             }
-            MODE_FOLLOW -> {
-                val command = lastFollowCommand
-                builder.append("follow: ").append(command?.action ?: getString(R.string.follow_waiting))
+        } catch (e: Exception) {
+            if (renderError == null) Log.e(TAG, "Camera frame failed", e)
+            renderError = "相机更新失败：${e.javaClass.simpleName}: ${e.message}"
+        }
+    }
+
+    private val tick = object : Runnable {
+        override fun run() {
+            if (!resumed || destroyed || !::link.isInitialized) return
+            val s = latest
+            if (anchor == null && s?.anchor != null) anchor = s.anchor
+            val tracking = fresh(s) && renderError == null && startupError == null
+            executor?.tick(pose(s), tracking, available(), now())
+            if (followArmed) {
+                if (!tracking || !available() || link.telemetry.bumper != null) stopDriving("跟踪或连接不可用，已停车。")
+                else {
+                    val age = now() - detector.latestAtS
+                    val box = detector.latestBox?.takeIf { age <= FollowController.BOX_TTL_S }
+                    val command = FollowController.followCommand(box, FollowConfig.FACE_BOX, null, age)
+                    link.drive(command.left, command.right); guidance.text = "跟随：${command.action}"
+                }
+            }
+            if (s != null) drawOverlay(s)
+            state.show(when {
+                startupError != null || renderError != null -> "AR 相机不可用"
+                interrupted -> "AR 会话已中断，请返回重开"
+                !firstCameraFrame -> startupTitle
+                mode == MODE_FOLLOW -> "跟随模式"
+                anchor == null -> "请识别 $sheetName 锚点（纸张平放地面）"
+                !tracking -> "锚点已识别，等待稳定跟踪"
+                else -> "锚点已固定：$sheetName"
+            })
+            val pwm = executor?.pwm ?: PwmStore(this@ArRouteActivity).load()
+            val ble = link as? OpenBotBleLink
+            detail.show("${AppState.describeLink()} · ${if (link.telemetry.connected) "已连接" else "未连接"}\n" +
+                "${if (mode == MODE_CAPTURE) captured.size else route?.nodes?.size ?: 0} 个节点 · PWM 直行 ${pwm.drive} / 左 ${pwm.leftTurn} / 右 ${pwm.rightTurn}\n" +
+                "${ble?.lastControlFrame ?: "仅预览"} ${ble?.lastError ?: ""}")
+            if (!followArmed) guidance.show(startupError ?: errorMessage ?: renderError ?: when {
+                interrupted -> "已停车。切换应用后需退出本页并重新识别起始锚点。"
+                !firstCameraFrame -> startupHint + if (startupStartedS > 0 && now() - startupStartedS > 20)
+                    "\n已等待超过 20 秒。当前设备：${android.os.Build.MODEL}。请返回后重试；若仍失败，需要检查设备对 ARCore 的兼容性和服务日志。" else ""
+                mode == MODE_CAPTURE -> if (anchor == null) "将选定图片完整纳入镜头；识别后可移开镜头。" else
+                    "固定手机朝向后，依次采集起点、节点及朝向；至少两个点即可保存。"
+                else -> executor?.message ?: "等待定位。"
+            })
+            updateButtons(); main.postDelayed(this, 33)
+        }
+    }
+    private fun drawOverlay(s: Snapshot) {
+        val origin = anchor ?: return
+        val points = if (mode == MODE_CAPTURE) localPoints else {
+            var x = 0f; var y = 0f; var z = 0f
+            route?.nodes?.map { x += it.xOffset.toFloat(); y += it.yOffset.toFloat(); z += it.zOffset.toFloat(); floatArrayOf(x, y, z) } ?: emptyList()
+        }
+        val headings = if (mode == MODE_CAPTURE) captured.map { it.yawRad ?: 0.0 } else route?.navPoints()?.map { it.pose.yawRad } ?: emptyList()
+        val floorPoints = points.map { floatArrayOf(it[0], .025f, it[2]) }
+        val tips = floorPoints.mapIndexed { i, p ->
+            val yaw = headings.getOrElse(i) { 0.0 }
+            origin.transformPoint(floatArrayOf(p[0] + .35f * cos(yaw).toFloat(), .025f, p[2] - .35f * sin(yaw).toFloat()))
+        }
+        overlay.update(floorPoints.map { origin.transformPoint(it) }, s.viewProjection, s.focal,
+            if (mode == MODE_NAVIGATE) executor?.targetIndex ?: -1 else -1, sheetName, tips)
+    }
+    private fun record(type: String) {
+        val s = latest ?: return
+        if (mode != MODE_CAPTURE || !fresh(s) || captured.lastOrNull()?.type == TYPE_DESTINATION) return
+        val local = relative(s) ?: return
+        val p = local.translation; val previous = localPoints.lastOrNull() ?: floatArrayOf(0f, 0f, 0f)
+        captured.add(RouteNode(type, (p[0]-previous[0]).toDouble(), (p[1]-previous[1]).toDouble(),
+            (p[2]-previous[2]).toDouble(), ArMath.planarOf(local).yawRad, if (captured.isEmpty()) "起点" else "节点 ${captured.size}"))
+        localPoints.add(p.copyOf()); updateButtons()
+    }
+    private fun updateButtons() {
+        val can = mode == MODE_CAPTURE && anchor != null && fresh(latest)
+        val closed = captured.lastOrNull()?.type == TYPE_DESTINATION
+        add.isEnabled = can && !closed; add.show(if (captured.isEmpty()) "采集起点" else "采集节点")
+        end.isEnabled = can && !closed && captured.isNotEmpty()
+        undo.isEnabled = captured.isNotEmpty() && !interrupted
+        save.isEnabled = captured.size >= 2 && !interrupted
+        start.isEnabled = fresh(latest) && available() && (mode == MODE_FOLLOW || anchor != null) && executor?.active != true && !followArmed
+    }
+    private fun askSave() {
+        if (captured.size < 2 || interrupted) return
+        val count = runCatching { store.load().size }.getOrDefault(0)
+        val input = EditText(this).apply { hint = "航线名称"; setText("航线 ${count + 1}") }
+        AlertDialog.Builder(this).setTitle("保存到本机").setView(input).setNegativeButton("取消", null)
+            .setPositiveButton("保存") { _, _ ->
+                val name = input.text.toString().trim()
+                if (name.isBlank()) return@setPositiveButton
+                runCatching {
+                    val nodes = captured.toMutableList(); nodes[nodes.lastIndex] = nodes.last().copy(type = TYPE_DESTINATION)
+                    store.upsert(StoredRoute(name, sheetName, nodes, widthM))
+                }.onSuccess { Toast.makeText(this, "已保存 $name", Toast.LENGTH_SHORT).show(); finish() }
+                    .onFailure { Toast.makeText(this, "保存失败：${it.message}", Toast.LENGTH_LONG).show() }
+            }.show()
+    }
+    private fun showPwmSettings() {
+        stopDriving("调节 PWM 后请回到起点重新开始。")
+        val current = PwmStore(this).load()
+        val body = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(32, 16, 32, 16) }
+        val sliders = listOf("直行" to current.drive, "左转" to current.leftTurn, "右转" to current.rightTurn).map { (label, value) ->
+            val text = TextView(this).apply { text = "$label PWM：$value" }; body.addView(text)
+            SeekBar(this).apply {
+                max = 255; progress = value; body.addView(this)
+                setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+                    override fun onProgressChanged(s: SeekBar, p: Int, user: Boolean) { text.text = "$label PWM：$p" }
+                    override fun onStartTrackingTouch(s: SeekBar) {}
+                    override fun onStopTrackingTouch(s: SeekBar) {}
+                })
             }
         }
-        (link as? com.openbene.arindoornav.robot.MockRobotLink)?.let { mock ->
-            builder.append(String.format(Locale.US, "\nwheels: %.2f / %.2f", mock.lastLeft, mock.lastRight))
-        }
-        detailText.text = builder.toString()
+        AlertDialog.Builder(this).setTitle("导航 PWM（0–255）").setView(body).setNegativeButton("取消", null)
+            .setPositiveButton("保存并应用") { _, _ ->
+                val pwm = PwmSettings(sliders[0].progress, sliders[1].progress, sliders[2].progress)
+                runCatching { PwmStore(this).save(pwm) }.onSuccess {
+                    route?.let { executor = WaypointExecutor(it.navPoints(), link, pwm) }; errorMessage = null
+                }.onFailure { errorMessage = "保存失败：${it.message}" }
+            }.show()
     }
+    private fun readSensorOrientation(): Int = runCatching {
+        val manager = getSystemService(Context.CAMERA_SERVICE) as CameraManager
+        manager.cameraIdList.map { manager.getCameraCharacteristics(it) }.firstOrNull {
+            it.get(CameraCharacteristics.LENS_FACING) == CameraCharacteristics.LENS_FACING_BACK
+        }?.get(CameraCharacteristics.SENSOR_ORIENTATION) ?: 0
+    }.getOrDefault(0)
 
     companion object {
         const val EXTRA_MODE = "mode"
@@ -678,15 +455,8 @@ class ArRouteActivity : AppCompatActivity(), GLSurfaceView.Renderer {
         const val MODE_CAPTURE = "capture"
         const val MODE_NAVIGATE = "navigate"
         const val MODE_FOLLOW = "follow"
-
-        private const val TAG = "ArRouteActivity"
-        private const val REQUEST_CAMERA = 23
-        private const val FOLLOW_INTERVAL_S = 0.2
-        private const val UI_INTERVAL_S = 0.25
-
-        fun intent(context: Context, mode: String, destination: String = ""): Intent =
-            Intent(context, ArRouteActivity::class.java)
-                .putExtra(EXTRA_MODE, mode)
-                .putExtra(EXTRA_DESTINATION, destination)
+        private const val TAG = "OpenBeneAR"
+        fun intent(context: Context, mode: String, destination: String = "") = Intent(context, ArRouteActivity::class.java)
+            .putExtra(EXTRA_MODE, mode).putExtra(EXTRA_DESTINATION, destination)
     }
 }

@@ -11,8 +11,8 @@ android {
         applicationId = "com.openbene.arindoornav"
         minSdk = 24
         targetSdk = 34
-        versionCode = 1
-        versionName = "0.1.0"
+        versionCode = 2
+        versionName = "0.2.0"
     }
 
     buildTypes {
@@ -50,4 +50,6 @@ dependencies {
 
     // Follow mode: the operator's face box comes from the on-device face detector.
     implementation("com.google.mlkit:face-detection:16.1.7")
+    testImplementation("junit:junit:4.13.2")
+    testImplementation("org.json:json:20240303")
 }

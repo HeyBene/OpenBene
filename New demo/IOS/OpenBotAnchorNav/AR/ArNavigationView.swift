@@ -1,136 +1,154 @@
 import SwiftUI
 import ARKit
+import OpenBotNavKit
 
-/// AR camera view with the navigation overlay: status card on top, guidance and
-/// the drive controls at the bottom, plan view of the floor on the right.
 struct ArNavigationView: View {
+    @EnvironmentObject private var demo: DemoSession
     @StateObject private var controller: ArNavigationController
     @Environment(\.presentationMode) private var presentationMode
+    @Environment(\.scenePhase) private var scenePhase
     private let map: MapData
     private let route: Route
+    @State private var showPwmSettings = false
 
-    init(map: MapData, route: Route, steps: [GuidanceStep], link: RobotLink, robotDescription: String) {
+    init(recordedMap: RecordedMap, map: MapData, route: Route, link: RobotLink,
+         robotDescription: String, requiresConnection: Bool, pwm: NavigationPwmSettings = .defaults) {
         self.map = map
         self.route = route
-        _controller = StateObject(
-            wrappedValue: ArNavigationController(
-                map: map,
-                route: route,
-                steps: steps,
-                link: link,
-                robotDescription: robotDescription
-            )
-        )
+        _controller = StateObject(wrappedValue: ArNavigationController(map: recordedMap,
+            link: link, robotDescription: robotDescription, requiresConnection: requiresConnection, pwm: pwm))
     }
 
     var body: some View {
         ZStack {
-            ArSceneView(sceneView: controller.sceneView)
-                .ignoresSafeArea()
-
-            MapOverlayCanvas(
-                map: map,
-                route: route,
-                pose: controller.robotPose,
-                usedMarkers: controller.usedMarkers
-            )
-            .frame(width: 180, height: 180)
-            .background(Color.black.opacity(0.35))
-            .cornerRadius(16)
-            .padding(.trailing, 16)
-            .padding(.top, 170)
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
-
+            ArSessionView(session: controller.session).ignoresSafeArea()
+            MapOverlayCanvas(map: map, route: route, pose: controller.robotPose, usedMarkers: controller.usedMarkers)
+                .frame(width: 160, height: 160)
+                .background(Color.black.opacity(0.5)).cornerRadius(12)
+                .padding(.trailing).padding(.top, 155)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
             VStack(spacing: 12) {
-                statusCard
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(controller.stateText).font(.headline)
+                    Text(controller.detailText).font(.system(.caption, design: .monospaced))
+                }.frame(maxWidth: .infinity, alignment: .leading)
+                    .padding().background(Color.black.opacity(0.65)).cornerRadius(12)
                 Spacer()
-                bottomCard
-            }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 12)
+                VStack(alignment: .leading, spacing: 10) {
+                    Picker("模式", selection: Binding(get: { controller.followMode }, set: { controller.setFollowMode($0) })) {
+                        Text("航线").tag(false)
+                        Text("跟随").tag(true)
+                    }.pickerStyle(.segmented)
+                    Text(controller.guidanceText)
+                    ProgressView(value: controller.progress).tint(.teal)
+                    if !controller.followMode {
+                        HStack {
+                            Text("PWM 直行 \(controller.pwm.drivePwm) · 左转 \(controller.pwm.leftTurnPwm) · 右转 \(controller.pwm.rightTurnPwm)").font(.caption)
+                            Spacer()
+                            Button("调节 PWM") { controller.stopDriving(); showPwmSettings = true }
+                        }
+                    }
+                    HStack {
+                        Button("开始执行") { controller.arm() }
+                            .buttonStyle(.borderedProminent)
+                            .disabled(controller.isArmed || !controller.readyToStart)
+                        Button("停车") { controller.stopDriving() }.buttonStyle(.bordered).tint(.red)
+                        Button("退出") {
+                            controller.stopEverything()
+                            presentationMode.wrappedValue.dismiss()
+                        }.buttonStyle(.bordered)
+                    }
+                    if !controller.followMode {
+                        Text("转向航线 → 停 2 秒 → 直行 → 停 2 秒 → 调整节点朝向 → 停 2 秒 → 下一段")
+                            .font(.caption)
+                    }
+                }.padding().background(Color.black.opacity(0.65)).cornerRadius(12)
+            }.padding().foregroundColor(.white)
         }
         .onAppear { controller.start() }
         .onDisappear { controller.stopEverything() }
-    }
-
-    private var statusCard: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text(controller.stateText)
-                .font(.headline)
-                .foregroundColor(.white)
-            Text(controller.detailText)
-                .font(.system(.caption, design: .monospaced))
-                .foregroundColor(.white.opacity(0.9))
+        .onChange(of: scenePhase) { if $0 == .active { controller.start() } else if $0 == .background { controller.stopDriving(); controller.session.pause() } }
+        .sheet(isPresented: $showPwmSettings) {
+            PwmSettingsView(settings: demo.pwmSettings, onApply: controller.applyPwm)
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(12)
-        .background(Color.black.opacity(0.55))
-        .cornerRadius(14)
-    }
-
-    private var bottomCard: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack {
-                Picker("Mode", selection: modeBinding) {
-                    Text("Route").tag(false)
-                    Text("Follow").tag(true)
-                }
-                .pickerStyle(.segmented)
-                .frame(width: 170)
-                Spacer()
-            }
-            Text(controller.guidanceText)
-                .font(.body)
-                .foregroundColor(.white)
-            if controller.followMode && !controller.isArmed {
-                Text(controller.followAction)
-                    .font(.caption)
-                    .foregroundColor(.white.opacity(0.85))
-            }
-            ProgressView(value: controller.progress)
-                .progressViewStyle(.linear)
-                .tint(.teal)
-            HStack(spacing: 12) {
-                Button("Start driving") { controller.arm() }
-                    .buttonStyle(.borderedProminent)
-                    .disabled(controller.isArmed || (!controller.followMode && !controller.isLocalised))
-                Button("Stop") {
-                    controller.stopEverything()
-                    presentationMode.wrappedValue.dismiss()
-                }
-                .buttonStyle(.bordered)
-                .tint(.red)
-                Spacer()
-                if !controller.isLocalised && !controller.followMode {
-                    Text("waiting for a marker")
-                        .font(.caption)
-                        .foregroundColor(.white.opacity(0.8))
-                }
-            }
-        }
-        .padding(14)
-        .background(Color.black.opacity(0.55))
-        .cornerRadius(14)
-    }
-
-    /// The segmented control drives the controller directly; follow mode needs no
-    /// marker, so switching is allowed at any time and stops the robot first.
-    private var modeBinding: Binding<Bool> {
-        Binding(
-            get: { controller.followMode },
-            set: { controller.setFollowMode($0) }
-        )
     }
 }
 
-/// Hosts the ARSCNView that shows the camera feed and the route nodes.
-struct ArSceneView: UIViewRepresentable {
-    let sceneView: ARSCNView
+struct ArSessionView: View {
+    @ObservedObject var session: AnchorARSession
+    var body: some View {
+        ZStack {
+            Color.black
+            if let view = session.sceneView {
+                ArSceneView(sceneView: view, onVisible: session.sceneBecameVisible,
+                            onRendered: session.sceneDidRender)
+            }
+            if !session.hasRenderedFrame {
+                VStack(spacing: 12) {
+                    ProgressView().tint(.white)
+                    Text(session.message).foregroundColor(.white)
+                }.padding().background(Color.black.opacity(0.7)).cornerRadius(12)
+                    .accessibilityIdentifier("ar.camera.startup")
+            }
+        }
+    }
+}
 
-    func makeUIView(context: Context) -> ARSCNView {
-        sceneView.automaticallyUpdatesLighting = false
-        return sceneView
+struct ArSceneView: UIViewControllerRepresentable {
+    let sceneView: ARSCNView
+    let onVisible: () -> Void
+    let onRendered: () -> Bool
+
+    func makeUIViewController(context: Context) -> ARSceneViewController {
+        ARSceneViewController(sceneView: sceneView, onVisible: onVisible, onRendered: onRendered)
+    }
+    func updateUIViewController(_ controller: ARSceneViewController, context: Context) {}
+}
+
+final class ARSceneViewController: UIViewController, ARSCNViewDelegate {
+    private let sceneView: ARSCNView
+    private let onVisible: () -> Void
+    private let onRendered: () -> Bool
+
+    init(sceneView: ARSCNView, onVisible: @escaping () -> Void, onRendered: @escaping () -> Bool) {
+        self.sceneView = sceneView
+        self.onVisible = onVisible
+        self.onRendered = onRendered
+        super.init(nibName: nil, bundle: nil)
+    }
+    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+
+    override func viewDidLoad() {
+        super.viewDidLoad()
+        view.backgroundColor = .black
+        sceneView.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(sceneView)
+        NSLayoutConstraint.activate([
+            sceneView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            sceneView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            sceneView.topAnchor.constraint(equalTo: view.topAnchor),
+            sceneView.bottomAnchor.constraint(equalTo: view.bottomAnchor)
+        ])
+        sceneView.delegate = self
+        sceneView.isAccessibilityElement = true
+        sceneView.accessibilityIdentifier = "ar.camera.preview"
+        sceneView.accessibilityLabel = "相机预览"
+        sceneView.accessibilityValue = "准备中"
     }
 
-    func updateUIView(_ uiView: ARSCNView, context: Context) {}
+    override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
+        view.layoutIfNeeded()
+        onVisible()
+    }
+
+    func renderer(_ renderer: SCNSceneRenderer, didRenderScene scene: SCNScene, atTime time: TimeInterval) {
+        DispatchQueue.main.async { [weak self] in
+            guard let self = self, self.onRendered() else { return }
+            self.sceneView.accessibilityValue = "已显示"
+            // This delegate only observes startup; stop dispatching render
+            // callbacks once a camera frame has actually been displayed.
+            self.sceneView.delegate = nil
+        }
+    }
 }
