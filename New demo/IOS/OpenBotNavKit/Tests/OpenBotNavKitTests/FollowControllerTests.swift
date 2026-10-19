@@ -1,8 +1,7 @@
 import XCTest
 @testable import OpenBotNavKit
 
-/// Mirrors shared/navcore/tests/test_follow.py: the three implementations have to
-/// agree on every branch of the follow controller.
+/// iOS wheel signs match the device-validated waypoint/bench control convention.
 final class FollowControllerTests: XCTestCase {
 
     private func box(
@@ -37,13 +36,13 @@ final class FollowControllerTests: XCTestCase {
 
     func testTurnsTowardsTheTarget() {
         let right = FollowController.followCommand(box: box(centreX: 0.8, height: 0.6))
-        XCTAssertLessThan(right.left, 0.0)
-        XCTAssertGreaterThan(right.right, 0.0)
+        XCTAssertGreaterThan(right.left, 0.0)
+        XCTAssertLessThan(right.right, 0.0)
         XCTAssertTrue(right.action.contains("right"))
 
         let left = FollowController.followCommand(box: box(centreX: 0.2, height: 0.6))
-        XCTAssertGreaterThan(left.left, 0.0)
-        XCTAssertLessThan(left.right, 0.0)
+        XCTAssertLessThan(left.left, 0.0)
+        XCTAssertGreaterThan(left.right, 0.0)
         XCTAssertTrue(left.action.contains("left"))
     }
 
@@ -70,7 +69,7 @@ final class FollowControllerTests: XCTestCase {
 
     func testSteersWhileClosingIn() {
         let command = FollowController.followCommand(box: box(centreX: 0.58, width: 0.1, height: 0.2))
-        XCTAssertGreaterThan(command.right, command.left)
+        XCTAssertGreaterThan(command.left, command.right)
         XCTAssertGreaterThan(command.left, 0.0)
     }
 

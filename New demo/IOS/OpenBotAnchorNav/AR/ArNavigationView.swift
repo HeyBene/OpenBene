@@ -21,8 +21,8 @@ struct ArNavigationView: View {
 
     var body: some View {
         ZStack {
-            ArSessionView(session: controller.session).ignoresSafeArea()
-            MapOverlayCanvas(map: map, route: route, pose: controller.robotPose, usedMarkers: controller.usedMarkers)
+            ArSessionView(session: controller.session, followDriver: controller.followDriver).ignoresSafeArea()
+            MapOverlayCanvas(map: map, route: route, pose: controller.robotPose, usedMarkers: controller.usedMarkers, routePoints: controller.displayPoints)
                 .frame(width: 160, height: 160)
                 .background(Color.black.opacity(0.5)).cornerRadius(12)
                 .padding(.trailing).padding(.top, 155)
@@ -39,9 +39,24 @@ struct ArNavigationView: View {
                         Text("航线").tag(false)
                         Text("跟随").tag(true)
                     }.pickerStyle(.segmented)
-                    Text(controller.guidanceText)
-                    ProgressView(value: controller.progress).tint(.teal)
-                    if !controller.followMode {
+                    if controller.followMode {
+                        FollowControls(driver: controller.followDriver, onPwm: {
+                            controller.stopDriving(); showPwmSettings = true
+                        })
+                    } else {
+                        Picker("方向", selection: Binding(get: { controller.returnMode }, set: { controller.setReturnMode($0) })) {
+                            Text("去程").tag(false)
+                            Text("返程至锚点").tag(true)
+                        }.pickerStyle(.segmented).disabled(controller.isArmed || controller.map.anchorStart == nil)
+                        if controller.returnMode {
+                            Picker("返程出发节点", selection: Binding(get: { controller.returnNodeID }, set: { controller.selectReturnNode($0) })) {
+                                ForEach(controller.returnNodes) { node in Text(node.name).tag(node.id) }
+                            }.disabled(controller.isArmed)
+                            Text("终点是采集时确认的支架出发位姿；末段转向时识别图片校准，允许30cm内微调并复核。")
+                                .font(.caption)
+                        }
+                        Text(controller.guidanceText)
+                        ProgressView(value: controller.progress).tint(.teal)
                         HStack {
                             Text("PWM 直行 \(controller.pwm.drivePwm) · 左转 \(controller.pwm.leftTurnPwm) · 右转 \(controller.pwm.rightTurnPwm)").font(.caption)
                             Spacer()
@@ -49,10 +64,12 @@ struct ArNavigationView: View {
                         }
                     }
                     HStack {
-                        Button("开始执行") { controller.arm() }
-                            .buttonStyle(.borderedProminent)
-                            .disabled(controller.isArmed || !controller.readyToStart)
-                        Button("停车") { controller.stopDriving() }.buttonStyle(.bordered).tint(.red)
+                        if !controller.followMode {
+                            Button(controller.returnMode ? "开始返程" : "开始执行") { controller.arm() }
+                                .buttonStyle(.borderedProminent)
+                                .disabled(controller.isArmed || !controller.readyToStart)
+                            Button("停车") { controller.stopDriving() }.buttonStyle(.bordered).tint(.red)
+                        }
                         Button("退出") {
                             controller.stopEverything()
                             presentationMode.wrappedValue.dismiss()
@@ -67,7 +84,7 @@ struct ArNavigationView: View {
         }
         .onAppear { controller.start() }
         .onDisappear { controller.stopEverything() }
-        .onChange(of: scenePhase) { if $0 == .active { controller.start() } else if $0 == .background { controller.stopDriving(); controller.session.pause() } }
+        .onChange(of: scenePhase) { if $0 == .active { controller.start() } else { controller.stopDriving(); if $0 == .background { controller.session.pause() } } }
         .sheet(isPresented: $showPwmSettings) {
             PwmSettingsView(settings: demo.pwmSettings, onApply: controller.applyPwm)
         }
@@ -76,19 +93,29 @@ struct ArNavigationView: View {
 
 struct ArSessionView: View {
     @ObservedObject var session: AnchorARSession
+    var followDriver: PersonFollowDriver? = nil
     var body: some View {
-        ZStack {
-            Color.black
-            if let view = session.sceneView {
-                ArSceneView(sceneView: view, onVisible: session.sceneBecameVisible,
-                            onRendered: session.sceneDidRender)
-            }
-            if !session.hasRenderedFrame {
-                VStack(spacing: 12) {
-                    ProgressView().tint(.white)
-                    Text(session.message).foregroundColor(.white)
-                }.padding().background(Color.black.opacity(0.7)).cornerRadius(12)
-                    .accessibilityIdentifier("ar.camera.startup")
+        GeometryReader { geometry in
+            ZStack {
+                Color.black
+                if let view = session.sceneView {
+                    ArSceneView(sceneView: view, onVisible: session.sceneBecameVisible,
+                                onRendered: session.sceneDidRender)
+                        // Show the complete portrait camera image. Filling a tall
+                        // phone screen crops almost 40% of a 4:3 sensor's width.
+                        .frame(width: min(geometry.size.width, geometry.size.height * session.portraitImageAspectRatio),
+                               height: min(geometry.size.height, geometry.size.width / session.portraitImageAspectRatio))
+                        .overlay {
+                            if let driver = followDriver { FollowDetectionOverlay(driver: driver) }
+                        }
+                }
+                if !session.hasRenderedFrame {
+                    VStack(spacing: 12) {
+                        ProgressView().tint(.white)
+                        Text(session.message).foregroundColor(.white)
+                    }.padding().background(Color.black.opacity(0.7)).cornerRadius(12)
+                        .accessibilityIdentifier("ar.camera.startup")
+                }
             }
         }
     }

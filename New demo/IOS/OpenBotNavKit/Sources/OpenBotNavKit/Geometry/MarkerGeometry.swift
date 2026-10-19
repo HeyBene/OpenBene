@@ -197,6 +197,17 @@ public enum MarkerGeometry {
         return planarPose(ofPoint: cameraPose.position, yawRad: yaw)
     }
 
+    /// The view direction must have a useful horizontal projection before it
+    /// can represent a fixed, forward-facing robot mount. Never fabricate yaw 0
+    /// for a downward-looking scan or let its 180-degree flip drive the wheels.
+    public static func navigationDeviceInAr(cameraPose: RigidTransform) -> Pose2D? {
+        let forward = cameraPose.rotate([0, 0, -1])
+        guard forward.allSatisfy({ $0.isFinite }),
+              hypot(forward[0], forward[2]) >= 0.25 else { return nil }
+        let pose = deviceInAr(cameraPose: cameraPose)
+        return TrajectoryCorridor.finite(pose) ? pose : nil
+    }
+
     /// Planar pose of an ARKit image anchor: the tracked sheet reports its centre
     /// with the print in the anchor's local X-Z plane, +X across the print from
     /// left to right, +Y as the sheet normal and +Z from the top edge to the

@@ -18,4 +18,12 @@ public struct FixedAnchorFrame {
         guard trackingNormal else { return nil }
         return mapFromAr?.compose(deviceInAr)
     }
+
+    /// Explicit terminal-return correction. Capture and ordinary route replay
+    /// still call alignOnce, so later observations cannot move their map.
+    public mutating func realignForReturn(markerInAr: Pose2D) -> Bool {
+        guard mapFromAr != nil, TrajectoryCorridor.finite(markerInAr) else { return false }
+        mapFromAr = markerInAr.inverse()
+        return true
+    }
 }

@@ -10,14 +10,17 @@ final class AnchorARSession: NSObject, ObservableObject, ARSessionDelegate {
     @Published private(set) var sceneView: ARSCNView?
     @Published private(set) var hasCameraFrame = false
     @Published private(set) var hasRenderedFrame = false
+    @Published private(set) var portraitImageAspectRatio: CGFloat = 0.75
     @Published private(set) var pose: Pose2D?
     @Published private(set) var trackingNormal = false
     @Published private(set) var localised = false
     @Published private(set) var message = "请识别完整的定位标记图。"
     private var fixedFrame = FixedAnchorFrame()
+    private var initialAlignment = StableAnchorAlignment()
     var mapFromAr: Pose2D? { fixedFrame.mapFromAr }
     private(set) var floorY: Float = 0
     private var latestPose: Pose2D?
+    private var latestDeviceInAr: Pose2D?
     private var lastFrameDate = Date.distantPast
     private var lastUiTime = -Double.infinity
     private var frameWatchdog: Timer?
@@ -31,6 +34,9 @@ final class AnchorARSession: NSObject, ObservableObject, ARSessionDelegate {
     var onFrame: ((Pose2D?, Bool, Double) -> Void)?
     var onCameraFrame: ((ARFrame) -> Void)?
     var onUnavailable: ((String) -> Void)?
+    var onTrackingLimited: ((String) -> Void)?
+    var onTrackedImage: ((Pose2D, Double, Float) -> Void)?
+    var onImageNotTracked: (() -> Void)?
 
     init(anchor: AnchorDefinition) {
         self.anchor = anchor
@@ -84,6 +90,9 @@ final class AnchorARSession: NSObject, ObservableObject, ARSessionDelegate {
         configuration.worldAlignment = .gravity
         configuration.detectionImages = [reference]
         configuration.maximumNumberOfTrackedImages = 1
+        if ARWorldTrackingConfiguration.supportsFrameSemantics(.sceneDepth) {
+            configuration.frameSemantics.insert(.sceneDepth)
+        }
         preparedConfiguration = configuration
         sceneView = view
         message = "相机视图准备中，请稍候…"
@@ -126,7 +135,7 @@ final class AnchorARSession: NSObject, ObservableObject, ARSessionDelegate {
     func capturePose() throws -> Pose2D {
         guard trackingNormal, localised, let latestPose = latestPose,
               Date().timeIntervalSince(lastFrameDate) < 0.5 else {
-            throw RecordingError.invalid("位置尚未就绪，请识别标记并等待跟踪恢复。")
+            throw RecordingError.invalid(localised && trackingNormal ? "请保持手机在支架上的斜向前下方姿态，避免镜头垂直朝地。" : "位置尚未就绪，请识别标记并等待跟踪恢复。")
         }
         return latestPose
     }
@@ -137,14 +146,32 @@ final class AnchorARSession: NSObject, ObservableObject, ARSessionDelegate {
         return SCNVector3(Float(ar.x), floorY + height, Float(-ar.y))
     }
 
+    func applyReturnImageAlignment(marker: Pose2D, floorY: Float) throws -> Pose2D {
+        guard trackingNormal, localised, let device = latestDeviceInAr,
+              Date().timeIntervalSince(lastFrameDate) < 0.3,
+              fixedFrame.realignForReturn(markerInAr: marker),
+              let corrected = fixedFrame.pose(deviceInAr: device, trackingNormal: true) else {
+            throw RecordingError.invalid("图片归位时相机位姿不可用，保持停车。")
+        }
+        self.floorY = floorY
+        latestPose = corrected; pose = corrected
+        return corrected
+    }
+
     func session(_ session: ARSession, didUpdate frame: ARFrame) {
         guard !ended else { return }
         lastFrameDate = Date()
         if !hasCameraFrame { hasCameraFrame = true }
+        let resolution = frame.camera.imageResolution
+        if resolution.width > 0, resolution.height > 0 {
+            let aspect = resolution.height / resolution.width
+            if abs(portraitImageAspectRatio - aspect) > 0.001 { portraitImageAspectRatio = aspect }
+        }
         onCameraFrame?(frame)
         let normal: Bool
         if case .normal = frame.camera.trackingState { normal = true } else { normal = false }
         if !normal {
+            onImageNotTracked?()
             suspendTracking(localised ? "跟踪暂时受限，已停车。请缓慢移动手机，等待跟踪恢复。" : "请缓慢移动手机，等待相机跟踪并识别定位图片。")
             onFrame?(nil, false, frame.timestamp)
             return
@@ -156,18 +183,30 @@ final class AnchorARSession: NSObject, ObservableObject, ARSessionDelegate {
                   image.referenceImage.name == anchor.id else { continue }
             let markerPose = MarkerGeometry.markerInAr(fromImageAnchor:
                 RigidTransform(columnMajor4x4: values(image.transform)))
-            fixedFrame.alignOnce(markerInAr: markerPose)
-            floorY = image.transform.columns.3.y
-            localised = true
+            if let stable = initialAlignment.observe(markerPose, timestampS: frame.timestamp) {
+                fixedFrame.alignOnce(markerInAr: stable)
+                floorY = image.transform.columns.3.y
+                localised = true
+            }
             break
         } }
-        let device = MarkerGeometry.deviceInAr(cameraPose:
+        let device = MarkerGeometry.navigationDeviceInAr(cameraPose:
             RigidTransform(columnMajor4x4: values(frame.camera.transform)))
-        latestPose = fixedFrame.pose(deviceInAr: device, trackingNormal: normal)
+        latestDeviceInAr = device
+        latestPose = device.flatMap { fixedFrame.pose(deviceInAr: $0, trackingNormal: normal) }
+        let tracked = frame.anchors.compactMap { $0 as? ARImageAnchor }.first {
+            $0.isTracked && $0.referenceImage.name == anchor.id
+        }
+        if let image = tracked {
+            let marker = MarkerGeometry.markerInAr(fromImageAnchor: RigidTransform(columnMajor4x4: values(image.transform)))
+            onTrackedImage?(marker, frame.timestamp, image.transform.columns.3.y)
+        } else { onImageNotTracked?() }
         if frame.timestamp - lastUiTime > 0.10 {
             lastUiTime = frame.timestamp
             pose = latestPose
-            message = localised ? "锚点已固定，可以离开图片；位置由 AR 持续跟踪。" : "请识别 \(anchor.title) 的完整图片。"
+            if localised {
+                message = latestPose == nil ? "锚点已固定；请将手机装好支架、镜头斜向前下方，保持安装姿态。" : "锚点已固定，可离开图片；无需移到图片正上方。"
+            } else { message = "请识别 \(anchor.title) 的完整图片并保持稳定片刻。" }
         }
         onFrame?(latestPose, true, frame.timestamp)
     }
@@ -179,6 +218,7 @@ final class AnchorARSession: NSObject, ObservableObject, ARSessionDelegate {
     func sessionShouldAttemptRelocalization(_ session: ARSession) -> Bool { false }
 
     private func suspendTracking(_ reason: String) {
+        if !localised { initialAlignment.reset() }
         latestPose = nil
         if pose != nil { pose = nil }
         if trackingNormal { trackingNormal = false }
@@ -186,7 +226,7 @@ final class AnchorARSession: NSObject, ObservableObject, ARSessionDelegate {
         if trackingWasNormal {
             trackingWasNormal = false
             lastUiTime = -Double.infinity
-            onUnavailable?(reason)
+            onTrackingLimited?(reason)
         }
     }
 
@@ -215,7 +255,7 @@ enum ARMapDrawing {
         for (index, point) in points.enumerated() {
             guard let position = session.position(point.pose) else { continue }
             let colour: UIColor = index == activeIndex ? .systemOrange : .systemTeal
-            let sphere = SCNSphere(radius: 0.05)
+            let sphere = SCNSphere(radius: point.isAutomatic == true ? 0.025 : 0.05)
             sphere.firstMaterial?.diffuse.contents = colour
             sphere.firstMaterial?.lightingModel = .constant
             let node = SCNNode(geometry: sphere)
@@ -223,7 +263,7 @@ enum ARMapDrawing {
             layer.addChildNode(node)
             if let previous = previous { layer.addChildNode(line(previous, position, colour: .systemTeal)) }
             // Every node shows its saved heading as a short arrow on the floor.
-            if let head = session.position(point.pose.translated(forwardM: 0.35)) {
+            if point.isAutomatic != true, let head = session.position(point.pose.translated(forwardM: 0.35)) {
                 layer.addChildNode(line(position, head, colour: colour))
                 for side in [-1.0, 1.0] {
                     let tip = point.pose.translated(forwardM: 0.25, leftM: side * 0.08)

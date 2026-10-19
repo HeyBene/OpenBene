@@ -8,10 +8,13 @@ struct MapOverlayCanvas: View {
     let route: Route?
     let pose: Pose2D?
     let usedMarkers: [String]
+    var routePoints: [RecordedWaypoint]? = nil
 
     var body: some View {
         Canvas { context, size in
-            let points = map.locations.map { $0.pose } + map.markers.map { $0.pose } + map.edges.flatMap { $0.path }
+            let locations = routePoints?.map { (name: $0.name, pose: $0.pose) } ?? map.locations.map { (name: $0.name, pose: $0.pose) }
+            let polyline = routePoints?.map { $0.pose } ?? route?.polyline
+            let points = locations.map { $0.pose } + map.markers.map { $0.pose } + (polyline ?? map.edges.flatMap { $0.path })
             guard let minX = points.map({ $0.x }).min(),
                   let maxX = points.map({ $0.x }).max(),
                   let minY = points.map({ $0.y }).min(),
@@ -32,7 +35,7 @@ struct MapOverlayCanvas: View {
                 )
             }
 
-            for edge in map.edges {
+            for edge in routePoints == nil ? map.edges : [] {
                 var path = Path()
                 for (index, point) in edge.path.enumerated() {
                     if index == 0 { path.move(to: screen(point)) } else { path.addLine(to: screen(point)) }
@@ -40,9 +43,9 @@ struct MapOverlayCanvas: View {
                 context.stroke(path, with: .color(.white.opacity(0.25)), lineWidth: 3)
             }
 
-            if let route = route {
+            if let polyline = polyline {
                 var path = Path()
-                for (index, point) in route.polyline.enumerated() {
+                for (index, point) in polyline.enumerated() {
                     if index == 0 { path.move(to: screen(point)) } else { path.addLine(to: screen(point)) }
                 }
                 context.stroke(path, with: .color(.teal), lineWidth: 5)
@@ -60,7 +63,7 @@ struct MapOverlayCanvas: View {
                 }
             }
 
-            for location in map.locations {
+            for location in locations {
                 let centre = screen(location.pose)
                 context.fill(
                     Path(ellipseIn: CGRect(x: centre.x - 3.5, y: centre.y - 3.5, width: 7, height: 7)),

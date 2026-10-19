@@ -31,9 +31,9 @@ public final class RecordedMapStore {
 
     public func read(from url: URL) throws -> RecordedMap {
         let size = try url.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0
-        guard size <= 2 * 1024 * 1024 else { throw RecordingError.invalid("地图文件不能超过 2 MB。") }
+        guard size <= 32 * 1024 * 1024 else { throw RecordingError.invalid("地图文件不能超过 32 MB。") }
         let data = try Data(contentsOf: url)
-        guard data.count <= 2 * 1024 * 1024 else { throw RecordingError.invalid("地图文件不能超过 2 MB。") }
+        guard data.count <= 32 * 1024 * 1024 else { throw RecordingError.invalid("地图文件不能超过 32 MB。") }
         let map = try JSONDecoder().decode(RecordedMap.self, from: data)
         try map.validate()
         return map
@@ -48,14 +48,17 @@ public final class RecordedMapStore {
         }
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-        try encoder.encode(map).write(to: url, options: .atomic)
+        let data = try encoder.encode(map)
+        guard data.count <= 32 * 1024 * 1024 else { throw RecordingError.invalid("地图文件不能超过 32 MB。") }
+        try data.write(to: url, options: .atomic)
         paths[map.id] = url
     }
 
     public func importCopy(from url: URL) throws -> RecordedMap {
         let original = try read(from: url)
         let copy = RecordedMap(name: original.name, anchor: original.anchor,
-                               start: original.start, waypoints: original.waypoints)
+                               start: original.start, waypoints: original.waypoints, trajectory: original.trajectory,
+                               routePlan: original.routePlan, anchorStart: original.anchorStart)
         try save(copy)
         return copy
     }

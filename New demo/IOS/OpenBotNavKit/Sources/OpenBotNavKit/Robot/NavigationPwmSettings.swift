@@ -42,6 +42,12 @@ public struct NavigationPwmSettings: Codable, Equatable {
         (0...255).contains(drivePwm) && (0...255).contains(leftTurnPwm) && (0...255).contains(rightTurnPwm)
     }
 
+    public func followConfig(targetHeight: Double = 0.40) -> FollowConfig {
+        FollowConfig(targetHeight: targetHeight, cruiseSpeed: Double(drivePwm) / 255,
+            leftTurnSpeed: Double(leftTurnPwm) / 255, rightTurnSpeed: Double(rightTurnPwm) / 255,
+            minimumCruiseFraction: 1)
+    }
+
     public func waypointConfig(sonarInstalled: Bool = false) -> WaypointConfig {
         var config = WaypointConfig()
         config.cruiseSpeed = Double(min(255, max(0, drivePwm))) / 255

@@ -7,6 +7,9 @@ public struct FollowConfig: Equatable {
     public var centreDeadband: Double
     public var turnSpeed: Double
     public var cruiseSpeed: Double
+    public var leftTurnSpeed: Double?
+    public var rightTurnSpeed: Double?
+    public var minimumCruiseFraction: Double
     public var steerGain: Double
     public var lostTimeoutS: Double
     public var obstacleStopCm: Double
@@ -19,13 +22,18 @@ public struct FollowConfig: Equatable {
         cruiseSpeed: Double = 0.28,
         steerGain: Double = 1.6,
         lostTimeoutS: Double = 1.5,
-        obstacleStopCm: Double = 35.0
+        obstacleStopCm: Double = 35.0,
+        leftTurnSpeed: Double? = nil, rightTurnSpeed: Double? = nil,
+        minimumCruiseFraction: Double = 0.4
     ) {
         self.targetHeight = targetHeight
         self.heightDeadband = heightDeadband
         self.centreDeadband = centreDeadband
         self.turnSpeed = turnSpeed
         self.cruiseSpeed = cruiseSpeed
+        self.leftTurnSpeed = leftTurnSpeed
+        self.rightTurnSpeed = rightTurnSpeed
+        self.minimumCruiseFraction = minimumCruiseFraction
         self.steerGain = steerGain
         self.lostTimeoutS = lostTimeoutS
         self.obstacleStopCm = obstacleStopCm
@@ -74,8 +82,7 @@ public struct PersonBox: Equatable {
 ///
 /// The controller is deliberately small and stateless: the caller feeds it one
 /// detection per frame plus the sonar reading, and it returns one wheel command.
-/// Distance comes from the box height, which is crude but works with the down
-/// tilted camera of the robot.
+/// Box height is a relative visual cue, not a range sensor or collision guarantee.
 ///
 /// Port of shared/navcore/openbene_nav/follow.py, which is covered by the Python
 /// tests; keep the two in step.
@@ -88,7 +95,8 @@ public enum FollowController {
         box: PersonBox?,
         config: FollowConfig = FollowConfig(),
         sonarCm: Double? = nil,
-        secondsSinceSeen: Double = 0.0
+        secondsSinceSeen: Double = 0.0,
+        maintainVisualScale: Bool = true
     ) -> FollowCommand {
         if let sonarCm = sonarCm, sonarCm <= config.obstacleStopCm {
             return FollowCommand(left: 0.0, right: 0.0, action: String(format: "obstacle at %.0f cm", sonarCm))
@@ -100,19 +108,30 @@ public enum FollowController {
                 : FollowCommand(left: 0.0, right: 0.0, action: "searching for the target")
         }
 
+        guard [box.centreX, box.centreY, box.width, box.height].allSatisfy({ $0.isFinite }),
+              (0...1).contains(box.centreX), (0...1).contains(box.centreY),
+              box.width > 0, box.width <= 1, box.height > 0, box.height <= 1 else {
+            return FollowCommand(left: 0, right: 0, action: "invalid target, holding")
+        }
+        let low = config.targetHeight * (1.0 - config.heightDeadband)
+        let high = config.targetHeight * (1.0 + config.heightDeadband)
+        if maintainVisualScale, box.height > high {
+            return FollowCommand(left: 0, right: 0, action: "too close, holding")
+        }
         let error = box.centreX - 0.5
         if abs(error) > config.centreDeadband {
             return error > 0
-                ? FollowCommand(left: -config.turnSpeed, right: config.turnSpeed, action: "turning right")
-                : FollowCommand(left: config.turnSpeed, right: -config.turnSpeed, action: "turning left")
+                ? FollowCommand(left: config.rightTurnSpeed ?? config.turnSpeed, right: -(config.rightTurnSpeed ?? config.turnSpeed), action: "turning right")
+                : FollowCommand(left: -(config.leftTurnSpeed ?? config.turnSpeed), right: config.leftTurnSpeed ?? config.turnSpeed, action: "turning left")
         }
 
-        let low = config.targetHeight * (1.0 - config.heightDeadband)
-        let high = config.targetHeight * (1.0 + config.heightDeadband)
         let forward: Double
         let action: String
-        if box.height < low {
-            forward = config.cruiseSpeed * min(1.0, (low - box.height) / max(low, 1e-6) * 3.0 + 0.4)
+        if !maintainVisualScale {
+            forward = config.cruiseSpeed
+            action = "tracking without distance hold"
+        } else if box.height < low {
+            forward = config.cruiseSpeed * min(1.0, (low - box.height) / max(low, 1e-6) * 3.0 + config.minimumCruiseFraction)
             action = "closing in"
         } else if box.height > high {
             return FollowCommand(left: 0.0, right: 0.0, action: "too close, holding")
@@ -122,8 +141,8 @@ public enum FollowController {
         }
 
         let steer = min(1.0, max(-1.0, config.steerGain * error))
-        var left = forward * (1.0 - steer)
-        var right = forward * (1.0 + steer)
+        var left = forward * (1.0 + steer)
+        var right = forward * (1.0 - steer)
         let scale = max(max(abs(left), abs(right)), 1e-6)
         if scale > 1.0 {
             left /= scale

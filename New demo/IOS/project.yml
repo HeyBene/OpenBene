@@ -47,6 +47,7 @@ targets:
       - sdk: ARKit.framework
       - sdk: CoreBluetooth.framework
       - sdk: Vision.framework
+      - sdk: CoreML.framework
 
   OpenBotNavKitTests:
     type: bundle.unit-test

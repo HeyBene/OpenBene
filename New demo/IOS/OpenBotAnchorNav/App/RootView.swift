@@ -82,7 +82,7 @@ struct RootView: View {
                             robotDescription: demo.describeLink(), requiresConnection: demo.useBle,
                             pwm: demo.pwmSettings.current)
                     }.disabled(demo.selectedMap == nil || demo.useBle && demo.selectedRobot == nil)
-                    Text("识别同一张锚点图，把机器人放回起点，再开始执行。").font(.caption)
+                    Text("识别同一张锚点图，保持手机固定在支架上，在原路线首段带状范围内开始。").font(.caption)
                     Text(demo.statusText).font(.caption).foregroundColor(.secondary)
                     if case .failed(let reason) = demo.loadState {
                         Text(reason).foregroundColor(.red)
@@ -93,7 +93,10 @@ struct RootView: View {
         }.navigationViewStyle(.stack)
         .onChange(of: scenePhase) { if $0 == .active { demo.load() } }
         .fullScreenCover(isPresented: $showRecording, onDismiss: { demo.load() }) {
-            MapRecordingFlow { try demo.save($0) }
+            MapRecordingFlow(onSave: { try demo.save($0) }, linkFactory: {
+                guard demo.useBle, demo.selectedRobot != nil else { return nil }
+                return demo.makeLink()
+            }, pwm: demo.pwmSettings.current)
         }
         .fullScreenCover(item: $navigation) { request in
             if let map = try? request.map.mapData(), let route = try? request.map.route() {
@@ -144,10 +147,12 @@ struct RootView: View {
 private struct MapRecordingFlow: View {
     @State private var anchor: AnchorDefinition?
     let onSave: (RecordedMap) throws -> Void
+    let linkFactory: () -> RobotLink?
+    let pwm: NavigationPwmSettings
 
     var body: some View {
         if let anchor = anchor {
-            MapRecordingView(anchor: anchor, onSave: onSave)
+            MapRecordingView(anchor: anchor, linkFactory: linkFactory, pwm: pwm, onSave: onSave)
         } else {
             CreateMapOptions { anchor = $0 }
         }
@@ -181,7 +186,7 @@ private struct CreateMapOptions: View {
                         .font(.caption)
                 }
                 Section {
-                    Text("先识别锚点，再在实际起点和各节点分别采集位置、朝向；直线连接相邻节点。")
+                    Text("识别后将手机固定到支架，再确认出发位置开始记录；无需移到图片中心上方。沿实际路线采集起点和节点，手持时保持与支架一致的镜头朝向和俯仰。")
                     Button("开始采集") {
                         onCreate(AnchorDefinition(id: template.id, imageName: template.imageName, sizeM: widthM))
                     }.disabled(!(0.05...1.0).contains(widthM))

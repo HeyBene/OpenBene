@@ -134,9 +134,9 @@ struct PwmSettingsView: View {
                         } catch { saveMessage = error.localizedDescription }
                     }.accessibilityIdentifier("pwm.save")
                     Button("恢复 160 / 160 / 160") { bench.stop(); draft = .defaults; saveMessage = "请保存后应用。" }
-                    Text(saveMessage.isEmpty ? "滑块与步进器先用于本次测试，点“保存并应用”后才用于航线导航。" : saveMessage)
+                    Text(saveMessage.isEmpty ? "滑块与步进器先用于本次测试，点“保存并应用”后才用于航线导航和视觉跟随。" : saveMessage)
                         .font(.caption).foregroundColor(.secondary)
-                    Text("动作之间仍停车 2 秒。导航中打开本面板会先停车，保存后需回起点手动重新开始。参数只用于节点航线导航。")
+                    Text("航线各阶段间停车2秒；跟随采用短时转向制动，反向先停车2秒。航线、视觉跟随及跟随采集同步使用这三项参数，修改后需手动重新开始。")
                         .font(.caption).foregroundColor(.secondary)
                 }
             }.navigationTitle("PWM 调节与测试")

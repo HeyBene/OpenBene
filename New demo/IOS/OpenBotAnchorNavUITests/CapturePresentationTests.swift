@@ -13,7 +13,15 @@ final class CapturePresentationTests: XCTestCase {
         begin.tap()
         XCTAssertTrue(app.staticTexts["采集地图"].waitForExistence(timeout: 5),
                       "The capture page must appear without backgrounding the app.")
-        XCTAssertTrue(app.buttons["采集起点"].exists)
+        XCTAssertTrue(app.buttons["确认支架处出发位置"].exists)
+        XCTAssertTrue(app.buttons["follow.start"].isHittable, "The follow entry must be visible in the capture viewport.")
+        XCTAssertFalse(app.buttons["follow.start"].isEnabled, "Capture cannot drive before mounting and selecting a robot.")
+        XCTAssertTrue(app.buttons["follow.stop"].isHittable)
+        let entry = XCTAttachment(screenshot: app.screenshot())
+        entry.name = "Visible capture-follow controls"
+        entry.lifetime = .keepAlways
+        add(entry)
+        for _ in 0..<4 where !app.buttons["取消"].isHittable { app.scrollViews.firstMatch.swipeUp() }
         XCTAssertTrue(app.buttons["取消"].isHittable)
     }
 
