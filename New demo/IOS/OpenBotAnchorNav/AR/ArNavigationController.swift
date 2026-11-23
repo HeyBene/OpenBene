@@ -32,6 +32,8 @@ final class ArNavigationController: ObservableObject {
     @Published private(set) var isLocalised = false
     @Published private(set) var isArmed = false
     @Published private(set) var readyToStart = false
+    @Published private(set) var placementAdvice = ""
+    @Published private(set) var setupText = ""
     @Published private(set) var progress = 0.0
     @Published private(set) var usedMarkers: [String] = []
     @Published private(set) var followMode = false
@@ -147,6 +149,7 @@ final class ArNavigationController: ObservableObject {
         } catch {
             executor.stop(reason: error.localizedDescription)
             stateText = error.localizedDescription
+            readyToStart = false
         }
     }
 
@@ -204,6 +207,8 @@ final class ArNavigationController: ObservableObject {
         progress = 0
         stateText = returnMode ? "返程沿原路线返回锚点旁出发位姿；请确认所选节点与车的位置一致。" : "已切换去程；请回到锚点旁出发位置。"
         guidanceText = stateText
+        placementAdvice = "等待位姿"
+        setupText = "等待锚点识别"
     }
 
     private func frame(pose: Pose2D?, normal: Bool, time: Double) {
@@ -235,6 +240,14 @@ final class ArNavigationController: ObservableObject {
         isLocalised = session.localised
         readyToStart = connected && normal && (followMode ? followDriver.available : (map.hasCapturedRoute && isLocalised &&
             pose.map { RouteEntryPlanner.canEnter(map: map, from: $0, returningFrom: selectedReturnID) } == true))
+        if !followMode, isLocalised, normal, let pose = pose,
+           let advice = StartAlignment.advice(map: map, from: pose, returningFrom: selectedReturnID) {
+            placementAdvice = advice.summary
+            setupText = advice.setupText
+        } else if !followMode {
+            placementAdvice = isLocalised ? "识别到锚点后，请保持手机对准地面，等待稳定位姿。" : "请识别地图使用的定位图片。"
+            setupText = placementAdvice
+        }
         usedMarkers = session.localised ? [map.anchor.id] : []
         if !followMode {
             let total = completedDistanceM > 0 ? completedDistanceM : map.distanceM
@@ -245,10 +258,7 @@ final class ArNavigationController: ObservableObject {
                 stateText = executor.message
             } else if !session.localised || !normal { stateText = session.message }
             else if !map.hasCapturedRoute { stateText = "旧地图未保存轨迹，请重新采集以生成子节点航线。" }
-            else if let pose = pose {
-                let start = returnMode ? returnNodes.first(where: { $0.id == returnNodeID }) ?? map.executionStart : map.executionStart
-                stateText = String(format: "已定位，距%@ %.2f m。", start.name, pose.distanceTo(start.pose)) + (readyToStart ? "可从当前位置接入路线，保持手机固定。" : "请将车移到此节点附近的对应带状范围内；无需改变手机俯仰。")
-            }
+            else if pose != nil { stateText = placementAdvice }
         } else {
             guidanceText = followAction
             stateText = isArmed ? "正在跟随" : "跟随模式，等待开始。"

@@ -17,7 +17,6 @@ public struct SettledTurnController {
     private var previousYaw: Double?
     private var totalRotation = 0.0
     private var rotationCheckpoint: Double?
-    private var stableSince: Double?
     private var pulseUntil = -Double.infinity
     private var stoppedSince: Double?
     private var lastDirection = 0
@@ -66,13 +65,13 @@ public struct SettledTurnController {
         if totalRotation > 270 {
             return .failed(String(format: "本次有效累计转动超过270°，剩余%.1f°，已停车。", magnitude))
         }
-        if magnitude <= toleranceDeg || (stableSince != nil && magnitude <= toleranceDeg + 2) {
+        // The tolerance is generous and the last pulse has already ended. Do
+        // not require a separate 0.2-0.35 s hold on top of that stop; that hold
+        // was a major source of perceived delay at every corner.
+        if magnitude <= toleranceDeg {
             brake(at: nowS)
-            if stableSince == nil { stableSince = nowS }
-            if nowS - (stableSince ?? nowS) >= 0.35 { return .aligned }
-            return .hold("方向已接近，停车确认稳定")
+            return moving ? .hold("方向已进入容差，停车确认") : .aligned
         }
-        stableSince = nil
         if nowS - progressAt > 8 { return .failed(String(format: "转向8秒无有效进展，剩余%.1f°，已停车；请检查PWM和手机姿态。", magnitude)) }
         let direction = error >= 0 ? 1 : -1
         let speed = direction > 0 ? leftSpeed : rightSpeed
@@ -85,11 +84,12 @@ public struct SettledTurnController {
             return .drive(left: -Double(direction) * speed, right: Double(direction) * speed)
         }
         if let stopped = stoppedSince {
-            let pause = lastDirection != 0 && direction != lastDirection ? max(2, reversalPauseS) : 0.25
-            if nowS - stopped < pause { return .hold(pause >= 2 ? "纠偏需要反向，停车等待2秒" : "转向制动，等待车身稳定") }
+            let pause = lastDirection != 0 && direction != lastDirection ? max(0.20, min(0.40, reversalPauseS)) : 0.08
+            if nowS - stopped < pause { return .hold(pause >= 0.40 ? "纠偏需要反向，短暂停车" : "转向制动，等待车身稳定") }
         }
-        // Nonblocking pulses. Smaller errors receive shorter full-PWM pushes.
-        let duration = magnitude > 45 ? 0.20 : (magnitude > 15 ? 0.10 : 0.04)
+        // Nonblocking pulses. Near the tolerance the pulse is just long enough
+        // to overcome 520 friction; an early stop is better than overshoot.
+        let duration = magnitude > 45 ? 0.16 : (magnitude > 15 ? 0.06 : 0.04)
         pulseUntil = nowS + duration
         pulseDirection = direction; lastDirection = direction; moving = true; stoppedSince = nil
         return .drive(left: -Double(direction) * speed, right: Double(direction) * speed)

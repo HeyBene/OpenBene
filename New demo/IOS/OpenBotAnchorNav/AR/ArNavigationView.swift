@@ -55,6 +55,11 @@ struct ArNavigationView: View {
                             Text("终点是采集时确认的支架出发位姿；末段转向时识别图片校准，允许30cm内微调并复核。")
                                 .font(.caption)
                         }
+                        if !controller.isArmed {
+                            Text(controller.setupText)
+                                .font(.subheadline.weight(.semibold))
+                                .foregroundColor(.yellow)
+                        }
                         Text(controller.guidanceText)
                         ProgressView(value: controller.progress).tint(.teal)
                         HStack {
@@ -76,7 +81,7 @@ struct ArNavigationView: View {
                         }.buttonStyle(.bordered)
                     }
                     if !controller.followMode {
-                        Text("转向航线 → 停 2 秒 → 直行 → 停 2 秒 → 调整节点朝向 → 停 2 秒 → 下一段")
+                        Text("沿航线连续修正 → 到点短暂停车 → 调整朝向 → 继续；允许 ±30 cm 到点余量")
                             .font(.caption)
                     }
                 }.padding().background(Color.black.opacity(0.65)).cornerRadius(12)

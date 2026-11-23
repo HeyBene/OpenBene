@@ -97,13 +97,13 @@ final class NavigationStabilityTests: XCTestCase {
         }
     }
 
-    func testPWMReversalHasActualZeroAndTwoSecondPause() {
+    func testPWMReversalHasActualZeroAndShortPause() {
         var c = SettledTurnController()
         XCTAssertTrue(driving(turn(&c, 8, 0, yaw: -8)))
         XCTAssertFalse(driving(turn(&c, -8, 0.04, yaw: 8)))
-        XCTAssertFalse(driving(turn(&c, -8, 0.4, yaw: 8)))
-        XCTAssertFalse(driving(turn(&c, -8, 2.039, yaw: 8)))
-        let result = turn(&c, -8, 2.05, yaw: 8)
+        XCTAssertFalse(driving(turn(&c, -8, 0.20, yaw: 8)))
+        XCTAssertFalse(driving(turn(&c, -8, 0.41, yaw: 8)))
+        let result = turn(&c, -8, 0.63, yaw: 8)
         XCTAssertEqual(result, .drive(left: 180.0 / 255, right: -180.0 / 255))
     }
 
@@ -111,19 +111,17 @@ final class NavigationStabilityTests: XCTestCase {
         var c = SettledTurnController()
         XCTAssertEqual(turn(&c, 8, 0), .drive(left: -160.0 / 255, right: 160.0 / 255))
         XCTAssertFalse(driving(turn(&c, 7, 0.05)))
-        XCTAssertFalse(driving(turn(&c, 7, 0.29)))
-        XCTAssertTrue(driving(turn(&c, 6, 0.31)))
+        // The configured 3° tolerance ends the turn immediately once the
+        // latest frame is inside it; no extra pulse or long hold is needed.
+        XCTAssertEqual(turn(&c, 2, 0.10), .aligned)
     }
 
-    func testHeadingRequiresSettledHoldAndHasHysteresis() {
+    func testHeadingStopsImmediatelyInsideTheGenerousTolerance() {
         var c = SettledTurnController()
-        XCTAssertFalse(driving(turn(&c, 2, 0)))
-        XCTAssertNotEqual(turn(&c, -2, 0.2), .aligned)
-        XCTAssertEqual(turn(&c, 4, 0.36), .aligned)
+        XCTAssertEqual(turn(&c, 2, 0), .aligned)
         c.reset()
-        XCTAssertNotEqual(turn(&c, 2, 1), .aligned)
-        XCTAssertFalse(driving(turn(&c, 8, 1.1)))
-        XCTAssertTrue(driving(turn(&c, 8, 1.26)))
+        XCTAssertEqual(turn(&c, 4, 1), .aligned)
+        XCTAssertEqual(turn(&c, 3, 1.2), .aligned)
     }
 
     func testNoImprovementOrYawJumpStopsRatherThanSpinsForever() {
@@ -207,18 +205,17 @@ final class NavigationStabilityTests: XCTestCase {
         let executor = WaypointExecutor(map: route, link: robot)
         try executor.start(at: p(0))
         executor.tick(pose: p(0), trackingNormal: true, nowS: 0)
-        executor.tick(pose: p(0), trackingNormal: true, nowS: 0.4)
-        executor.tick(pose: p(0), trackingNormal: true, nowS: 2.4)
-        executor.tick(pose: p(1), trackingNormal: true, nowS: 3)
-        executor.tick(pose: p(1), trackingNormal: true, nowS: 5)
+        executor.tick(pose: p(0), trackingNormal: true, nowS: 0.1)
+        executor.tick(pose: p(1), trackingNormal: true, nowS: 0.4)
+        executor.tick(pose: p(1), trackingNormal: true, nowS: 0.65)
         // Position was confirmed before the turn. Camera motion around a
         // stationary pivot must not restart position control or reject the yaw.
-        executor.tick(pose: p(0.97, 0.1, 30), trackingNormal: true, nowS: 5.2)
-        executor.tick(pose: p(0.9, 0.17, 60), trackingNormal: true, nowS: 5.4)
-        executor.tick(pose: p(0.8, 0.2, 90), trackingNormal: true, nowS: 5.6)
-        executor.tick(pose: p(0.8, 0.2, 90), trackingNormal: true, nowS: 6)
+        executor.tick(pose: p(0.97, 0.1, 30), trackingNormal: true, nowS: 0.7)
+        executor.tick(pose: p(0.9, 0.17, 60), trackingNormal: true, nowS: 0.8)
+        executor.tick(pose: p(0.8, 0.2, 90), trackingNormal: true, nowS: 0.9)
+        executor.tick(pose: p(0.8, 0.2, 90), trackingNormal: true, nowS: 1.0)
         XCTAssertEqual(executor.phase, .arrived)
-        XCTAssertEqual(executor.headingErrorDeg, 0, accuracy: 1e-9)
+        XCTAssertLessThanOrEqual(abs(executor.headingErrorDeg), executor.config.nodeHeadingToleranceDeg)
         XCTAssertEqual(robot.lastLeft, 0)
         XCTAssertEqual(robot.lastRight, 0)
     }
@@ -298,34 +295,32 @@ final class NavigationStabilityTests: XCTestCase {
         let executor = WaypointExecutor(map: route, link: robot)
         try executor.start(at: p(0))
         executor.tick(pose: p(0), trackingNormal: true, nowS: 0)
-        executor.tick(pose: p(0), trackingNormal: true, nowS: 0.4)
-        executor.tick(pose: p(0), trackingNormal: true, nowS: 2.4)
-        for time in 3...31 { executor.tick(pose: p(0), trackingNormal: true, nowS: Double(time)) }
+        executor.tick(pose: p(0), trackingNormal: true, nowS: 0.1)
+        for time in 1...31 { executor.tick(pose: p(0), trackingNormal: true, nowS: Double(time)) }
         XCTAssertEqual(executor.phase, .interrupted)
-        XCTAssertTrue(executor.message.contains("30秒"))
+        XCTAssertTrue(executor.message.contains("没有向节点前进") || executor.message.contains("转向8秒"))
         XCTAssertEqual(robot.lastLeft, 0)
         XCTAssertEqual(robot.lastRight, 0)
     }
 
-    func testCameraMovedByNodeRotationCannotDriveOutsideNextCorridor() throws {
+    func testCameraMovedByNodeRotationRealignsWithoutEndingTheRoute() throws {
         let route = try map([p(0), p(1, 0, 90), p(1, 2, 90)], manual: [1, 2])
         let robot = MockRobotLink()
         let executor = WaypointExecutor(map: route, link: robot)
         try executor.start(at: p(0))
-        for (time, pose) in [(0.0, p(0)), (0.4, p(0)), (2.4, p(0)), (3.0, p(1)),
-                             (5.0, p(1)), (5.2, p(0.97, 0.1, 30)), (5.4, p(0.9, 0.17, 60)),
-                             (5.6, p(0.8, 0.2, 90)), (6.0, p(0.8, 0.2, 90))] {
+        for (time, pose) in [(0.0, p(0)), (0.1, p(0)), (0.4, p(1)),
+                             (0.65, p(1)), (0.7, p(0.97, 0.1, 30)), (0.8, p(0.9, 0.17, 60)),
+                             (0.9, p(0.8, 0.2, 90)), (1.0, p(0.8, 0.2, 90))] {
             executor.tick(pose: pose, trackingNormal: true, nowS: time)
         }
         XCTAssertEqual(executor.waypointIndex, 1) // heading completes normally
-        executor.tick(pose: p(0.8, 0.2, 90), trackingNormal: true, nowS: 8)
-        executor.tick(pose: p(0.8, 0.2, 84), trackingNormal: true, nowS: 8.2)
-        executor.tick(pose: p(0.8, 0.2, 84), trackingNormal: true, nowS: 8.6)
-        executor.tick(pose: p(0.8, 0.2, 84), trackingNormal: true, nowS: 10.6)
-        XCTAssertEqual(executor.phase, .interrupted)
-        XCTAssertTrue(executor.message.contains("带状范围"))
-        XCTAssertEqual(robot.lastLeft, 0)
-        XCTAssertEqual(robot.lastRight, 0)
+        executor.tick(pose: p(0.8, 0.2, 90), trackingNormal: true, nowS: 2)
+        executor.tick(pose: p(0.8, 0.2, 84), trackingNormal: true, nowS: 2.2)
+        executor.tick(pose: p(0.8, 0.2, 84), trackingNormal: true, nowS: 2.6)
+        executor.tick(pose: p(0.8, 0.2, 84), trackingNormal: true, nowS: 4.6)
+        XCTAssertTrue(executor.active)
+        XCTAssertNotEqual(executor.phase, .interrupted)
+        XCTAssertTrue([.alignLine, .driveLine, .alignNode, .waiting].contains(executor.phase), executor.message)
     }
 
 }

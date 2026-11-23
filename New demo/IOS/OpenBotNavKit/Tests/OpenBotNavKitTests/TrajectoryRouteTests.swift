@@ -148,46 +148,41 @@ final class TrajectoryRouteTests: XCTestCase {
         XCTAssertThrowsError(try outOfRange.validate())
     }
 
-    func testAutomaticCornerWaitsTwoSecondsAndDoesNotRestoreCaptureYaw() throws {
+    func testAutomaticCornerContinuesWithoutPivotOrPause() throws {
         let route = try map([p(0), p(2, 0, .pi), p(2, 2, -.pi / 2)])
         let robot = MockRobotLink()
         let executor = WaypointExecutor(map: route, link: robot)
-        XCTAssertEqual(executor.config.positionToleranceM, 0.03)
+        XCTAssertEqual(executor.config.positionToleranceM, 0.30)
         try executor.start(at: p(0))
         executor.tick(pose: p(0), trackingNormal: true, nowS: 0)
-        executor.tick(pose: p(0), trackingNormal: true, nowS: 0.4)
-        executor.tick(pose: p(0), trackingNormal: true, nowS: 2.4)
+        executor.tick(pose: p(0), trackingNormal: true, nowS: 0.1)
+        XCTAssertEqual(executor.waypointIndex, 0)
         XCTAssertGreaterThan(robot.lastLeft, 0)
-        executor.tick(pose: p(1.8), trackingNormal: true, nowS: 3)
-        XCTAssertEqual(executor.waypointIndex, 0) // old .30 m tolerance would cut early
-        executor.tick(pose: p(2), trackingNormal: true, nowS: 4)
+        executor.tick(pose: p(1.6), trackingNormal: true, nowS: 0.4)
+        XCTAssertEqual(executor.waypointIndex, 0) // still outside the .30 m radius
+        executor.tick(pose: p(2), trackingNormal: true, nowS: 0.5)
         XCTAssertEqual(executor.waypointIndex, 1)
-        XCTAssertEqual(executor.phase, .waiting)
-        executor.tick(pose: p(2), trackingNormal: true, nowS: 5.99)
-        XCTAssertEqual(robot.lastLeft, 0)
-        executor.tick(pose: p(2), trackingNormal: true, nowS: 6)
-        XCTAssertEqual(executor.phase, .alignLine)
-        XCTAssertGreaterThan(robot.lastRight, 0) // next segment is +y, not saved yaw pi
-        XCTAssertLessThan(robot.lastLeft, 0)
-        executor.tick(pose: p(2, 0, .pi / 2), trackingNormal: true, nowS: 7)
-        executor.tick(pose: p(2, 0, .pi / 2), trackingNormal: true, nowS: 7.4)
-        executor.tick(pose: p(2, 0, .pi / 2), trackingNormal: true, nowS: 9.4)
+        // Automatic vertices carry on through the same drive stage. They are
+        // not an occasion to stop and pivot back to a recorded phone yaw.
+        XCTAssertEqual(executor.phase, .driveLine)
         XCTAssertGreaterThan(robot.lastLeft, 0)
+        XCTAssertGreaterThan(robot.lastRight, 0)
     }
 
-    func testDeviationStopsBeforeSendingAnotherMotorCommand() throws {
+    func testSmallSidewaysDeviationKeepsDrivingAndSteersBack() throws {
         let route = try map([p(0), p(2), p(2, 2)])
         let robot = MockRobotLink()
         let executor = WaypointExecutor(map: route, link: robot)
         try executor.start(at: p(0))
         executor.tick(pose: p(0), trackingNormal: true, nowS: 0)
-        executor.tick(pose: p(0), trackingNormal: true, nowS: 0.4)
-        executor.tick(pose: p(0.5), trackingNormal: true, nowS: 2.4)
+        executor.tick(pose: p(0), trackingNormal: true, nowS: 0.1)
+        executor.tick(pose: p(0.5), trackingNormal: true, nowS: 0.4)
         XCTAssertGreaterThan(robot.lastLeft, 0)
-        executor.tick(pose: p(0.5, 0.16), trackingNormal: true, nowS: 3)
-        XCTAssertEqual(executor.phase, .interrupted)
-        XCTAssertEqual(robot.lastLeft, 0)
-        XCTAssertEqual(robot.lastRight, 0)
+        executor.tick(pose: p(0.5, 0.16), trackingNormal: true, nowS: 0.5)
+        XCTAssertEqual(executor.phase, .driveLine)
+        XCTAssertGreaterThan(robot.lastLeft, 0)
+        XCTAssertGreaterThan(robot.lastRight, 0)
+        XCTAssertGreaterThan(robot.lastLeft, robot.lastRight)
     }
 
     func testSimulatedCornerRouteCompletesInsideRecordedBand() throws {

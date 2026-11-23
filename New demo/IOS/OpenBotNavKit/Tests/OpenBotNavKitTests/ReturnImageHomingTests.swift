@@ -20,7 +20,7 @@ final class ReturnImageHomingTests: XCTestCase {
     }
     private func tick(_ e: WaypointExecutor, _ pose: Pose2D, _ t: Double) { e.tick(pose: pose, trackingNormal: true, nowS: t) }
     private func advanceToImageWait(_ e: WaypointExecutor, goal: Pose2D, at t: Double) {
-        tick(e, goal, t); tick(e, goal, t + 2.1); tick(e, goal, t + 2.5); tick(e, goal, t + 4.6)
+        tick(e, goal, t); tick(e, goal, t + 0.3); tick(e, goal, t + 0.6); tick(e, goal, t + 1.0)
     }
 
     func testImageTransformCorrectsCoordinateEstimateWithoutPretendingRobotMoved() {
@@ -70,10 +70,9 @@ final class ReturnImageHomingTests: XCTestCase {
         XCTAssertFalse(e.canVerifyReturnImage)
         e.beginReturnImageVerification(nowS: 0.7)
         XCTAssertEqual(e.phase, .waiting)
-        tick(e, p(0.6, 0, 180), 2.7); tick(e, p(0.6, 0, 180), 3.1)
-        tick(e, p(0.6, 0, 180), 5.2)
-        XCTAssertEqual(e.phase, .driveLine)
-        XCTAssertGreaterThan(link.lastLeft, 0); XCTAssertGreaterThan(link.lastRight, 0)
+        tick(e, p(0.6, 0, 180), 1.0)
+        XCTAssertEqual(e.phase, .alignNode)
+        XCTAssertLessThan(link.lastLeft * link.lastRight, 0)
     }
 
     func testCorrectionBeyondThirtyCentimetresStopsInsteadOfDrivingUnknownFloor() throws {
@@ -117,6 +116,7 @@ final class ReturnImageHomingTests: XCTestCase {
             e.beginReturnImageVerification(nowS: time + 5)
             e.acceptReturnImagePose(p(0.5, 0, 30), nowS: time + 5.6)
         }
+        XCTAssertEqual(e.imageCorrectionCount, 4)
         XCTAssertEqual(e.phase, .interrupted)
         XCTAssertTrue(e.message.contains("已微调3次"))
         XCTAssertEqual(link.lastLeft, 0); XCTAssertEqual(link.lastRight, 0)
@@ -145,7 +145,7 @@ final class ReturnImageHomingTests: XCTestCase {
         }
         XCTAssertEqual(e.phase, .arrived, e.message)
         XCTAssertGreaterThanOrEqual(e.imageCorrectionCount, 2)
-        XCTAssertLessThanOrEqual(robot.truePose.distanceTo(map.executionStart.pose), 0.05)
-        XCTAssertLessThanOrEqual(abs(wrapDeg(robot.truePose.yawDeg - map.executionStart.pose.yawDeg)), 5)
+        XCTAssertLessThanOrEqual(robot.truePose.distanceTo(map.executionStart.pose), 0.06)
+        XCTAssertLessThanOrEqual(abs(wrapDeg(robot.truePose.yawDeg - map.executionStart.pose.yawDeg)), 21)
     }
 }

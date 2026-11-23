@@ -16,7 +16,7 @@ final class PwmSettingsTests: XCTestCase {
         XCTAssertEqual(OpenBotProtocol.speedToPwm(config.cruiseSpeed), 173)
         XCTAssertEqual(OpenBotProtocol.speedToPwm(config.leftTurnSpeed), 195)
         XCTAssertEqual(OpenBotProtocol.speedToPwm(config.rightTurnSpeed), 137)
-        XCTAssertEqual(config.stagePauseS, 2)
+        XCTAssertEqual(config.stagePauseS, 0.25)
         XCTAssertFalse(config.sonarInstalled)
     }
 
@@ -45,18 +45,19 @@ final class PwmSettingsTests: XCTestCase {
             yawRad: atan2(map.waypoints[0].pose.y - map.start.pose.y, map.waypoints[0].pose.x - map.start.pose.x))
         try executor.start(at: aligned)
         executor.tick(pose: aligned, trackingNormal: true, nowS: 0)
-        executor.tick(pose: aligned, trackingNormal: true, nowS: 1.999)
-        XCTAssertEqual(link.lastLeft, 0)
-        executor.tick(pose: aligned, trackingNormal: true, nowS: 2)
+        executor.tick(pose: aligned, trackingNormal: true, nowS: 0.01)
         XCTAssertEqual(OpenBotProtocol.ctrlCommand(left: link.lastLeft, right: link.lastRight), Data("c173,173\n".utf8))
         executor.tick(pose: Pose2D(x: aligned.x, y: aligned.y, yawRad: aligned.yawRad - .pi / 2),
-                      trackingNormal: true, nowS: 3)
+                      trackingNormal: true, nowS: 0.1)
         XCTAssertEqual(link.lastLeft, 0)
         executor.tick(pose: Pose2D(x: aligned.x, y: aligned.y, yawRad: aligned.yawRad - .pi / 2),
-                      trackingNormal: true, nowS: 5)
+                      trackingNormal: true, nowS: 0.4)
         XCTAssertEqual(OpenBotProtocol.ctrlCommand(left: link.lastLeft, right: link.lastRight), Data("c-195,195\n".utf8))
         executor.tick(pose: Pose2D(x: aligned.x, y: aligned.y, yawRad: aligned.yawRad + .pi / 2),
-                      trackingNormal: true, nowS: 5.1)
+                      trackingNormal: true, nowS: 0.5)
+        XCTAssertEqual(link.lastLeft, 0)
+        executor.tick(pose: Pose2D(x: aligned.x, y: aligned.y, yawRad: aligned.yawRad + .pi / 2),
+                      trackingNormal: true, nowS: 1.0)
         XCTAssertEqual(OpenBotProtocol.ctrlCommand(left: link.lastLeft, right: link.lastRight), Data("c137,-137\n".utf8))
     }
 
@@ -144,9 +145,9 @@ final class PwmSettingsTests: XCTestCase {
             let executor = WaypointExecutor(map: map, link: link, config: settings.waypointConfig())
             try executor.start(at: start)
             executor.tick(pose: start, trackingNormal: true, nowS: 0)
-            executor.tick(pose: start, trackingNormal: true, nowS: 2)
-            executor.tick(pose: arrived, trackingNormal: true, nowS: 3)
-            executor.tick(pose: arrived, trackingNormal: true, nowS: 5)
+            executor.tick(pose: start, trackingNormal: true, nowS: 0.25)
+            executor.tick(pose: arrived, trackingNormal: true, nowS: 0.5)
+            executor.tick(pose: arrived, trackingNormal: true, nowS: 0.75)
             XCTAssertEqual(executor.phase, .alignNode)
             XCTAssertEqual(OpenBotProtocol.ctrlCommand(left: link.lastLeft, right: link.lastRight), Data(frame.utf8))
         }

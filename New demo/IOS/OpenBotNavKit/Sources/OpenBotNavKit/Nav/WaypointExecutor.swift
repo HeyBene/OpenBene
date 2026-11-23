@@ -1,28 +1,50 @@
 import Foundation
 
 public enum WaypointPhase: String {
-    case idle, alignLine, driveLine, alignNode, waiting, recovering, awaitingImage, verifyingImage, arrived, interrupted, blocked
+    case idle, alignLine, driveLine, alignNode, reversing, waiting, recovering, awaitingImage, verifyingImage, arrived, interrupted, blocked
 }
 
 public struct WaypointConfig {
     public var startToleranceM = 0.30
+    /// Arrival radius around a recorded node. The corridor supplies the
+    /// spatial guarantee, so this no longer needs to be a 3 cm stop.
     public var positionToleranceM = 0.30
-    public var lineHeadingToleranceDeg = 3.0
-    public var headingCorrectionDeg = 6.0
-    public var nodeHeadingToleranceDeg = 5.0
+    /// Passing a node along the leg by up to this much still counts as arrival.
+    /// This is the normal outcome of a forward-only approach.
+    public var arrivalOvershootM = 0.20
+    /// Sideways slack around the recorded node.
+    public var lateralToleranceM = 0.12
+    /// Headings within this error are followed continuously by the arc drive.
+    /// Only errors above this angle cost a stop and an in-place pivot.
+    public var arcTurnMaxDeg = 45.0
+    public var nodeHeadingToleranceDeg = 20.0
     public var cruiseSpeed = 160.0 / 255.0
     public var leftTurnSpeed = 160.0 / 255.0
     public var rightTurnSpeed = 160.0 / 255.0
-    public var stagePauseS = 2.0
-    public var steerGain = 1.6
+    /// Settle time between actions. Enough for a 520 chassis to stop rocking,
+    /// short enough that the route keeps moving.
+    public var stagePauseS = 0.25
+    public var steerGain = 1.9
+    public var crossTrackGain = 0.9
+    /// Keep both wheels driving forward during an arc. Larger heading errors
+    /// use a stopped in-place turn instead of a near-pivot at full speed.
+    public var maximumArcSteer = 0.70
+    public var lookaheadM = 0.30
+    public var reverseSpeedFraction = 0.55
+    public var maxReverseM = 0.25
+    public var reverseTimeoutS = 2.0
+    /// If neither the heading nor the distance to the next node improves for
+    /// this long, the chassis is stuck. Give it one more chance before ending.
+    public var stallTimeoutS = 25.0
     public var sonarInstalled = false
     public var obstacleStopCm = 35.0
     public var requireReturnImage = false
     public init() {}
 }
 
-/// Execute the recorded sequence with distinct rotation/translation phases.
-/// AR supplies the live camera pose; wheel telemetry is not substituted for it.
+/// Replays a recorded corridor. Goal: keep moving and absorb small positioning
+/// errors instead of spending the run on pivots at each node. A genuine
+/// overshoot gets a short reverse, then the route resumes from the live pose.
 public final class WaypointExecutor {
     public let map: RecordedMap
     public let config: WaypointConfig
@@ -41,6 +63,7 @@ public final class WaypointExecutor {
     private var progressWaypointIndex = -1
     private var bestTargetDistanceM = Double.infinity
     private var lastPositionProgressS: Double?
+    private var previousRouteAlong: Double?
     private var pendingStage: (phase: WaypointPhase, resumeAtS: Double, reason: String)?
     private struct Recovery {
         let phase: WaypointPhase
@@ -56,9 +79,21 @@ public final class WaypointExecutor {
     private var lastGoodPose: Pose2D?
     private var recoveryTargetIndex = -1
     private var recoveriesAtTarget = 0
+    private struct Backing {
+        let targetIndex: Int
+        let origin: Pose2D
+        let maxLengthM: Double
+        var pulsing: Bool
+        var untilS: Double
+        let startedS: Double
+    }
+    private var backing: Backing?
+    private var reverseAttempts = 0
+    private var reverseAttemptIndex = -1
     public private(set) var recoveryCount = 0
     public private(set) var imageCorrectionCount = 0
     public private(set) var turnDiagnostics: [String: Double] = [:]
+    public private(set) var isReversing = false
     private var terminalCorrection = false
     private var terminalStartedS: Double?
     private var verificationStartedS: Double?
@@ -77,14 +112,15 @@ public final class WaypointExecutor {
     public var target: RecordedWaypoint? {
         targets.indices.contains(waypointIndex) ? targets[waypointIndex] : nil
     }
-    public var active: Bool { [.alignLine, .driveLine, .alignNode, .waiting, .recovering, .awaitingImage, .verifyingImage].contains(phase) }
+    public var active: Bool {
+        [.alignLine, .driveLine, .alignNode, .reversing, .waiting, .recovering, .awaitingImage, .verifyingImage].contains(phase)
+    }
 
     public init(map: RecordedMap, link: RobotLink, config: WaypointConfig = WaypointConfig()) {
         self.map = map
         self.link = link
         var adjusted = config
         if map.hasCapturedRoute {
-            adjusted.positionToleranceM = 0.03
             adjusted.startToleranceM = RouteEntryPlanner.maximumStartDistanceM
         }
         self.config = adjusted
@@ -96,7 +132,7 @@ public final class WaypointExecutor {
             corridors = plan.legs.map { $0.centerline(in: samples) }
         } else { corridors = [] }
         distanceRemainingM = map.distanceM
-        if map.hasCapturedRoute { message = "识别锚点后保持手机固定，在原路线首段内开始，无需对准图片中心。" }
+        if map.hasCapturedRoute { message = "识别锚点后保持手机固定，在首段航线带内开始，无需对准图片中心。" }
     }
 
     deinit { turnStopWork?.cancel() }
@@ -123,22 +159,29 @@ public final class WaypointExecutor {
         recoveryTargetIndex = -1; recoveriesAtTarget = 0
         imageCorrectionCount = 0; terminalCorrection = false
         turnDiagnostics = [:]
+        backing = nil; isReversing = false
+        reverseAttempts = 0; reverseAttemptIndex = -1
         terminalStartedS = nil; verificationStartedS = nil; scanIndex = 0
         returningFromNodeID = nodeID
         progressWaypointIndex = -1
         lastPositionProgressS = nil
+        previousRouteAlong = nil
         cancelTurnStop()
         turn.reset(); lineBearing = nil
-        guard routeContains(pose: pose) else { throw RecordingError.invalid("当前位置到下一子节点的直线超出采集带状空间，请回到原路线首段。") }
+        if map.hasCapturedRoute, !TrajectoryCorridor.contains(
+            point: pose, centerline: legCorridor() ?? [], radius: bandRadiusForLivePosition()) {
+            throw RecordingError.invalid("当前位置离采集航线较远，请把整台车移到首段航线带内再开始。")
+        }
         phase = .alignLine
         distanceRemainingM = zip(points, points.dropFirst()).reduce(0) { $0 + $1.0.pose.distanceTo($1.1.pose) }
-        message = nodeID == nil ? "从当前位置接入首段路线，准备转向。" : "沿原采集路线返程至锚点旁出发位置，准备转向。"
+        message = nodeID == nil ? "已接入首段路线，准备转向。" : "沿原采集路线返程至锚点旁出发位置，准备转向。"
     }
 
     public func stop(reason: String = "已停止；重新执行需要回到起点。") {
         link.stop()
         pendingStage = nil
         recovery = nil
+        backing = nil; isReversing = false
         verificationStartedS = nil
         cancelTurnStop()
         turn.reset(); lineBearing = nil
@@ -146,8 +189,7 @@ public final class WaypointExecutor {
         message = reason
     }
 
-    /// Pause the current target without restarting from the selected route node.
-    /// Only temporary loss in an unchanged AR world may use this path.
+    /// Pause the current target without restarting from the selected node.
     public func pauseForTracking(reason: String = "定位暂不可用", nowS: Double = ProcessInfo.processInfo.systemUptime) {
         guard active else { return }
         link.stop(); cancelTurnStop()
@@ -157,15 +199,14 @@ public final class WaypointExecutor {
         guard recoveriesAtTarget < 3 else { stop(reason: "当前节点已自动恢复3次，定位仍不稳定，已结束执行。"); return }
         recoveriesAtTarget += 1; recoveryCount += 1
         let next = phase == .waiting ? pendingStage?.phase ?? .alignLine : phase
-        let resumed: WaypointPhase = [.awaitingImage, .verifyingImage].contains(next) ? .awaitingImage : (next == .alignNode ? .alignNode : .alignLine)
+        let resumed: WaypointPhase = [.awaitingImage, .verifyingImage].contains(next)
+            ? .awaitingImage : (next == .alignNode ? .alignNode : .alignLine)
         recovery = Recovery(phase: resumed, startedS: nowS, reference: lastGoodPose)
         pendingStage = nil; turn.reset(); lineBearing = nil
         phase = .recovering
         message = reason + "；已停车，等待定位稳定后继续当前节点。"
     }
 
-    /// First sight during a final turn stops motion. The app must then collect
-    /// new stationary image observations, rather than applying that moving frame.
     public func beginReturnImageVerification(nowS: Double) {
         guard canVerifyReturnImage else { return }
         link.stop(); cancelTurnStop(); pendingStage = nil; turn.reset(); lineBearing = nil
@@ -175,8 +216,7 @@ public final class WaypointExecutor {
         message = "已看到定位图片，停车确认图像位姿0.5秒。"
     }
 
-    /// The corrected pose is measured in the saved image frame. Translation is
-    /// bounded to a 30cm terminal area, separate from normal corridor replay.
+    /// Translation after image correction stays inside a 30 cm terminal area.
     public func acceptReturnImagePose(_ pose: Pose2D, nowS: Double) {
         guard phase == .verifyingImage, isReturnTerminal, TrajectoryCorridor.finite(pose), let target = target else { return }
         link.stop(); cancelTurnStop()
@@ -210,8 +250,15 @@ public final class WaypointExecutor {
             recover(pose: pose, trackingNormal: trackingNormal, nowS: nowS)
             return
         }
-        guard trackingNormal, let pose = pose,
-              pose.x.isFinite, pose.y.isFinite, pose.yawRad.isFinite else {
+        if phase == .reversing {
+            guard trackingNormal, let pose = pose, TrajectoryCorridor.finite(pose) else {
+                pauseForTracking(reason: "定位跟踪暂不可用", nowS: nowS)
+                return
+            }
+            reverse(pose: pose, nowS: nowS)
+            return
+        }
+        guard trackingNormal, let pose = pose, TrajectoryCorridor.finite(pose) else {
             pauseForTracking(reason: "定位跟踪暂不可用", nowS: nowS)
             return
         }
@@ -237,13 +284,12 @@ public final class WaypointExecutor {
         if phase == .waiting, let pending = pendingStage {
             link.stop()
             guard nowS >= pending.resumeAtS else {
-                message = String(format: "%@；停车等待 %.1f 秒。", pending.reason, pending.resumeAtS - nowS)
+                message = String(format: "%@；停车稳定 %.1f 秒。", pending.reason, max(0, pending.resumeAtS - nowS))
                 return
             }
             pendingStage = nil
             phase = pending.phase
-            // Fall through using this frame's pose and connection state;
-            // never resume a command calculated before the pause.
+            if phase == .driveLine { lineBearing = legLookaheadBearing(pose: pose) }
         }
         if phase == .awaitingImage {
             if terminalStartedS == nil { terminalStartedS = nowS }
@@ -259,12 +305,6 @@ public final class WaypointExecutor {
             }
             return
         }
-        // Rotating an offset camera is not a straight driving segment. Validate
-        // the live connecting line before any translation, after turn/wait.
-        if phase == .driveLine && !routeContains(pose: pose) {
-            stop(reason: "当前位置到下一节点的直线超出采集带状范围，已停车；请将整台车移回原路线后开始。")
-            return
-        }
         guard let target = target else { finish(); return }
         distanceToTargetM = pose.distanceTo(target.pose)
         if map.hasCapturedRoute {
@@ -272,13 +312,31 @@ public final class WaypointExecutor {
                 progressWaypointIndex = waypointIndex
                 bestTargetDistanceM = distanceToTargetM
                 lastPositionProgressS = nowS
+                previousRouteAlong = nil
             }
             if distanceToTargetM < bestTargetDistanceM - 0.01 {
                 bestTargetDistanceM = distanceToTargetM
                 lastPositionProgressS = nowS
             }
-            if phase != .alignNode, let last = lastPositionProgressS, nowS - last > 30 {
-                stop(reason: "30秒未向目标节点前进，已停车；请检查支架偏心、过短节点段和底盘输出。")
+            // The distance to the target can stay flat while the chassis
+            // straddles a vertex. Forward motion along the recorded corridor
+            // is the real progress signal, independent of heading noise.
+            if progressWaypointIndex == waypointIndex, let along = routeAlong(pose: pose) {
+                if let previous = previousRouteAlong, along > previous + 0.015 { lastPositionProgressS = nowS }
+                previousRouteAlong = along
+            }
+            if [.alignLine, .driveLine, .reversing].contains(phase),
+               let last = lastPositionProgressS, nowS - last > config.stallTimeoutS {
+                // Give a stuck chassis one in-place nudge before ending. This
+                // covers a wheel resting in a skid or a near-zero lookahead.
+                if reverseAttempts < 2 {
+                    reverseAttempts += 1
+                    reverseAttemptIndex = waypointIndex
+                    lineBearing = nil
+                    waitBefore(.alignLine, nowS: nowS, reason: "短暂没有前进，准备微调方向")
+                } else {
+                    stop(reason: "定位显示长时间没有向节点前进，已停车；请检查支架偏心、过短节点段和底盘输出。")
+                }
                 return
             }
         }
@@ -287,44 +345,57 @@ public final class WaypointExecutor {
         for pair in zip(remaining, remaining.dropFirst()) {
             distanceRemainingM += pair.0.pose.distanceTo(pair.1.pose)
         }
-
         switch phase {
         case .alignLine:
-            if distanceToTargetM <= config.positionToleranceM {
+            if atTarget(pose: pose) {
                 reachedTarget(nowS: nowS)
                 return
             }
-            if lineBearing == nil { lineBearing = pose.bearingTo(target.pose) }
-            let error = map.hasCapturedRoute ? wrapRad((lineBearing ?? pose.bearingTo(target.pose)) - pose.yawRad) : pose.headingErrorTo(target.pose)
+            if positionOvershot(pose: pose, nowS: nowS) { return }
+            if lineBearing == nil { lineBearing = legLookaheadBearing(pose: pose) ?? pose.bearingTo(target.pose) }
+            let error = map.hasCapturedRoute
+                ? wrapRad((lineBearing ?? pose.bearingTo(target.pose)) - pose.yawRad)
+                : pose.headingErrorTo(target.pose)
             headingErrorDeg = error * 180 / .pi
-            message = String(format: "转向 %@，航线方向误差 %.1f°", target.name, headingErrorDeg)
-            if map.hasCapturedRoute {
-                if settledTurn(error: error, pose: pose, nowS: nowS, tolerance: config.lineHeadingToleranceDeg) {
-                    waitBefore(.driveLine, nowS: nowS, reason: "航线方向已稳定，准备直行")
+            message = String(format: "朝向 %@，方向误差 %.1f°", target.name, headingErrorDeg)
+            if abs(headingErrorDeg) <= config.arcTurnMaxDeg {
+                phase = .driveLine
+            } else if map.hasCapturedRoute {
+                if settledTurn(error: error, pose: pose, nowS: nowS, tolerance: config.arcTurnMaxDeg) {
+                    phase = .driveLine
                 }
-            } else if abs(headingErrorDeg) <= config.lineHeadingToleranceDeg {
-                waitBefore(.driveLine, nowS: nowS, reason: "航线方向已对准，准备直行")
             } else { rotate(error) }
+
         case .driveLine:
-            if distanceToTargetM <= config.positionToleranceM {
+            if atTarget(pose: pose) {
                 reachedTarget(nowS: nowS)
                 return
             }
-            headingErrorDeg = pose.headingErrorTo(target.pose) * 180 / .pi
-            if abs(headingErrorDeg) > config.headingCorrectionDeg {
-                waitBefore(.alignLine, nowS: nowS, reason: "暂停直行，准备修正航线方向")
+            if positionOvershot(pose: pose, nowS: nowS) { return }
+            let bearingError = legLookaheadBearing(pose: pose).map { wrapRad($0 - pose.yawRad) }
+                ?? pose.headingErrorTo(target.pose)
+            headingErrorDeg = bearingError * 180 / .pi
+            if abs(headingErrorDeg) > config.arcTurnMaxDeg {
+                link.stop()
+                lineBearing = nil
+                phase = .alignLine
+                turn.reset()
+                message = "方向偏差较大，原地转向航线。"
                 return
             }
-            // Keep the requested drive PWM through the arrival boundary;
-            // reducing it near a node previously stalled the 520 chassis.
+            // Keep the configured PWM; steering comes from heading plus lateral
+            // error, so small deviations do not interrupt the drive.
             let speed = config.cruiseSpeed
-            let steer = min(1, max(-1, config.steerGain * headingErrorDeg * .pi / 180))
+            let crossTrack = corridorOffset(pose: pose).map { min(0.15, max(-0.15, $0)) } ?? 0
+            var steer = config.steerGain * bearingError
+            // offset > 0 means the chassis is left of the leg. Slowing the
+            // right wheel brings it back without stopping.
+            steer -= config.crossTrackGain * crossTrack
+            steer = min(config.maximumArcSteer, max(-config.maximumArcSteer, steer))
             link.drive(left: speed * (1 - steer), right: speed * (1 + steer))
-            message = String(format: "直行至 %@，剩余 %.2f m", target.name, distanceToTargetM)
+            message = String(format: "沿航线前进至 %@，剩余 %.2f m", target.name, distanceToTargetM)
+
         case .alignNode:
-            // V2 arrival is confirmed before the two-second stop and rotation.
-            // An in-place chassis turn moves an offset camera; this stage only
-            // tests heading. Recheck the live corridor before later translation.
             if !map.hasCapturedRoute && distanceToTargetM > config.positionToleranceM + 0.10 {
                 waitBefore(.alignLine, nowS: nowS, reason: "位置超出到点范围，准备重新对准航线")
                 return
@@ -346,23 +417,31 @@ public final class WaypointExecutor {
                         if terminalStartedS == nil { terminalStartedS = nowS }
                         waitBefore(.awaitingImage, nowS: nowS, reason: "已到锚点附近，继续识别图片复核实际位姿")
                     } else { finish() }
-                }
-                else {
+                } else {
                     waypointIndex += 1
-                    waitBefore(.alignLine, nowS: nowS, reason: "节点朝向已调整，准备转向下一段航线")
+                    reverseAttempts = 0; reverseAttemptIndex = -1
+                    progressWaypointIndex = -1
+                    turn.reset(); lineBearing = nil
+                    // The next leg starts from this node; keep driving rather
+                    // than adding another pivot back towards the line just left.
+                    phase = .driveLine
+                    message = "节点朝向完成，继续下一段航线。"
                 }
             }
         default: link.stop()
         }
     }
 
-    /// Automatic vertices restore no captured phone yaw. Only manual nodes do.
     private func reachedTarget(nowS: Double) {
+        reverseAttempts = 0; reverseAttemptIndex = -1
         if target?.isAutomatic == true {
             waypointIndex += 1
-            waitBefore(.alignLine, nowS: nowS, reason: "已到达自动子节点，准备转向下一段")
+            progressWaypointIndex = -1
+            lineBearing = nil
+            phase = .driveLine
+            message = "已通过自动子节点，沿航线继续。"
         } else {
-            waitBefore(.alignNode, nowS: nowS, reason: "已到达人工节点，准备调整记录朝向")
+            waitBefore(.alignNode, nowS: nowS, reason: "已到节点")
         }
     }
 
@@ -373,9 +452,198 @@ public final class WaypointExecutor {
               let plan = map.routePlan else { return false }
         let index = legIndices[waypointIndex]
         guard corridors.indices.contains(index) else { return false }
-        let radius = plan.legs[index].trackingRadiusM
+        let radius = plan.legs[index].trackingRadiusM + 0.10
         return TrajectoryCorridor.containsSegment(from: pose, to: target.pose,
             centerline: corridors[index], radius: radius)
+    }
+
+    private func legCorridor() -> [Pose2D]? {
+        guard map.hasCapturedRoute, legIndices.indices.contains(waypointIndex),
+              corridors.indices.contains(legIndices[waypointIndex]) else { return nil }
+        return corridors[legIndices[waypointIndex]]
+    }
+
+    private func bandRadiusForLivePosition() -> Double {
+        guard legIndices.indices.contains(waypointIndex),
+              let plan = map.routePlan, plan.legs.indices.contains(legIndices[waypointIndex]) else { return 0.15 }
+        return plan.legs[legIndices[waypointIndex]].trackingRadiusM + 0.10
+    }
+
+    /// Signed perpendicular offset from the recorded leg, positive to the left.
+    private func corridorOffset(pose: Pose2D) -> Double? {
+        guard let line = legCorridor(), line.count >= 2 else { return nil }
+        var best = (distance: Double.infinity, offset: 0.0)
+        for (a, b) in zip(line, line.dropFirst()) {
+            let dx = b.x - a.x, dy = b.y - a.y, length2 = dx * dx + dy * dy
+            guard length2 > 1e-12 else { continue }
+            let t = max(0, min(1, ((pose.x - a.x) * dx + (pose.y - a.y) * dy) / length2))
+            let qx = a.x + t * dx, qy = a.y + t * dy
+            let distance = hypot(pose.x - qx, pose.y - qy)
+            if distance < best.distance {
+                best = (distance, (-(pose.x - qx) * dy + (pose.y - qy) * dx) / sqrt(length2))
+            }
+        }
+        return best.distance.isFinite ? best.offset : nil
+    }
+
+    /// Aim a short distance along the recorded corridor. Following a nearby
+    /// point avoids the long pivot towards the far endpoint of a leg.
+    private func legLookaheadBearing(pose: Pose2D) -> Double? {
+        guard let line = legCorridor(), line.count >= 2 else { return nil }
+        var best = (distance: Double.infinity, index: 0, t: 0.0)
+        for index in 0..<(line.count - 1) {
+            let a = line[index], b = line[index + 1]
+            let dx = b.x - a.x, dy = b.y - a.y, length2 = dx * dx + dy * dy
+            guard length2 > 1e-12 else { continue }
+            let t = max(0, min(1, ((pose.x - a.x) * dx + (pose.y - a.y) * dy) / length2))
+            let distance = hypot(pose.x - (a.x + t * dx), pose.y - (a.y + t * dy))
+            if distance < best.distance { best = (distance, index, t) }
+        }
+        guard best.distance.isFinite else { return nil }
+        let a = line[best.index], b = line[best.index + 1]
+        var point = Pose2D(x: a.x + (b.x - a.x) * best.t,
+                           y: a.y + (b.y - a.y) * best.t, yawRad: b.yawRad)
+        var budget = config.lookaheadM - (1 - best.t) * a.distanceTo(b)
+        var index = best.index
+        while budget > 0, index + 1 < line.count - 1 {
+            index += 1
+            let start = line[index], end = line[index + 1]
+            let length = start.distanceTo(end)
+            if length < 1e-9 { continue }
+            if budget <= length {
+                let t = budget / length
+                point = Pose2D(x: start.x + (end.x - start.x) * t,
+                               y: start.y + (end.y - start.y) * t, yawRad: end.yawRad)
+                budget = 0
+                break
+            }
+            point = end; budget -= length
+        }
+        if point.distanceTo(pose) < 0.05, let target = target { point = target.pose }
+        return pose.bearingTo(point)
+    }
+
+    /// Direction of the corridor at the current node. Using the end of a whole
+    /// leg would be wrong for automatic vertices in the middle of that leg.
+    private func routeAlong(pose: Pose2D) -> Double? {
+        guard let line = legCorridor(), line.count >= 2 else { return nil }
+        var traveled = 0.0
+        var best = (distance: Double.infinity, along: 0.0)
+        for (a, b) in zip(line, line.dropFirst()) {
+            let dx = b.x - a.x, dy = b.y - a.y, length2 = dx * dx + dy * dy
+            guard length2 > 1e-12 else { continue }
+            let length = sqrt(length2)
+            let t = max(0, min(1, ((pose.x - a.x) * dx + (pose.y - a.y) * dy) / length2))
+            let distance = hypot(pose.x - (a.x + t * dx), pose.y - (a.y + t * dy))
+            if distance < best.distance { best = (distance, traveled + t * length) }
+            traveled += length
+        }
+        guard best.distance.isFinite else { return nil }
+        return best.along
+    }
+
+    private func arrivalDirection() -> (x: Double, y: Double)? {
+        guard let target = target, let line = legCorridor(), line.count >= 2 else { return nil }
+        let end = line[line.count - 1], previous = line[line.count - 2]
+        let dx = end.x - previous.x, dy = end.y - previous.y
+        let length = hypot(dx, dy)
+        guard length > 1e-9 else { return nil }
+        return (dx / length, dy / length)
+    }
+
+    /// Position relative to the local arrival direction at the node.
+    private func arrivalMetrics(_ pose: Pose2D) -> (along: Double, lateral: Double)? {
+        guard let target = target, let ux = arrivalDirection()?.x,
+              let uy = arrivalDirection()?.y else { return nil }
+        let rx = pose.x - target.pose.x, ry = pose.y - target.pose.y
+        return (rx * ux + ry * uy, abs(-rx * uy + ry * ux))
+    }
+
+    /// A node is accepted with a generous radius. Just past it still counts;
+    /// only a real overshoot triggers the short reverse.
+    private func atTarget(pose: Pose2D) -> Bool {
+        guard map.hasCapturedRoute, let metrics = arrivalMetrics(pose) else {
+            return distanceToTargetM <= config.positionToleranceM
+        }
+        return metrics.lateral <= config.lateralToleranceM
+            && distanceToTargetM <= config.positionToleranceM
+    }
+
+    private func positionOvershot(pose: Pose2D, nowS: Double) -> Bool {
+        guard map.hasCapturedRoute, let metrics = arrivalMetrics(pose) else { return false }
+        // Automatic vertices are waymarks along one recorded leg. Once passed,
+        // the next leg resumes from the live pose; stopping there would create
+        // a new pivot in the middle of a straight run.
+        if target?.isAutomatic == true, metrics.along > config.arrivalOvershootM {
+            waypointIndex += 1
+            progressWaypointIndex = -1
+            lineBearing = nil
+            phase = .driveLine
+            message = "已通过自动子节点，沿航线继续。"
+            return true
+        }
+        guard metrics.along > config.arrivalOvershootM else { return false }
+        guard beginReverseIfNeeded(pose: pose, nowS: nowS) else {
+            stop(reason: "冲过节点后两次微调仍未回到范围，已停车；请将车移回原路线。")
+            return true
+        }
+        return true
+    }
+
+    private func beginReverseIfNeeded(pose: Pose2D, nowS: Double) -> Bool {
+        if reverseAttemptIndex != waypointIndex { reverseAttemptIndex = waypointIndex; reverseAttempts = 0 }
+        guard reverseAttempts < 2, backing == nil else { return false }
+        reverseAttempts += 1
+        backing = Backing(targetIndex: waypointIndex, origin: pose, maxLengthM: config.maxReverseM,
+                          pulsing: true, untilS: nowS + 0.30, startedS: nowS)
+        isReversing = true
+        lineBearing = nil
+        phase = .reversing
+        message = "冲过节点，向后短暂微调。"
+        return true
+    }
+
+    /// Short reverse pulses keep the camera from a long oscillation. Stop as
+    /// soon as the live position is close to the node again.
+    private func reverse(pose: Pose2D, nowS: Double) {
+        guard var back = backing else { phase = .alignLine; isReversing = false; return }
+        turn.reset(); cancelTurnStop()
+        let moved = back.origin.distanceTo(pose)
+        let remaining = target.map { pose.distanceTo($0.pose) } ?? .infinity
+        let close = remaining <= 0.12
+        let timedOut = nowS - back.startedS >= config.reverseTimeoutS
+        let reachedLimit = moved >= back.maxLengthM
+        if back.targetIndex != waypointIndex || close {
+            backing = nil; isReversing = false; link.stop()
+            lineBearing = nil
+            waitBefore(.alignLine, nowS: nowS,
+                       reason: close ? "已退回节点附近，重新对准航线" : "后退微调结束，重新对准航线")
+            return
+        }
+        if timedOut || reachedLimit {
+            backing = nil; isReversing = false; link.stop(); lineBearing = nil
+            stop(reason: "后退微调未能回到目标附近，已停车；请将车移回原路线。")
+            return
+        }
+        if back.pulsing {
+            if nowS < back.untilS {
+                let speed = -config.cruiseSpeed * min(1, max(0.2, config.reverseSpeedFraction))
+                link.drive(left: speed, right: speed)
+                message = String(format: "向后微调，已退 %.0f cm。", moved * 100)
+                backing = back
+                return
+            }
+            back.pulsing = false
+            back.untilS = nowS + 0.15
+            backing = back; link.stop()
+            message = "向后微调，短暂制动。"
+            return
+        }
+        if nowS < back.untilS { link.stop(); backing = back; return }
+        back.pulsing = true
+        back.untilS = nowS + 0.30
+        backing = back
+        message = "继续向后微调。"
     }
 
     private func settledTurn(error: Double, pose: Pose2D, nowS: Double, tolerance: Double) -> Bool {
@@ -408,8 +676,6 @@ public final class WaypointExecutor {
             recovery = pending
             message = "定位暂不可用，停车等待自动恢复。"; return
         }
-        // A reset/relocalization into a different world is not a temporary
-        // tracking interruption. Wait for continuity, never snap the route.
         if let reference = pending.reference,
            pose.distanceTo(reference) > 0.30 || abs(wrapDeg(pose.yawDeg - reference.yawDeg)) > 45 {
             pending.stableSinceS = nil; pending.stableReference = nil; pending.frames = 0
@@ -417,7 +683,8 @@ public final class WaypointExecutor {
             message = "恢复位姿与停车前不连续，保持停车等待；不会自动重置地图。"; return
         }
         if let previous = pending.stableReference, let time = pending.previousTimeS,
-           pose.distanceTo(previous) > 0.03 || abs(wrapDeg(pose.yawDeg - previous.yawDeg)) > 3 || nowS - time > 0.2 || nowS <= time {
+           pose.distanceTo(previous) > 0.03 || abs(wrapDeg(pose.yawDeg - previous.yawDeg)) > 3
+            || nowS - time > 0.2 || nowS <= time {
             pending.stableSinceS = nil; pending.stableReference = nil; pending.frames = 0
         }
         if pending.stableSinceS == nil { pending.stableSinceS = nowS; pending.stableReference = pose }
@@ -432,8 +699,7 @@ public final class WaypointExecutor {
     }
 
     /// A missing AR frame must not extend a short turn pulse to the 0.6s
-    /// tracking watchdog. Generation checks keep stale timers from stopping a
-    /// later stage or a restarted route.
+    /// tracking watchdog. A generation check rejects stale timers.
     private func scheduleTurnStop(deadline: Double, nowS: Double) {
         guard turnStopDeadline != deadline else { return }
         cancelTurnStop()
@@ -465,7 +731,7 @@ public final class WaypointExecutor {
         }
         phase = .waiting
         pendingStage = (next, nowS + config.stagePauseS, reason)
-        message = String(format: "%@；停车等待 %.1f 秒。", reason, config.stagePauseS)
+        message = String(format: "%@；停车稳定 %.1f 秒。", reason, config.stagePauseS)
     }
 
     private func rotate(_ error: Double) {
