@@ -164,6 +164,7 @@ OpenBene/
 - [docs/WINDOWS_BLE_CONTROL_RUNBOOK.md](docs/WINDOWS_BLE_CONTROL_RUNBOOK.md) - Windows BLE control workflow
 - [docs/OPENBENE_SCOPE.md](docs/OPENBENE_SCOPE.md) - Public scope boundary
 - [docs/MOBILITY_SYNC_RULES.md](docs/MOBILITY_SYNC_RULES.md) - Rules for promoting internal mobility work into public OpenBene
+- [docs/ZENOH_TRANSPORT_ASSESSMENT_AND_PLAN.md](docs/ZENOH_TRANSPORT_ASSESSMENT_AND_PLAN.md) - Phone-to-PC Zenoh assessment and staged migration plan
 - [PROJECT_CONTEXT.md](PROJECT_CONTEXT.md) - Compatibility pointer
 - [CHANGELOG.md](CHANGELOG.md) - Changelog
 

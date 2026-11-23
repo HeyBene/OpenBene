@@ -30,6 +30,10 @@ The phone and the PC talk over WebSocket JSON messages.
 
 Keep those transport concerns out of UI code and SDK helpers.
 
+For the feasibility, tradeoffs, and staged evaluation of replacing this
+phone-to-PC link with Zenoh, see
+[ZENOH_TRANSPORT_ASSESSMENT_AND_PLAN.md](ZENOH_TRANSPORT_ASSESSMENT_AND_PLAN.md).
+
 ## Future Shape
 
 The long-term goal is not to collapse the apps into one folder.

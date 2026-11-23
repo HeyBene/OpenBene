@@ -72,6 +72,7 @@ OpenBene/
 - [openbot-mobile-control/releases/README.md](openbot-mobile-control/releases/README.md) - Android 版本与发布说明
 - [docs/WINDOWS_BLE_CONTROL_RUNBOOK.md](docs/WINDOWS_BLE_CONTROL_RUNBOOK.md) - Windows BLE 控制流程
 - [docs/OPENBENE_SCOPE.md](docs/OPENBENE_SCOPE.md) - 公共范围边界
+- [docs/ZENOH_TRANSPORT_ASSESSMENT_AND_PLAN.md](docs/ZENOH_TRANSPORT_ASSESSMENT_AND_PLAN.md) - 手机与 PC 链路改用 Zenoh 的评估与实施计划
 - [PROJECT_CONTEXT.md](PROJECT_CONTEXT.md) - 兼容指路页
 
 ## 许可证
