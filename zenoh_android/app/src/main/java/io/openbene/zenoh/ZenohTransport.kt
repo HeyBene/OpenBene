@@ -71,7 +71,7 @@ class ZenohTransport(
                     Config.fromJson5(
                         """
                         {
-                          mode: "peer",
+                          mode: "client",
                           connect: { endpoints: ["${escapeJson(endpoint)}"] },
                           scouting: { multicast: { enabled: false } }
                         }

@@ -8,7 +8,8 @@ USB/BLE 控制逻辑。
 
 - 使用官方 `org.eclipse.zenoh:zenoh-kotlin-android:1.10.2`。
 - 最低 Android SDK 30，支持 `arm64-v8a`、`x86_64` 等官方 ABI。
-- 默认使用显式 PC endpoint，关闭 multicast scouting，避免依赖局域网组播。
+- 默认使用显式 PC endpoint，以 `client` 模式连 PC 上的 router，关闭 multicast
+  scouting，避免依赖局域网组播（与 iOS 侧一致）。
 - 订阅 `openbene/{robot_id}/cmd`，显示并解析控制命令。
 - 发布 `status`、`sensors`、`telemetry`、二进制 `video`，以及和 iOS 同格式的
   `frame`（ZPKD 多平面采集帧）与 `session`（录制起止事件）。
