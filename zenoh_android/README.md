@@ -151,3 +151,13 @@ zenoh_android/
   位姿，用来验证 ZPKD 链路，深度和置信度平面要等真实相机管线接入。
 - App 需要保持前台；Android 长期后台运行需要前台服务和通知权限。
 - 这不是正式生产依赖升级，原有 App 的 WebSocket 行为保持不变。
+
+## 验证结果
+
+- Kotlin：`:app:testDebugUnitTest` 14 项通过（key/endpoint、命令解析、ZFRM 头、ZPKD
+  头布局、多平面往返、未知 section 跳过、截断/坏 magic 拒绝、metadata camelCase、
+  session 事件）。
+- 打包：`:app:assembleDebug` 通过，`app-debug.apk` 约 58 MB，含各 ABI 的 Zenoh JNI 库。
+- 跨端：用 Kotlin 编出的 `ZPKD` / `ZFRM` 字节直接喂给
+  `zenoh_ios/pc/openbene_receiver/protocol.py`，字段、位姿、metadata 和兼容视频
+  全部解析正确，说明同一条 PC 链路能同时接 Android 和 iOS。
