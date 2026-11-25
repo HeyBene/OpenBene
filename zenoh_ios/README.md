@@ -164,6 +164,50 @@ swift run openbene-zenoh-demo version
 
 `scripts/e2e.sh` 会自动起 `zenohd`、接收器与发布器，并校验录到的帧数。
 
+## 安装到 iPhone（测试 App）
+
+`App/` 是一个独立 SwiftUI 测试 App（`com.openbene.zenohdemo`），用 ARKit 采集真实
+RGB、深度、置信度和位姿并经 SDK 发送；没有 LiDAR 或不想开相机时可切换到合成测试帧。
+
+生成工程并安装到已连接设备：
+
+```bash
+cd zenoh_ios/App
+xcodegen generate
+xcodebuild -project OpenBeneZenohDemo.xcodeproj -scheme OpenBeneZenohDemo \
+  -configuration Debug -destination 'id=<设备 UDID>' \
+  -allowProvisioningUpdates -derivedDataPath /tmp/obz-dd build
+xcrun devicectl device install app --device <设备 UDID> \
+  /tmp/obz-dd/Build/Products/Debug-iphoneos/OpenBeneZenohDemo.app
+xcrun devicectl device process launch --device <设备 UDID> com.openbene.zenohdemo
+```
+
+查看已连接设备：
+
+```bash
+xcrun devicectl list devices
+xcrun xctrace list devices
+```
+
+手机与电脑连同一个 Wi-Fi 后，在电脑上运行：
+
+```bash
+bash zenoh_ios/scripts/run-pc.sh
+```
+
+脚本会启动 `zenohd`、开始 MCAP 录制，并打印电脑 IP。把 `<电脑IP>:7447` 填进 App 的
+「电脑地址」，点「连接电脑」。第一次会弹出相机与本地网络权限，都需要允许。连接成功后
+App 显示已发送帧数和速率，电脑端统计里 `frames` 持续增长，录制文件在 `zenoh_ios/runs/`。
+
+反向验证电脑到手机：另开一个终端执行
+
+```bash
+bash zenoh_ios/scripts/send-cmd.sh drive 0.4 0.4
+bash zenoh_ios/scripts/send-cmd.sh stop
+```
+
+App 的「最近命令」会显示收到的 `drive` / `stop`。
+
 ## 验证记录
 
 - Swift：`swift test` 19 项通过（key/JSON 兼容、ZFRM 逐字节对齐 Android、ZPKD 往返、

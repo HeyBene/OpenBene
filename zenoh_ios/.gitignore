@@ -12,3 +12,4 @@ __pycache__/
 runs/
 *.mcap
 *.mcap.meta.json
+.tools/

@@ -1,0 +1,34 @@
+name: OpenBeneZenohDemo
+options:
+  bundleIdPrefix: com.openbene
+  deploymentTarget:
+    iOS: "16.0"
+  createIntermediateGroups: true
+packages:
+  OpenBeneZenoh:
+    path: ..
+targets:
+  OpenBeneZenohDemo:
+    type: application
+    platform: iOS
+    sources:
+      - path: Sources
+    dependencies:
+      - package: OpenBeneZenoh
+        product: OpenBeneZenoh
+      - package: OpenBeneZenoh
+        product: OpenBeneZenohPico
+    settings:
+      base:
+        PRODUCT_NAME: OpenBeneZenohDemo
+        PRODUCT_BUNDLE_IDENTIFIER: com.openbene.zenohdemo
+        INFOPLIST_FILE: Sources/Info.plist
+        GENERATE_INFOPLIST_FILE: NO
+        CODE_SIGN_STYLE: Automatic
+        DEVELOPMENT_TEAM: 3TUB82S6DD
+        SWIFT_VERSION: "5.9"
+        TARGETED_DEVICE_FAMILY: "1,2"
+        ENABLE_USER_SCRIPT_SANDBOXING: NO
+        SUPPORTS_MACCATALYST: NO
+        CURRENT_PROJECT_VERSION: 1
+        MARKETING_VERSION: 0.1.0
