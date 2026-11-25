@@ -14,7 +14,7 @@ from .protocol import (
     decode_legacy_video,
     parse_key,
 )
-from .recorder import McapRecorder, wall_clock_ns
+from .recorder import RecordingController, wall_clock_ns
 
 WALL_CLOCK_FLOOR_NS = 1_000_000_000_000_000  # below this the source clock is monotonic
 
@@ -29,6 +29,7 @@ class ReceiverStats:
     decode_errors: int = 0
     ignored: int = 0
     topics: Counter = field(default_factory=Counter)
+    robots: Counter = field(default_factory=Counter)
     last_frame_id: dict[str, int] = field(default_factory=dict)
     started_at: float = field(default_factory=time.time)
 
@@ -36,6 +37,10 @@ class ReceiverStats:
     def fps(self) -> float:
         elapsed = max(1e-3, time.time() - self.started_at)
         return self.frames / elapsed
+
+    @property
+    def primary_robot(self) -> str | None:
+        return self.robots.most_common(1)[0][0] if self.robots else None
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -47,6 +52,7 @@ class ReceiverStats:
             "decode_errors": self.decode_errors,
             "ignored": self.ignored,
             "topics": dict(self.topics),
+            "robot": self.primary_robot,
             "elapsed_s": round(time.time() - self.started_at, 3),
         }
 
@@ -65,7 +71,8 @@ class OpenBeneReceiver:
         key: str = "openbene/**",
         mode: str = "client",
         listen: str | None = None,
-        recorder: McapRecorder | None = None,
+        recording: RecordingController | None = None,
+        viewer: Any | None = None,
         on_record: Callable[[str, int], None] | None = None,
         echo_json: bool = False,
     ) -> None:
@@ -73,7 +80,8 @@ class OpenBeneReceiver:
         self.key = key
         self.mode = mode
         self.listen = listen
-        self.recorder = recorder
+        self.recording = recording
+        self.viewer = viewer
         self.on_record = on_record
         self.echo_json = echo_json
         self.stats = ReceiverStats()
@@ -91,8 +99,10 @@ class OpenBeneReceiver:
         parsed = parse_key(key)
         if parsed is None:
             self.stats.ignored += 1
+            self._push_stats()
             return
         robot_id, topic = parsed
+        self.stats.robots[robot_id] += 1
         received_ns = received_ns or wall_clock_ns()
 
         try:
@@ -103,20 +113,31 @@ class OpenBeneReceiver:
                 _frame_id, timestamp_ns, jpeg = decode_legacy_video(payload)
                 self.stats.legacy_frames += 1
                 log_time = self._log_time(timestamp_ns, received_ns)
-                if self.recorder:
-                    self.recorder.write(key, jpeg, log_time, encoding="jpeg")
-                    self.recorder.stats.legacy_frames += 1
+                if self.recording:
+                    self.recording.write(key, jpeg, log_time, encoding="jpeg")
+                    self.recording.note_legacy_frame()
+                if self.viewer:
+                    self.viewer.update_frame(
+                        {"frame_id": _frame_id, "metadata": {"width": 0, "height": 0}},
+                        jpeg,
+                        None,
+                        None,
+                    )
                 self._after_write(key, len(jpeg))
             else:
                 document = json.loads(payload.decode("utf-8"))
+                if topic == "cmd" and self.viewer:
+                    self.viewer.update_command(document)
                 if self.echo_json:
                     print(f"[{key}] {json.dumps(document, sort_keys=True)}")
-                if self.recorder:
-                    self.recorder.write_json(key, payload, received_ns)
+                if self.recording:
+                    self.recording.write_json(key, payload, received_ns)
                 self._after_write(key, len(payload))
         except (FrameCodecError, ValueError, UnicodeDecodeError, json.JSONDecodeError) as error:
             self.stats.decode_errors += 1
             print(f"[decode-error] {key}: {error}")
+        finally:
+            self._push_stats()
 
     def _record_frame(self, key: str, robot_id: str, frame: Any, received_ns: int) -> None:
         previous = self.stats.last_frame_id.get(robot_id)
@@ -140,16 +161,19 @@ class OpenBeneReceiver:
             },
         }
 
-        if self.recorder:
-            self.recorder.write_json(f"{key}/meta", meta, log_time)
+        if self.recording:
+            self.recording.write_json(f"{key}/meta", meta, log_time)
             if frame.rgb_jpeg is not None:
-                self.recorder.write(f"{key}/rgb", frame.rgb_jpeg, log_time, encoding="jpeg")
+                self.recording.write(f"{key}/rgb", frame.rgb_jpeg, log_time, encoding="jpeg")
             if frame.depth_png is not None:
-                self.recorder.write(f"{key}/depth", frame.depth_png, log_time, encoding="png")
+                self.recording.write(f"{key}/depth", frame.depth_png, log_time, encoding="png")
             if frame.confidence_png is not None:
-                self.recorder.write(f"{key}/confidence", frame.confidence_png, log_time, encoding="png")
-            self.recorder.stats.frames += 1
-            self.recorder.stats.gaps = self.stats.gaps
+                self.recording.write(f"{key}/confidence", frame.confidence_png, log_time, encoding="png")
+            self.recording.note_frame()
+
+        if self.viewer:
+            self.viewer.update_frame(meta, frame.rgb_jpeg, frame.depth_png, frame.confidence_png)
+
         self._after_write(key, len(frame.rgb_jpeg or b""))
 
     def _log_time(self, source_ns: int, received_ns: int) -> int:
@@ -168,6 +192,10 @@ class OpenBeneReceiver:
     def _after_write(self, key: str, size: int) -> None:
         if self.on_record:
             self.on_record(key, size)
+
+    def _push_stats(self) -> None:
+        if self.viewer:
+            self.viewer.update_stats(self.stats.as_dict())
 
     # -- zenoh transport --------------------------------------------------
 

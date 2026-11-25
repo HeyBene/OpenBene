@@ -4,7 +4,7 @@ from pathlib import Path
 from mcap.reader import make_reader
 
 from openbene_receiver.protocol import CaptureFrame, FrameMetadata, encode_capture_frame, encode_legacy_video
-from openbene_receiver.recorder import McapRecorder
+from openbene_receiver.recorder import RecordingController
 from openbene_receiver.receiver import OpenBeneReceiver
 
 
@@ -23,8 +23,9 @@ def _frame(frame_id: int, timestamp_ns: int) -> CaptureFrame:
 
 def test_records_frames_and_json_to_mcap(tmp_path: Path):
     path = tmp_path / "run.mcap"
-    recorder = McapRecorder(path, metadata={"robot": "rtr520"})
-    receiver = OpenBeneReceiver(recorder=recorder)
+    recording = RecordingController(tmp_path)
+    recording.start(path)
+    receiver = OpenBeneReceiver(recording=recording)
 
     for frame_id in (1, 2, 3):
         receiver.handle_sample(
@@ -40,7 +41,7 @@ def test_records_frames_and_json_to_mcap(tmp_path: Path):
         "openbene/rtr520/status",
         json.dumps({"version": 1, "robot_id": "rtr520", "state": "online"}).encode(),
     )
-    summary = recorder.close()
+    summary = recording.stop()
 
     assert summary["frames"] == 3
     assert summary["legacy_frames"] == 1
@@ -71,9 +72,25 @@ def test_records_frames_and_json_to_mcap(tmp_path: Path):
     assert len(first["pose"]) == 16
 
 
+def test_no_recording_until_started(tmp_path: Path):
+    recording = RecordingController(tmp_path)
+    receiver = OpenBeneReceiver(recording=recording)
+
+    receiver.handle_sample("openbene/rtr520/frame", encode_capture_frame(_frame(1, 1_700_000_000_000_000_000)))
+    assert recording.active is False
+    assert list(tmp_path.glob("*.mcap")) == []
+
+    recording.start()
+    receiver.handle_sample("openbene/rtr520/frame", encode_capture_frame(_frame(2, 1_700_000_000_000_000_001)))
+    summary = recording.stop()
+    assert summary["frames"] == 1
+    assert list(tmp_path.glob("*.mcap"))
+
+
 def test_detects_gaps_and_monotonic_clock(tmp_path: Path):
-    recorder = McapRecorder(tmp_path / "gaps.mcap")
-    receiver = OpenBeneReceiver(recorder=recorder)
+    recording = RecordingController(tmp_path)
+    recording.start(tmp_path / "gaps.mcap")
+    receiver = OpenBeneReceiver(recording=recording)
     receiver.handle_sample(
         "openbene/rtr520/frame",
         encode_capture_frame(_frame(1, 5_000_000)),
@@ -84,7 +101,7 @@ def test_detects_gaps_and_monotonic_clock(tmp_path: Path):
         encode_capture_frame(_frame(4, 5_100_000)),
         received_ns=1_700_000_000_100_000_000,
     )
-    recorder.close()
+    recording.stop()
 
     assert receiver.stats.gaps == 2
     with (tmp_path / "gaps.mcap").open("rb") as handle:
@@ -94,12 +111,11 @@ def test_detects_gaps_and_monotonic_clock(tmp_path: Path):
 
 
 def test_bad_payload_counts_decode_error(tmp_path: Path):
-    recorder = McapRecorder(tmp_path / "bad.mcap")
-    receiver = OpenBeneReceiver(recorder=recorder)
+    receiver = OpenBeneReceiver(recording=RecordingController(tmp_path))
     receiver.handle_sample("openbene/rtr520/frame", b"not-a-frame")
     receiver.handle_sample("openbene/rtr520/status", b"{not json")
     receiver.handle_sample("other/robot/status", b"{}")
-    recorder.close()
 
     assert receiver.stats.decode_errors == 2
     assert receiver.stats.ignored == 1
+    assert receiver.stats.primary_robot == "rtr520"

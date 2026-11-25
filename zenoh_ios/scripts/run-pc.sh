@@ -3,9 +3,9 @@
 #
 #   bash zenoh_ios/scripts/run-pc.sh
 #
-# Starts zenohd (bundled at zenoh_ios/.tools/zenohd), records every
-# openbene/{robot}/* stream into runs/zenoh-<timestamp>.mcap and prints the
-# address to type into the iPhone app. Ctrl+C stops the recording.
+# Starts zenohd (bundled at zenoh_ios/.tools/zenohd), serves a live preview at
+# http://127.0.0.1:8080 and prints the address to type into the iPhone app.
+# Recording is off until you press 开始录制 in the preview page.
 set -euo pipefail
 
 HERE="$(cd "$(dirname "$0")/.." && pwd)"
@@ -13,6 +13,7 @@ ZENOHD="${ZENOHD:-$HERE/.tools/zenohd}"
 PYTHON="${PYTHON:-$HERE/pc/.venv/bin/python}"
 PORT="${PORT:-7447}"
 DURATION="${DURATION:-}"
+VIEW_PORT="${VIEW_PORT:-8080}"
 
 detect_ip() {
   for iface in en0 en1 en2 en3 en4 en5 en6; do
@@ -28,7 +29,6 @@ detect_ip() {
 LAN_IP="$(detect_ip || true)"
 OUT_DIR="$HERE/runs"
 mkdir -p "$OUT_DIR"
-MCAP="$OUT_DIR/zenoh-$(date +%Y%m%d-%H%M%S).mcap"
 
 if [ ! -x "$ZENOHD" ]; then
   echo "zenohd not found at $ZENOHD" >&2
@@ -69,11 +69,12 @@ fi
 
 echo "Mac IP : ${LAN_IP:-unknown}"
 echo "Phone  : 在 App 的「电脑地址」填 ${LAN_IP:-<电脑IP>}:$PORT"
-echo "Record : $MCAP"
-echo "Ctrl+C : 结束录制"
+echo "View   : http://127.0.0.1:$VIEW_PORT/  (录制默认关闭，在网页里点「开始录制」)"
+echo "Record : 网页控制，文件写到 $OUT_DIR"
+echo "Ctrl+C : 结束"
 echo
 
-ARGS=(--endpoint "tcp/127.0.0.1:$PORT" --record "$MCAP" --json)
+ARGS=(--endpoint "tcp/127.0.0.1:$PORT" --record-dir "$OUT_DIR" --view --view-port "$VIEW_PORT" --json)
 if [ -n "$DURATION" ]; then
   ARGS+=(--duration "$DURATION")
 fi

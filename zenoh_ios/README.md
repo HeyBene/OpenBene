@@ -121,16 +121,21 @@ python3 -m venv .venv
 zenohd            # 默认监听 tcp/0.0.0.0:7447
 ```
 
-实时接收并录制：
+实时预览（录制默认关闭）：
 
 ```bash
 .venv/bin/openbene-recv \
   --endpoint tcp/192.168.1.20:7447 \
-  --record runs/session-01.mcap \
+  --view --record-dir runs \
   --json
 ```
 
-只观察不录制时省略 `--record`；`--duration 60` 可限制运行时长。没有路由器时可用
+打开 `http://127.0.0.1:8080/` 就能看到 RGB 实时画面、深度、置信度、帧率、带宽、
+跳号、当前帧元数据和最近收到的命令。页面上的「开始录制 / 停止录制」按钮控制是否
+写 MCAP，文件落在 `--record-dir`（默认 `runs`），停止后页面仍显示上次文件路径。
+
+需要在脚本里自动开始录制时用 `--record runs/session-01.mcap`；`--view-port` 换预览端口，
+`--view-host 0.0.0.0` 允许别的设备打开页面。`--duration 60` 可限制运行时长。没有路由器时可用
 `--mode peer --listen tcp/0.0.0.0:7447`，但 zenoh-python 1.1.0 的 peer gossip 存在已知崩溃，
 推荐使用 `zenohd`。
 
@@ -195,9 +200,11 @@ xcrun xctrace list devices
 bash zenoh_ios/scripts/run-pc.sh
 ```
 
-脚本会启动 `zenohd`、开始 MCAP 录制，并打印电脑 IP。把 `<电脑IP>:7447` 填进 App 的
+脚本会启动 `zenohd` 和实时预览页（`http://127.0.0.1:8080/`），并打印电脑 IP；录制默认关闭。
+把 `<电脑IP>:7447` 填进 App 的
 「电脑地址」，点「连接电脑」。第一次会弹出相机与本地网络权限，都需要允许。连接成功后
-App 显示已发送帧数和速率，电脑端统计里 `frames` 持续增长，录制文件在 `zenoh_ios/runs/`。
+App 显示已发送帧数和速率，浏览器里的画面开始刷新。需要存档时在页面上点「开始录制」，
+文件写到 `zenoh_ios/runs/`。
 
 反向验证电脑到手机：另开一个终端执行
 
@@ -212,7 +219,8 @@ App 的「最近命令」会显示收到的 `drive` / `stop`。
 
 - Swift：`swift test` 19 项通过（key/JSON 兼容、ZFRM 逐字节对齐 Android、ZPKD 往返、
   队列丢帧、命令分发、离线状态）。
-- Python：`pytest` 9 项通过（黄金字节解析、MCAP 通道与消息体、跳号统计、坏包计数）。
+- Python：`pytest` 11 项通过（黄金字节解析、MCAP 通道与消息体、跳号统计、坏包计数、
+  预览页取图、按需开始/停止录制）。
 - 本机链路：zenohd 1.1.0 + `openbene-zenoh-demo publish` → `openbene-recv`，
   12 帧 / 12 个兼容视频帧 / 65 条 MCAP 消息，`gaps=0`。
 

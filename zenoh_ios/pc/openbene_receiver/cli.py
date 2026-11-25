@@ -7,14 +7,15 @@ import json
 import sys
 from pathlib import Path
 
-from .recorder import McapRecorder
+from .recorder import RecordingController
 from .receiver import OpenBeneReceiver
+from .viewer import LiveViewer
 
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="openbene-recv",
-        description="Receive OpenBene Zenoh streams and optionally record them to MCAP.",
+        description="Receive OpenBene Zenoh streams, optionally preview and record them.",
     )
     parser.add_argument(
         "--endpoint",
@@ -35,10 +36,20 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--record",
+        nargs="?",
+        const="",
         default=None,
         metavar="PATH",
-        help="Write an MCAP file (plus a .meta.json sidecar)",
+        help="Start recording immediately (optional explicit path)",
     )
+    parser.add_argument(
+        "--record-dir",
+        default="runs",
+        help="Directory used by the viewer's 开始录制 button (default: runs)",
+    )
+    parser.add_argument("--view", action="store_true", help="Serve the live preview page")
+    parser.add_argument("--view-port", type=int, default=8080, help="Preview HTTP port (default: 8080)")
+    parser.add_argument("--view-host", default="127.0.0.1", help="Preview bind address (default: 127.0.0.1)")
     parser.add_argument(
         "--duration",
         type=float,
@@ -52,34 +63,42 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
 
-    recorder = None
-    if args.record:
-        recorder = McapRecorder(
-            Path(args.record),
-            metadata={
-                "endpoint": args.endpoint,
-                "key": args.key,
-                "mode": args.mode,
-            },
-        )
+    recording = RecordingController(Path(args.record_dir))
+
+    viewer = None
+    if args.view:
+        viewer = LiveViewer(args.view_host, args.view_port, recording=recording)
+        try:
+            url = viewer.start()
+        except OSError as error:
+            print(f"cannot start live view on {args.view_host}:{args.view_port}: {error}", file=sys.stderr)
+            return 1
+        print(f"live view : {url}")
+
+    if args.record is not None:
+        path = recording.start(args.record or None)
+        print(f"recording : {path}")
+    elif args.view:
+        print("recording : off (press 开始录制 in the viewer)")
 
     receiver = OpenBeneReceiver(
         endpoint=args.endpoint,
         key=args.key,
         mode=args.mode,
         listen=args.listen,
-        recorder=recorder,
+        recording=recording,
+        viewer=viewer,
         echo_json=args.json,
     )
 
     print(f"listening on {args.key} via {args.endpoint} ({args.mode})")
-    if recorder:
-        print(f"recording to {recorder.path}")
 
     try:
         stats = receiver.run(duration=args.duration)
     finally:
-        summary = recorder.close() if recorder else None
+        summary = recording.stop()
+        if viewer:
+            viewer.stop()
 
     print(json.dumps(stats.as_dict(), indent=2, sort_keys=True))
     if summary:

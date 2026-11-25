@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import json
 import os
+import threading
 import time
 from collections import Counter
 from dataclasses import dataclass, field
@@ -171,3 +172,82 @@ class McapRecorder:
 
 def wall_clock_ns() -> int:
     return time.time_ns()
+
+
+class RecordingController:
+    """Starts and stops MCAP recording on demand (used by the live viewer)."""
+
+    def __init__(self, directory: str | os.PathLike[str], prefix: str = "zenoh") -> None:
+        self.directory = Path(directory)
+        self.prefix = prefix
+        self._lock = threading.RLock()
+        self._recorder: McapRecorder | None = None
+        self._last: dict[str, Any] | None = None
+
+    @property
+    def active(self) -> bool:
+        with self._lock:
+            return self._recorder is not None
+
+    @property
+    def path(self) -> Path | None:
+        with self._lock:
+            return self._recorder.path if self._recorder else None
+
+    def start(self, path: str | os.PathLike[str] | None = None) -> Path:
+        with self._lock:
+            if self._recorder is not None:
+                return self._recorder.path
+            self.directory.mkdir(parents=True, exist_ok=True)
+            target = Path(path) if path else self.directory / (
+                f"{self.prefix}-{datetime.now().strftime('%Y%m%d-%H%M%S')}.mcap"
+            )
+            self._recorder = McapRecorder(target, metadata={"source": "openbene-recv"})
+            return self._recorder.path
+
+    def stop(self) -> dict[str, Any] | None:
+        with self._lock:
+            recorder = self._recorder
+            self._recorder = None
+            if recorder is None:
+                return None
+            self._last = {
+                "active": False,
+                "path": str(recorder.path),
+                "frames": recorder.stats.frames,
+                "messages": recorder.stats.messages,
+            }
+        return recorder.close()
+
+    def write(self, topic: str, data: bytes, timestamp_ns: int, encoding: str = "json") -> None:
+        with self._lock:
+            if self._recorder is not None:
+                self._recorder.write(topic, data, timestamp_ns, encoding=encoding)
+
+    def write_json(self, topic: str, payload: Any, timestamp_ns: int) -> None:
+        with self._lock:
+            if self._recorder is not None:
+                self._recorder.write_json(topic, payload, timestamp_ns)
+
+    def note_frame(self) -> None:
+        with self._lock:
+            if self._recorder is not None:
+                self._recorder.stats.frames += 1
+
+    def note_legacy_frame(self) -> None:
+        with self._lock:
+            if self._recorder is not None:
+                self._recorder.stats.legacy_frames += 1
+
+    def status(self) -> dict[str, Any]:
+        with self._lock:
+            recorder = self._recorder
+            if recorder is None:
+                return self._last or {"active": False, "path": None, "frames": 0, "messages": 0}
+            return {
+                "active": True,
+                "path": str(recorder.path),
+                "frames": recorder.stats.frames,
+                "messages": recorder.stats.messages,
+                "bytes": recorder.stats.bytes,
+            }
