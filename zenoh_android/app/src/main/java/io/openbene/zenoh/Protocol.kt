@@ -170,3 +170,22 @@ object Protocol {
         return header.array()
     }
 }
+
+/** Recording boundary published on `openbene/{robot}/session`. */
+enum class SessionEvent(val wire: String) {
+    Start("start"),
+    Stop("stop"),
+    ;
+
+    fun toJson(
+        robotId: String,
+        sessionId: String,
+        nowMs: Long = System.currentTimeMillis(),
+    ): String = JSONObject()
+        .put("version", Protocol.VERSION)
+        .put("event", wire)
+        .put("session_id", sessionId)
+        .put("robot_id", Protocol.sanitizeRobotId(robotId))
+        .put("timestamp", nowMs)
+        .toString()
+}

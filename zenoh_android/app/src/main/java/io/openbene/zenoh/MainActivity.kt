@@ -25,6 +25,9 @@ class MainActivity : Activity(), ZenohTransport.Listener {
     private lateinit var statusButton: Button
     private lateinit var sensorButton: Button
     private lateinit var videoButton: Button
+    private lateinit var captureButton: Button
+    private lateinit var sessionStartButton: Button
+    private lateinit var sessionStopButton: Button
     private lateinit var loopbackDriveButton: Button
     private lateinit var loopbackStopButton: Button
     private lateinit var clearButton: Button
@@ -95,6 +98,25 @@ class MainActivity : Activity(), ZenohTransport.Listener {
         publishRow.addView(sensorButton, weighted())
         publishRow.addView(videoButton, weighted())
         root.addView(publishRow, matchWidth())
+
+        val captureRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+        captureButton = button("采集帧") {
+            runCatching { transport.publishCaptureFrame(syntheticCaptureFrame()) }
+                .onFailure { appendLog("Capture failed: ${it.message}") }
+        }
+        sessionStartButton = button("开始录制") {
+            runCatching { transport.publishSessionEvent(SessionEvent.Start) }
+                .onFailure { appendLog("Session failed: ${it.message}") }
+        }
+        sessionStopButton = button("停止录制") {
+            runCatching { transport.publishSessionEvent(SessionEvent.Stop) }
+                .onFailure { appendLog("Session failed: ${it.message}") }
+        }
+        captureRow.addView(captureButton, weighted())
+        captureRow.addView(sessionStartButton, weighted())
+        captureRow.addView(sessionStopButton, weighted())
+        root.addView(captureRow, matchWidth())
+        root.addView(hint("采集帧走 .../frame（ZPKD，与 iOS 同格式）；录制按钮只发 session 事件，文件由 PC 端写 MCAP。"))
 
         val loopbackRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
         loopbackDriveButton = button("环回前进") {
@@ -167,10 +189,50 @@ class MainActivity : Activity(), ZenohTransport.Listener {
         statusButton.isEnabled = connected
         sensorButton.isEnabled = connected
         videoButton.isEnabled = connected
+        captureButton.isEnabled = connected
+        sessionStartButton.isEnabled = connected
+        sessionStopButton.isEnabled = connected
         loopbackDriveButton.isEnabled = connected
         loopbackStopButton.isEnabled = connected
         disconnectButton.isEnabled = true
         connectButton.isEnabled = true
+    }
+
+    /**
+     * Synthetic capture frame for transport testing: a small valid JPEG plus an
+     * identity pose. Depth and confidence planes need the real camera pipeline.
+     */
+    private fun syntheticCaptureFrame(): CaptureFrame {
+        val width = 64
+        val height = 48
+        val yuv = ByteArray(width * height * 3 / 2) { index -> (index % 251).toByte() }
+        val jpeg = java.io.ByteArrayOutputStream().use { out ->
+            android.graphics.YuvImage(
+                yuv,
+                android.graphics.ImageFormat.NV21,
+                width,
+                height,
+                null,
+            ).compressToJpeg(android.graphics.Rect(0, 0, width, height), 80, out)
+            out.toByteArray()
+        }
+        return CaptureFrame(
+            frameId = System.currentTimeMillis() % Int.MAX_VALUE,
+            timestampNs = System.currentTimeMillis() * 1_000_000L,
+            rgbJpeg = jpeg,
+            pose = floatArrayOf(
+                1f, 0f, 0f, 0f,
+                0f, 1f, 0f, 0f,
+                0f, 0f, 1f, 0f,
+                0f, 0f, 0f, 1f,
+            ),
+            metadata = FrameMetadata(
+                width = width,
+                height = height,
+                trackingState = "synthetic",
+                depthSource = "none",
+            ),
+        )
     }
 
     private fun appendLog(line: String) {

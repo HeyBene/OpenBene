@@ -48,6 +48,9 @@ class ZenohTransport(
     @Volatile
     private var activePrefix: String = "openbene/robot"
 
+    /** Stable identifier for this app session, used to name recording runs. */
+    val sessionId: String = java.util.UUID.randomUUID().toString().lowercase()
+
     val isConnected: Boolean
         get() = session != null
 
@@ -80,7 +83,7 @@ class ZenohTransport(
                 activePrefix = Protocol.keyPrefix(safeRobotId)
                 session = opened
 
-                listOf("status", "sensors", "telemetry", "video").forEach { suffix ->
+                listOf("status", "sensors", "telemetry", "video", "frame", "session").forEach { suffix ->
                     val key = "$activePrefix/$suffix"
                     publishers[suffix] = opened.declarePublisher(key.intoKeyExpr().getOrThrow()).getOrThrow()
                 }
@@ -142,6 +145,31 @@ class ZenohTransport(
         val payload = Protocol.encodeVideoFrame(jpeg, frameId)
         publisher.put(ZBytes.from(payload)).getOrThrow()
         listener.onState("Published binary video frame: ${payload.size} bytes, id=$frameId")
+    }
+
+    /**
+     * Publishes one multi-plane capture frame on `.../frame`.
+     *
+     * This mirrors the iOS `ZPKD` payload, so the same PC receiver decodes both
+     * phones. [legacyVideo] also emits the JPEG-only `ZFRM` frame on
+     * `.../video` for older receivers.
+     */
+    fun publishCaptureFrame(frame: CaptureFrame, legacyVideo: Boolean = false) {
+        val publisher = publishers["frame"] ?: error("Not connected")
+        val payload = FrameCodec.encode(frame)
+        publisher.put(ZBytes.from(payload)).getOrThrow()
+        listener.onState(
+            "Published capture frame: ${payload.size} bytes, id=${frame.frameId}, " +
+                "flags=0x${Integer.toHexString(FrameCodec.flagsFor(frame))}",
+        )
+        if (legacyVideo) {
+            frame.rgbJpeg?.let { publishVideoFrame(it, frame.frameId) }
+        }
+    }
+
+    /** Marks recording boundaries so the PC can open and close a session. */
+    fun publishSessionEvent(kind: SessionEvent) {
+        publishJson("session", kind.toJson(activeRobotId, sessionId))
     }
 
     /** Only for local smoke testing; the real command publisher is the PC. */
