@@ -13,6 +13,13 @@ CMD="${1:-stop}"
 LEFT="${2:-0.4}"
 RIGHT="${3:-0.4}"
 
+if ! (exec 3<>"/dev/tcp/127.0.0.1/$PORT") 2>/dev/null; then
+  echo "没有检测到 Zenoh 路由器：127.0.0.1:$PORT" >&2
+  echo "请先在另一个终端保持运行：bash zenoh_ios/scripts/run-pc.sh" >&2
+  echo "可以用 lsof -nP -iTCP:$PORT -sTCP:LISTEN 检查端口。" >&2
+  exit 1
+fi
+
 "$PYTHON" - "$PORT" "$ROBOT" "$CMD" "$LEFT" "$RIGHT" <<'PY'
 import json
 import sys

@@ -41,14 +41,31 @@ if [ ! -x "$PYTHON" ]; then
 fi
 
 cleanup() {
-  kill "$ROUTER" 2>/dev/null || true
-  wait "$ROUTER" 2>/dev/null || true
+  if [ -n "$ROUTER" ]; then
+    kill "$ROUTER" 2>/dev/null || true
+    wait "$ROUTER" 2>/dev/null || true
+  fi
 }
 trap cleanup EXIT
 
-"$ZENOHD" --listen "tcp/0.0.0.0:$PORT" >"$OUT_DIR/zenohd.log" 2>&1 &
-ROUTER=$!
-sleep 1.5
+ROUTER=""
+if (exec 3<>"/dev/tcp/127.0.0.1/$PORT") 2>/dev/null; then
+  echo "port $PORT already has a listener; reusing it"
+else
+  "$ZENOHD" --listen "tcp/0.0.0.0:$PORT" >"$OUT_DIR/zenohd.log" 2>&1 &
+  ROUTER=$!
+  for _ in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20; do
+    if (exec 3<>"/dev/tcp/127.0.0.1/$PORT") 2>/dev/null; then
+      break
+    fi
+    if ! kill -0 "$ROUTER" 2>/dev/null; then
+      echo "zenohd exited before listening on port $PORT:" >&2
+      tail -20 "$OUT_DIR/zenohd.log" >&2 || true
+      exit 1
+    fi
+    sleep 0.25
+  done
+fi
 
 echo "Mac IP : ${LAN_IP:-unknown}"
 echo "Phone  : 在 App 的「电脑地址」填 ${LAN_IP:-<电脑IP>}:$PORT"
