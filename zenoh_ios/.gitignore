@@ -1,0 +1,14 @@
+.build/
+.swiftpm/
+DerivedData/
+*.xcodeproj/xcuserdata/
+
+# PC receiver artifacts
+pc/.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+*.egg-info/
+runs/
+*.mcap
+*.mcap.meta.json

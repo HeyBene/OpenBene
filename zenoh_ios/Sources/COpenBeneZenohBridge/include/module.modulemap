@@ -1,0 +1,4 @@
+module COpenBeneZenohBridge {
+    header "obz_zenoh.h"
+    export *
+}

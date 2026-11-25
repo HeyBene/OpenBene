@@ -1,0 +1,19 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "openbene-zenoh-receiver"
+version = "0.1.0"
+description = "OpenBene Zenoh PC-side realtime receiver and MCAP recorder"
+requires-python = ">=3.10"
+dependencies = [
+    "eclipse-zenoh>=1.1,<2",
+    "mcap>=1.1",
+]
+
+[project.scripts]
+openbene-recv = "openbene_receiver.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["openbene_receiver*"]
