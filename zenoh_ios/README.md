@@ -107,37 +107,58 @@ transport.publish(frame: frame)
 
 ## PC 端：实时接收与录制
 
-要求 Python 3.10+，安装依赖：
+### 一条命令启动全部
+
+电脑端所有步骤都在同一条命令里：准备 zenohd、准备 Python 环境、启动路由器、
+启动接收端、开启预览页、打开浏览器、结束时清理。
+
+```bash
+bash /Users/fandi/Desktop/OpenBene_git/zenoh_ios/scripts/run-pc.sh
+```
+
+第一次运行会自动把 zenohd 1.1.0 下载到 zenoh_ios/.tools/、创建 zenoh_ios/pc/.venv
+并安装依赖，之后直接启动。运行后自动打开浏览器预览页，并在终端打印手机要填的地址：
+
+```text
+==============================================================
+ OpenBene Zenoh 已在运行
+==============================================================
+ 电脑端预览   : http://127.0.0.1:8080/
+ 手机填写地址 : 10.160.3.179:7447
+ 录制         : 默认关闭，在网页上点「开始录制」
+ 录制目录     : .../zenoh_ios/runs
+ 结束全部     : 在本终端按 Ctrl+C
+==============================================================
+```
+
+按 Ctrl+C 会同时停掉接收端和路由器，并列出本次的录制文件。可选开关用环境变量：
+
+```bash
+PORT=7448 bash zenoh_ios/scripts/run-pc.sh          # 换路由器端口
+VIEW_PORT=8081 bash zenoh_ios/scripts/run-pc.sh     # 换预览端口
+OPEN_BROWSER=0 bash zenoh_ios/scripts/run-pc.sh     # 不自动开浏览器
+DURATION=120 bash zenoh_ios/scripts/run-pc.sh       # 2 分钟后自动停止
+```
+
+预览页能看到 RGB 实时画面、深度、置信度、帧率、带宽、跳号、当前帧元数据和
+最近收到的命令。页面上的「开始录制 / 停止录制」按钮控制是否写 MCAP，文件落在
+zenoh_ios/runs/，停止后页面仍显示上次文件路径。
+
+### 手动分步运行
+
+只在需要单独控制某一环时才用：
 
 ```bash
 cd zenoh_ios/pc
-python3 -m venv .venv
-.venv/bin/pip install -e .
+python3 -m venv .venv && .venv/bin/pip install -e .   # 只装一次
+zenoh_ios/.tools/zenohd                              # 终端 1：路由器
+.venv/bin/openbene-recv --view --json                # 终端 2：接收 + 预览
+.venv/bin/openbene-recv --record runs/now.mcap       # 或者一开就录制
 ```
 
-先启动路由器（与手机端 zenoh-pico 1.1.0 匹配的版本）：
-
-```bash
-zenohd            # 默认监听 tcp/0.0.0.0:7447
-```
-
-实时预览（录制默认关闭）：
-
-```bash
-.venv/bin/openbene-recv \
-  --endpoint tcp/192.168.1.20:7447 \
-  --view --record-dir runs \
-  --json
-```
-
-打开 `http://127.0.0.1:8080/` 就能看到 RGB 实时画面、深度、置信度、帧率、带宽、
-跳号、当前帧元数据和最近收到的命令。页面上的「开始录制 / 停止录制」按钮控制是否
-写 MCAP，文件落在 `--record-dir`（默认 `runs`），停止后页面仍显示上次文件路径。
-
-需要在脚本里自动开始录制时用 `--record runs/session-01.mcap`；`--view-port` 换预览端口，
-`--view-host 0.0.0.0` 允许别的设备打开页面。`--duration 60` 可限制运行时长。没有路由器时可用
-`--mode peer --listen tcp/0.0.0.0:7447`，但 zenoh-python 1.1.0 的 peer gossip 存在已知崩溃，
-推荐使用 `zenohd`。
+--view-host 0.0.0.0 允许别的设备打开预览页，--duration 60 可限制运行时长。
+没有路由器时可用 --mode peer --listen tcp/0.0.0.0:7447，但 zenoh-python 1.1.0 的
+peer gossip 存在已知崩溃，推荐使用 zenohd。
 
 录制文件是标准 MCAP，按通道分开保存：
 
