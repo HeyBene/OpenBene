@@ -97,6 +97,48 @@ sdk.dir=C\:\\Users\\jiken\\AppData\\Local\\Android\\Sdk
 
 ## 在 PC 上准备对端
 
+### Windows 一键启动
+
+`scripts/run-pc.ps1` 做的是 Mac 上 `zenoh_ios/scripts/run-pc.sh` 的同一件事：检查
+7447 端口，没监听就拉起 `zenohd`；打印本机 IP 和要填进 App 的地址；启动接收端和
+预览页；页面能访问后自动打开浏览器；Ctrl+C 退出时停掉自己启动的 router。
+
+一次性准备 zenohd：
+
+```powershell
+curl.exe -L -o $env:TEMP\zenoh.zip https://github.com/eclipse-zenoh/zenoh/releases/download/1.1.0/zenoh-1.1.0-x86_64-pc-windows-msvc-standalone.zip
+Expand-Archive $env:TEMP\zenoh.zip -DestinationPath "$env:USERPROFILE\Tools\zenoh" -Force
+```
+
+一次性准备 PC 接收端（`zenoh_ios/pc` 在 iOS 分支，单独检出即可，不需要合并分支）：
+
+```powershell
+git -C C:\Users\jiken\Desktop\OpenBene worktree add C:\Users\jiken\OpenBene-zenoh-pc origin/feature/zenoh-ios-transport --detach
+cd C:\Users\jiken\OpenBene-zenoh-pc\zenoh_ios\pc
+python -m venv .venv
+.\.venv\Scripts\pip install -e .
+```
+
+之后一条命令启动整条链路：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File C:\Users\jiken\Desktop\OpenBene\zenoh_android\scripts\run-pc.ps1 `
+  -ReceiverDir C:\Users\jiken\OpenBene-zenoh-pc\zenoh_ios\pc
+```
+
+输出示例：
+
+```text
+本机 IP : 10.160.3.246
+手机填写: 10.160.3.246:7447    （Robot ID 默认 rtr520）
+预览页  : http://127.0.0.1:8080/
+录制    : 网页里点「开始录制」，文件写到 ...\zenoh_ios\runs
+```
+
+常用参数：`-Duration 60` 定时退出、`-NoBrowser` 不自动开浏览器、`-ViewPort 8081`
+换预览端口、`-Zenohd <路径>` 指定 router。首次运行需要在 Windows 防火墙放行
+7447 入站，否则手机连不上。
+
 PC 可以运行 Zenoh router，也可以作为 peer 监听 TCP。示例：
 
 ```bash
@@ -125,6 +167,7 @@ z_pub -k 'openbene/rtr520/cmd' -v '{"version":1,"cmd":"stop","seq":1,"sent_at":1
 
 ```text
 zenoh_android/
+  scripts/run-pc.ps1     Windows 一键启动 router + 接收端 + 预览页
   app/src/main/java/io/openbene/zenoh/
     MainActivity.kt       独立测试界面
     ZenohTransport.kt     Zenoh session、发布、订阅和心跳
