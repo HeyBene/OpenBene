@@ -19,6 +19,16 @@ class CaptureController(
     private val context: Context,
     private val transport: ZenohTransport,
 ) {
+    /** What the phone should stream; mirrors the iOS capture settings. */
+    data class Options(
+        val width: Int = 1280,
+        val height: Int = 720,
+        val fps: Int = 15,
+        val sendRgb: Boolean = true,
+        val sendImu: Boolean = true,
+        val sendBattery: Boolean = true,
+    )
+
     interface Listener {
         fun onCaptureState(message: String)
         fun onCaptureStats(text: String)
@@ -36,11 +46,13 @@ class CaptureController(
     private var bytesSent = 0L
     private var windowStartedAt = 0L
     private var windowFrames = 0
+    private var options = Options()
 
     val isRunning: Boolean get() = camera?.isRunning == true
 
-    fun start(width: Int = 1280, height: Int = 720, fps: Int = 15) {
+    fun start(settings: Options = Options()) {
         if (camera != null) return
+        options = settings
         val source = CameraSource(
             context,
             object : CameraSource.Listener {
@@ -61,11 +73,17 @@ class CaptureController(
         camera = source
         windowStartedAt = System.currentTimeMillis()
         windowFrames = 0
-        if (imu.available) {
+        if (imu.available && settings.sendImu) {
             imu.start()
             handler.post(sensorLoop)
+        } else if (settings.sendBattery) {
+            handler.post(sensorLoop)
         }
-        source.start(width, height, fps)
+        if (settings.sendRgb) {
+            source.start(settings.width, settings.height, settings.fps)
+        } else {
+            listener?.onCaptureState("只发送传感器，不启动相机")
+        }
         handler.post(statsLoop)
     }
 
@@ -113,12 +131,15 @@ class CaptureController(
     private val sensorLoop = object : Runnable {
         override fun run() {
             val sample = imu.latest
-            if (sample != null && transport.isConnected) {
+            val accel = if (options.sendImu) sample?.accelerometer else null
+            val gyro = if (options.sendImu) sample?.gyroscope else null
+            val battery = if (options.sendBattery) batteryLevel() else null
+            if ((accel != null || gyro != null || battery != null) && transport.isConnected) {
                 runCatching {
                     transport.publishSensors(
-                        accelerometer = sample.accelerometer,
-                        gyroscope = sample.gyroscope,
-                        batteryLevel = batteryLevel(),
+                        accelerometer = accel,
+                        gyroscope = gyro,
+                        batteryLevel = battery,
                     )
                 }
             }
@@ -132,9 +153,15 @@ class CaptureController(
             val elapsed = (now - windowStartedAt).coerceAtLeast(1) / 1000.0
             val fps = windowFrames / elapsed
             val mbps = bytesSent / 1_000_000.0 / elapsed
+            val sample = imu.latest
+            val imuText = sample?.accelerometer?.let {
+                String.format("a=(%.2f, %.2f, %.2f)", it.first, it.second, it.third)
+            } ?: "a=—"
             listener?.onCaptureStats(
-                "帧 $framesSent · ${String.format("%.1f", fps)} fps · " +
-                    "${String.format("%.1f", mbps)} MB/s · 失败 $framesFailed · 内参 $intrinsicsSource",
+                "${options.width}×${options.height}@${options.fps} · 帧 $framesSent · " +
+                    "${String.format("%.1f", fps)} fps · " +
+                    "${String.format("%.1f", mbps)} MB/s · 失败 $framesFailed · 内参 $intrinsicsSource\n" +
+                    "IMU $imuText · 电量 ${batteryLevel()?.let { "${(it * 100).toInt()}%" } ?: "—"}",
             )
             windowStartedAt = now
             windowFrames = 0

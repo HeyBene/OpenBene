@@ -7,11 +7,16 @@ import android.os.Build
 import android.os.Bundle
 import android.text.method.ScrollingMovementMethod
 import android.view.Gravity
+import android.view.View
 import android.view.ViewGroup
 import android.widget.Button
+import android.widget.CheckBox
 import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.ScrollView
+import android.widget.Spinner
+import android.widget.AdapterView
+import android.widget.ArrayAdapter
 import android.widget.TextView
 import io.openbene.zenoh.ble.OpenBotBle
 import io.openbene.zenoh.capture.CaptureController
@@ -28,12 +33,16 @@ class MainActivity : Activity(), ZenohTransport.Listener {
     private lateinit var connectButton: Button
     private lateinit var disconnectButton: Button
     private lateinit var statusButton: Button
-    private lateinit var sensorButton: Button
     private lateinit var videoButton: Button
     private lateinit var captureButton: Button
     private lateinit var startCaptureButton: Button
     private lateinit var captureStopButton: Button
     private lateinit var captureStatsView: TextView
+    private lateinit var resolutionSpinner: Spinner
+    private lateinit var fpsSpinner: Spinner
+    private lateinit var rgbCheck: CheckBox
+    private lateinit var imuCheck: CheckBox
+    private lateinit var batteryCheck: CheckBox
     private lateinit var bleConnectButton: Button
     private lateinit var bleDisconnectButton: Button
     private lateinit var bleStatusView: TextView
@@ -46,6 +55,7 @@ class MainActivity : Activity(), ZenohTransport.Listener {
     private val capture by lazy { CaptureController(this, transport) }
     private val ble by lazy { OpenBotBle(this, BleListener()) }
     private var pendingAction: String? = null
+    private var restoringSettings = false
     private val timeFormat = SimpleDateFormat("HH:mm:ss.SSS", Locale.US)
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -63,6 +73,7 @@ class MainActivity : Activity(), ZenohTransport.Listener {
         val prefs = getSharedPreferences("zenoh_transport", MODE_PRIVATE)
         endpointInput.setText(prefs.getString("endpoint", DEFAULT_ENDPOINT))
         robotIdInput.setText(prefs.getString("robot_id", DEFAULT_ROBOT_ID))
+        restoreSettings()
         setConnectedUi(false)
         appendLog("Standalone Zenoh transport probe. Existing OpenBene apps are untouched.")
     }
@@ -109,16 +120,12 @@ class MainActivity : Activity(), ZenohTransport.Listener {
         statusButton = button("状态") {
             runCatching { transport.publishHeartbeat() }.onFailure { appendLog("Status failed: ${it.message}") }
         }
-        sensorButton = button("传感器") {
-            runCatching { transport.publishSensors() }.onFailure { appendLog("Sensors failed: ${it.message}") }
-        }
         videoButton = button("二进制帧") {
             runCatching {
                 transport.publishVideoFrame(ByteArray(1024) { (it % 251).toByte() })
             }.onFailure { appendLog("Video failed: ${it.message}") }
         }
         publishRow.addView(statusButton, weighted())
-        publishRow.addView(sensorButton, weighted())
         publishRow.addView(videoButton, weighted())
         root.addView(publishRow, matchWidth())
 
@@ -140,6 +147,48 @@ class MainActivity : Activity(), ZenohTransport.Listener {
         captureRow.addView(sessionStopButton, weighted())
         root.addView(captureRow, matchWidth())
         root.addView(hint("采集帧走 .../frame（ZPKD，与 iOS 同格式）；录制按钮只发 session 事件，文件由 PC 端写 MCAP。"))
+
+        root.addView(label("采集设置"))
+        resolutionSpinner = Spinner(this).apply {
+            adapter = ArrayAdapter(
+                this@MainActivity,
+                android.R.layout.simple_spinner_item,
+                RESOLUTIONS.map { it.label },
+            ).apply { setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item) }
+            onItemSelectedListener = settingsListener
+        }
+        root.addView(resolutionSpinner, matchWidth())
+
+        fpsSpinner = Spinner(this).apply {
+            adapter = ArrayAdapter(
+                this@MainActivity,
+                android.R.layout.simple_spinner_item,
+                FPS_OPTIONS.map { "$it fps" },
+            ).apply { setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item) }
+            onItemSelectedListener = settingsListener
+        }
+        root.addView(fpsSpinner, matchWidth())
+
+        val checkRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+        rgbCheck = CheckBox(this).apply {
+            text = "画面"
+            isChecked = true
+            setOnCheckedChangeListener { _, _ -> onSettingsChanged() }
+        }
+        imuCheck = CheckBox(this).apply {
+            text = "IMU"
+            isChecked = true
+            setOnCheckedChangeListener { _, _ -> onSettingsChanged() }
+        }
+        batteryCheck = CheckBox(this).apply {
+            text = "电量"
+            isChecked = true
+            setOnCheckedChangeListener { _, _ -> onSettingsChanged() }
+        }
+        checkRow.addView(rgbCheck, weighted())
+        checkRow.addView(imuCheck, weighted())
+        checkRow.addView(batteryCheck, weighted())
+        root.addView(checkRow, matchWidth())
 
         val captureControlRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
         startCaptureButton = button("开始采集") { requestCapture() }
@@ -246,7 +295,6 @@ class MainActivity : Activity(), ZenohTransport.Listener {
 
     private fun setConnectedUi(connected: Boolean) {
         statusButton.isEnabled = connected
-        sensorButton.isEnabled = connected
         videoButton.isEnabled = connected
         captureButton.isEnabled = connected
         startCaptureButton.isEnabled = connected
@@ -356,8 +404,78 @@ class MainActivity : Activity(), ZenohTransport.Listener {
 
     private fun startCapture() {
         if (capture.isRunning) return
-        appendLog("启动 C 档采集：Camera2 1280x720 @15fps + IMU")
-        capture.start()
+        val options = currentOptions()
+        if (!options.sendRgb && !options.sendImu && !options.sendBattery) {
+            appendLog("至少勾选一项要发送的数据")
+            return
+        }
+        appendLog(
+            "启动采集：${options.width}×${options.height}@${options.fps}fps " +
+                "画面=${options.sendRgb} IMU=${options.sendImu} 电量=${options.sendBattery}",
+        )
+        capture.start(options)
+    }
+
+    private fun currentOptions(): CaptureController.Options {
+        val resolution = RESOLUTIONS[
+            resolutionSpinner.selectedItemPosition.coerceIn(0, RESOLUTIONS.lastIndex)
+        ]
+        val fps = FPS_OPTIONS[fpsSpinner.selectedItemPosition.coerceIn(0, FPS_OPTIONS.lastIndex)]
+        return CaptureController.Options(
+            width = resolution.width,
+            height = resolution.height,
+            fps = fps,
+            sendRgb = rgbCheck.isChecked,
+            sendImu = imuCheck.isChecked,
+            sendBattery = batteryCheck.isChecked,
+        )
+    }
+
+    private fun onSettingsChanged() {
+        if (restoringSettings) return
+        persistSettings()
+        if (capture.isRunning) restartCapture()
+    }
+
+    private fun restartCapture() {
+        capture.stop()
+        android.os.Handler(mainLooper).postDelayed(
+            { if (transport.isConnected) startCapture() },
+            500L,
+        )
+    }
+
+    private fun persistSettings() {
+        if (!::resolutionSpinner.isInitialized) return
+        getSharedPreferences("zenoh_transport", MODE_PRIVATE).edit()
+            .putInt("resolution", resolutionSpinner.selectedItemPosition)
+            .putInt("fps", fpsSpinner.selectedItemPosition)
+            .putBoolean("send_rgb", rgbCheck.isChecked)
+            .putBoolean("send_imu", imuCheck.isChecked)
+            .putBoolean("send_battery", batteryCheck.isChecked)
+            .apply()
+    }
+
+    private fun restoreSettings() {
+        val prefs = getSharedPreferences("zenoh_transport", MODE_PRIVATE)
+        restoringSettings = true
+        resolutionSpinner.setSelection(prefs.getInt("resolution", 1).coerceIn(0, RESOLUTIONS.lastIndex))
+        fpsSpinner.setSelection(prefs.getInt("fps", 2).coerceIn(0, FPS_OPTIONS.lastIndex))
+        rgbCheck.isChecked = prefs.getBoolean("send_rgb", true)
+        imuCheck.isChecked = prefs.getBoolean("send_imu", true)
+        batteryCheck.isChecked = prefs.getBoolean("send_battery", true)
+        restoringSettings = false
+    }
+
+    private val settingsListener = object : AdapterView.OnItemSelectedListener {
+        override fun onItemSelected(
+            parent: AdapterView<*>?,
+            view: View?,
+            position: Int,
+            id: Long,
+        ) = onSettingsChanged()
+
+        override fun onNothingSelected(parent: AdapterView<*>?) = Unit
     }
 
     private fun requestBle() {
@@ -413,5 +531,14 @@ class MainActivity : Activity(), ZenohTransport.Listener {
         private const val REQUEST_BLE = 12
         private const val ACTION_CAPTURE = "capture"
         private const val ACTION_BLE = "ble"
+
+        private data class Resolution(val width: Int, val height: Int, val label: String)
+
+        private val RESOLUTIONS = listOf(
+            Resolution(640, 480, "480p · 640×480"),
+            Resolution(1280, 720, "720p · 1280×720"),
+            Resolution(1920, 1080, "1080p · 1920×1080"),
+        )
+        private val FPS_OPTIONS = listOf(5, 10, 15, 20, 30)
     }
 }
