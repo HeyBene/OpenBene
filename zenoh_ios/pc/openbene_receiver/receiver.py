@@ -90,6 +90,7 @@ class OpenBeneReceiver:
         self.on_record = on_record
         self.echo_json = echo_json
         self.stats = ReceiverStats()
+        self.last_meta: dict[str, Any] = {}
         self._session: Any = None
         self._subscriber: Any = None
         self._frame_clock_offset: int | None = None
@@ -165,6 +166,7 @@ class OpenBeneReceiver:
                 "confidence": len(frame.confidence_png or b""),
             },
         }
+        self.last_meta = meta
 
         if self.recording:
             self.recording.write_json(f"{key}/meta", meta, log_time)
@@ -247,12 +249,20 @@ class OpenBeneReceiver:
         key = str(getattr(sample, "key_expr", getattr(sample, "keyexpr", "")))
         self.handle_sample(key, data)
 
-    def run(self, duration: float | None = None) -> ReceiverStats:
+    def run(
+        self,
+        duration: float | None = None,
+        on_tick: Callable[[], None] | None = None,
+    ) -> ReceiverStats:
         self.open()
+        next_tick = time.time() + 2
         try:
             deadline = None if duration is None else time.time() + duration
             while deadline is None or time.time() < deadline:
                 time.sleep(0.2)
+                if on_tick is not None and time.time() >= next_tick:
+                    next_tick = time.time() + 2
+                    on_tick()
         except KeyboardInterrupt:
             pass
         finally:

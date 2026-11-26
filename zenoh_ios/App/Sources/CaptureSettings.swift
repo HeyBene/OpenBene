@@ -11,6 +11,26 @@ struct CaptureSettings: Codable, Equatable {
     var includeConfidence = true
     var includePose = true
     var includeIMU = true
+    /// Downscale width for the JPEG; smaller encodes are much cheaper.
+    var maxWidth: Double = 1280
+
+    // Decoding older saved settings that lack newer keys must not reset them.
+    enum CodingKeys: String, CodingKey {
+        case fps, includeRGB, includeDepth, includeConfidence, includePose, includeIMU, maxWidth
+    }
+
+    init() {}
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        fps = try container.decodeIfPresent(Double.self, forKey: .fps) ?? 10
+        includeRGB = try container.decodeIfPresent(Bool.self, forKey: .includeRGB) ?? true
+        includeDepth = try container.decodeIfPresent(Bool.self, forKey: .includeDepth) ?? true
+        includeConfidence = try container.decodeIfPresent(Bool.self, forKey: .includeConfidence) ?? true
+        includePose = try container.decodeIfPresent(Bool.self, forKey: .includePose) ?? true
+        includeIMU = try container.decodeIfPresent(Bool.self, forKey: .includeIMU) ?? true
+        maxWidth = try container.decodeIfPresent(Double.self, forKey: .maxWidth) ?? 1280
+    }
 
     var frameInterval: TimeInterval { 1.0 / max(1, min(30, fps)) }
 

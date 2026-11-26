@@ -1,4 +1,5 @@
 import Foundation
+import QuartzCore
 import OpenBeneZenoh
 import UIKit
 
@@ -7,30 +8,45 @@ import UIKit
 final class SyntheticCapture {
     var settings: CaptureSettings
     private let onFrame: (CaptureFrame) -> Void
-    private var timer: Timer?
+    private let onStats: (Double) -> Void
+    private let queue = DispatchQueue(label: "io.openbene.synthetic", qos: .userInitiated)
     private var frameID: UInt32 = 0
     private let depthWidth = 256
     private let depthHeight = 192
 
-    init(settings: CaptureSettings, onFrame: @escaping (CaptureFrame) -> Void) {
+    init(
+        settings: CaptureSettings,
+        onFrame: @escaping (CaptureFrame) -> Void,
+        onStats: @escaping (Double) -> Void = { _ in }
+    ) {
         self.settings = settings
         self.onFrame = onFrame
+        self.onStats = onStats
     }
 
     func start() {
-        timer?.invalidate()
-        timer = Timer.scheduledTimer(withTimeInterval: settings.frameInterval, repeats: true) { [weak self] _ in
+        let interval = settings.frameInterval
+        // A high-resolution timer is needed above 15 fps; Timer coalescing
+        // would otherwise drift well below the requested rate.
+        let source = DispatchSource.makeTimerSource(queue: queue)
+        source.schedule(deadline: .now(), repeating: interval, leeway: .milliseconds(1))
+        source.setEventHandler { [weak self] in
             self?.emit()
         }
+        source.resume()
+        ticker = source
         emit()
     }
 
     func stop() {
-        timer?.invalidate()
-        timer = nil
+        ticker?.cancel()
+        ticker = nil
     }
 
+    private var ticker: DispatchSourceTimer?
+
     private func emit() {
+        let started = CACurrentMediaTime()
         frameID &+= 1
         let size = CGSize(width: 640, height: 480)
         // Scale 1 keeps the encoded image at 640x480 instead of the screen's
@@ -84,6 +100,7 @@ final class SyntheticCapture {
             )
         )
         onFrame(frame)
+        onStats((CACurrentMediaTime() - started) * 1000)
     }
 
     private static func depthPNG(width: Int, height: Int, frameID: UInt32) -> Data? {

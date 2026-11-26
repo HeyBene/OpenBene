@@ -34,6 +34,14 @@ final class ZenohLink: ObservableObject {
     @Published private(set) var lastCommand = "—"
     @Published private(set) var captureDetail = "—"
     @Published private(set) var linkError: String?
+    @Published private(set) var captureFPS: Double = 0
+    @Published private(set) var encodeMs: Double = 0
+    @Published private(set) var planeMs: [String: Double] = [:]
+    /// ARKit's raw frame delivery rate, useful when the source is slower than
+    /// the requested rate.
+    @Published private(set) var sourceFPS: Double = 0
+    /// Startup timing probe; a Debug build shows much larger numbers here.
+    @Published private(set) var encoderBench = "检测中…"
 
     let robot = OpenBotLink()
     lazy var drive = DriveController(link: robot)
@@ -48,14 +56,57 @@ final class ZenohLink: ObservableObject {
     private var lastStatsAt = Date()
 
     init() {
-        endpoint = UserDefaults.standard.string(forKey: Self.endpointKey) ?? ""
-        robotID = UserDefaults.standard.string(forKey: Self.robotKey) ?? "rtr520"
+        let arguments = ProcessInfo.processInfo.arguments
+        func value(after flag: String) -> String? {
+            guard let index = arguments.firstIndex(of: flag), index + 1 < arguments.count else {
+                return nil
+            }
+            return arguments[index + 1]
+        }
+        // `devicectl ... --endpoint 10.0.0.5:7447 --auto-connect` lets a test
+        // run connect without tapping the screen.
+        endpoint = value(after: "--endpoint")
+            ?? UserDefaults.standard.string(forKey: Self.endpointKey) ?? ""
+        robotID = value(after: "--robot")
+            ?? UserDefaults.standard.string(forKey: Self.robotKey) ?? "rtr520"
         settings = CaptureSettings.load()
+        if let fps = value(after: "--fps").flatMap(Double.init) {
+            settings.fps = fps
+        }
         motion.onSample = { [weak self] acceleration, rotation in
             Task { @MainActor in
                 self?.pendingAcceleration = acceleration
                 self?.pendingRotation = rotation
             }
+        }
+    }
+
+    func connectIfRequested() {
+        if ProcessInfo.processInfo.arguments.contains("--auto-connect") {
+            connect()
+        }
+    }
+
+    /// Console diagnostics for headless test runs (`--log-stats`).
+    private func logStatsIfRequested() {
+        guard ProcessInfo.processInfo.arguments.contains("--log-stats"), let transport else {
+            return
+        }
+        let stats = transport.statistics()
+        let queue = transport.queueSnapshot
+        print(String(
+            format: "STATS target %.0f source %.1f capture %.1f encode %.1fms sent %llu dropped %llu "
+                + "pending %d errors %llu jpeg %.1f depth %.1f conf %.1f conv %.1f",
+            settings.fps, sourceFPS, captureFPS, encodeMs, stats.framesSent, stats.framesDropped,
+            queue.pending, stats.publishErrors,
+            planeMs["rgb"] ?? 0, planeMs["depth"] ?? 0,
+            planeMs["confidence"] ?? 0, planeMs["convert"] ?? 0
+        ))
+    }
+
+    func runEncoderSelfCheck() {
+        CaptureSelfCheck.run { [weak self] summary in
+            Task { @MainActor in self?.encoderBench = summary }
         }
     }
 
@@ -106,6 +157,10 @@ final class ZenohLink: ObservableObject {
         connected = false
         statusText = "未连接"
         captureDetail = "—"
+        captureFPS = 0
+        encodeMs = 0
+        planeMs = [:]
+        sourceFPS = 0
     }
 
     private func startCapture(on transport: OpenBeneTransport) {
@@ -116,6 +171,19 @@ final class ZenohLink: ObservableObject {
                 onFrame: { frame in transport.publish(frame: frame) },
                 onStatus: { [weak self] detail in
                     Task { @MainActor in self?.captureDetail = detail }
+                },
+                onStats: { [weak self] stats in
+                    Task { @MainActor in
+                        self?.captureFPS = stats.measuredFPS
+                        self?.encodeMs = stats.averageEncodeMs
+                        self?.planeMs = [
+                            "rgb": stats.rgbMs,
+                            "depth": stats.depthMs,
+                            "confidence": stats.confidenceMs,
+                            "convert": stats.pixelConversionMs,
+                        ]
+                        self?.sourceFPS = stats.delegateFPS
+                    }
                 }
             )
             capture = controller
@@ -124,7 +192,13 @@ final class ZenohLink: ObservableObject {
         } else {
             let generator = SyntheticCapture(
                 settings: settings,
-                onFrame: { frame in transport.publish(frame: frame) }
+                onFrame: { frame in transport.publish(frame: frame) },
+                onStats: { [weak self] elapsed in
+                    Task { @MainActor in
+                        self?.captureFPS = self?.settings.fps ?? 0
+                        self?.encodeMs = elapsed
+                    }
+                }
             )
             synthetic = generator
             generator.start()
@@ -208,6 +282,7 @@ final class ZenohLink: ObservableObject {
 
     private func refreshStats() {
         guard let transport else { return }
+        logStatsIfRequested()
         let stats = transport.statistics()
         framesSent = stats.framesSent
         framesDropped = stats.framesDropped

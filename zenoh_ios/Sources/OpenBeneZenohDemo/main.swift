@@ -54,6 +54,7 @@ func usage() {
       publish    --endpoint tcp/127.0.0.1:7447 [--robot rtr520] [--frames 30] [--fps 10]
                  [--legacy-video] [--peer] [--no-depth]
       subscribe  --endpoint tcp/127.0.0.1:7447 [--key 'openbene/**'] [--seconds 10] [--peer]
+      bench      --endpoint tcp/127.0.0.1:7447 [--frames 90] [--fps 30]
       version
     """)
 }
@@ -135,6 +136,10 @@ case "subscribe":
     Thread.sleep(forTimeInterval: max(0.5, options.seconds))
     counter.printSummary()
     session.close()
+
+case "bench":
+    Bench.run(endpoint: options.endpoint, sizes: [1_000, 42_000, 200_000], count: 12)
+    Bench.pipeline(endpoint: options.endpoint, frames: options.frames, fps: options.fps, withDepth: options.withDepth)
 
 case "version":
     print("zenoh-pico \(PicoZenohSession.zenohVersion)")

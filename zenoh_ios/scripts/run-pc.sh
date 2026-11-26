@@ -124,7 +124,7 @@ fi
 
 # --------------------------------------------------------------- receiver ---
 ARGS=(--endpoint "tcp/127.0.0.1:$PORT" --record-dir "$OUT_DIR"
-      --view --view-port "$VIEW_PORT")
+      --view --view-port "$VIEW_PORT" --stats)
 if [ -n "$DURATION" ]; then ARGS+=(--duration "$DURATION"); fi
 
 "$PYTHON" -m openbene_receiver.cli "${ARGS[@]}" >"$OUT_DIR/receiver.log" 2>&1 &

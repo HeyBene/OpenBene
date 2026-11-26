@@ -213,23 +213,62 @@ swift run openbene-zenoh-demo version
 
 `scripts/e2e.sh` 会自动起 `zenohd`、接收器与发布器，并校验录到的帧数。
 
+## 在 Windows 电脑上运行
+
+iOS App 不需要任何改动：它说的是同一套 `openbene/**` 主题和 ZPKD 帧格式。Windows 上只把
+电脑端换掉即可，功能和 Mac 上一致（实时界面、键盘/滑条控制、按需录制、MCAP 存档）。
+
+先装 Python 3.10 以上（<https://www.python.org/downloads/windows/>，安装时勾选
+“Add python.exe to PATH”），然后在本仓库根目录打开 PowerShell：
+
+```powershell
+python zenoh_ios\scripts\run_pc.py
+```
+
+脚本会自己完成这些事：建虚拟环境并装 `eclipse-zenoh` / `mcap`、首次运行时下载
+`zenohd` 1.1.0（x86_64 Windows 版），启动路由器和接收端，打印手机要填的地址，并用
+默认浏览器打开实时界面。按 `Ctrl+C` 结束，录制文件在 `zenoh_ios\runs`。
+
+可选环境变量与 Mac 版一致：
+
+```powershell
+$env:PORT=7447; $env:VIEW_PORT=8080; python zenoh_ios\scripts\run_pc.py
+$env:DURATION=60; python zenoh_ios\scripts\run_pc.py      # 60 秒后自动停
+$env:OPEN_BROWSER=0; python zenoh_ios\scripts\run_pc.py   # 不自动开浏览器
+```
+
+第一次启动时 Windows 会弹出防火墙提示，要给 `zenohd` 放行**专用网络**的 TCP 7447
+入站，否则手机连不上。界面提示的地址（例如 `192.168.1.20:7447`）就是 App
+「电脑地址」里要填的值，手机和电脑需在同一个 Wi-Fi。手机端界面地址填好后，点
+「连接电脑」即可看到和 Mac 上一样的画面、帧率与录制按钮。
+
+如果手机一直显示未连接，按顺序排查：Windows 防火墙是否放行 TCP 7447；手机是否在
+同一网段（部分路由器会隔离客户端）；公司/学校网络是否禁止设备互访；电脑上是否还有
+别的程序占用了 7447。
+
 ## 安装到 iPhone（测试 App）
 
 `App/` 是一个独立 SwiftUI 测试 App（`com.openbene.zenohdemo`），用 ARKit 采集真实
 RGB、深度、置信度和位姿并经 SDK 发送；没有 LiDAR 或不想开相机时可切换到合成测试帧。
 
-生成工程并安装到已连接设备：
+生成工程并安装到已连接设备。日常联调请用 **Release**：Debug 的未优化编码循环会让
+单帧耗时涨到几百毫秒，表现就是不论选 10 还是 15 fps，电脑端都只有 2–5 fps。
 
 ```bash
 cd zenoh_ios/App
 xcodegen generate
 xcodebuild -project OpenBeneZenohDemo.xcodeproj -scheme OpenBeneZenohDemo \
-  -configuration Debug -destination 'id=<设备 UDID>' \
+  -configuration Release -destination 'id=<设备 UDID>' \
   -allowProvisioningUpdates -derivedDataPath /tmp/obz-dd build
 xcrun devicectl device install app --device <设备 UDID> \
-  /tmp/obz-dd/Build/Products/Debug-iphoneos/OpenBeneZenohDemo.app
+  /tmp/obz-dd/Build/Products/Release-iphoneos/OpenBeneZenohDemo.app
 xcrun devicectl device process launch --device <设备 UDID> com.openbene.zenohdemo
 ```
+
+连上电脑后，「采集设置」里会显示**实际 fps**、整帧**编码 ms**，以及 RGB / 深度换算 /
+深度 PNG / 置信度 PNG 的分项耗时。启动时还会跑一次编码基准。iPhone 12 Pro 的 Release
+参考值：深度 PNG 约 1–2 ms、置信度约 0.5 ms、1280 px JPEG 约 10–20 ms。若实际 fps 明显
+低于设定值，先看这里哪一项占满了帧间隔；合成模式和 ARKit 模式的读数可以互相对照。
 
 查看已连接设备：
 

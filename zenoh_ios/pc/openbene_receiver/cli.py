@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+import time
 from pathlib import Path
 
 from .recorder import RecordingController
@@ -58,6 +59,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="Stop after N seconds (default: run until Ctrl+C)",
     )
     parser.add_argument("--json", action="store_true", help="Echo JSON samples to stdout")
+    parser.add_argument(
+        "--stats",
+        action="store_true",
+        help="Print received fps, gaps and enabled planes every 2 seconds",
+    )
     return parser
 
 
@@ -100,8 +106,28 @@ def main(argv: list[str] | None = None) -> int:
 
     print(f"listening on {args.key} via {args.endpoint} ({args.mode})")
 
+    report_state = {"frames": 0, "bytes": 0, "at": time.time()}
+
+    def report() -> None:
+        stats = receiver.stats
+        meta = receiver.last_meta or {}
+        info = meta.get("metadata", {}) if isinstance(meta, dict) else {}
+        planes = info.get("enabledPlanes")
+        # Instantaneous rate over the last interval, matching the web console.
+        now = time.time()
+        elapsed = max(1e-3, now - report_state["at"])
+        fps = (stats.frames - report_state["frames"]) / elapsed
+        mbps = (stats.bytes - report_state["bytes"]) / elapsed / 1e6
+        report_state.update(frames=stats.frames, bytes=stats.bytes, at=now)
+        print(
+            f"[stats] {fps:5.1f} fps  frames={stats.frames}  "
+            f"gaps={stats.gaps}  errors={stats.decode_errors}  "
+            f"mbps={mbps:5.2f}  "
+            f"planes={','.join(planes) if planes else '-'}"
+        )
+
     try:
-        stats = receiver.run(duration=args.duration)
+        stats = receiver.run(duration=args.duration, on_tick=report if args.stats else None)
     finally:
         summary = recording.stop()
         if viewer:

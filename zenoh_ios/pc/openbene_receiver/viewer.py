@@ -35,6 +35,11 @@ class LiveViewer:
         self._last_sent: dict[str, Any] | None = None
         self._frames = 0
         self._frame_times: deque[float] = deque(maxlen=60)
+        # Colourising 256x192 planes in pure Python costs tens of milliseconds;
+        # the page polls them several times a second, so keep the last render
+        # together with the generation of the plane it was made from.
+        self._rendered: dict[str, tuple[int, bytes]] = {}
+        self._generation = {"depth": 0, "confidence": 0}
         self._started_at = time.time()
         self._server: _FastHTTPServer | None = None
         self._thread: threading.Thread | None = None
@@ -57,8 +62,10 @@ class LiveViewer:
                 self._rgb = rgb
             if depth:
                 self._depth = depth
+                self._generation["depth"] += 1
             if confidence:
                 self._confidence = confidence
+                self._generation["confidence"] += 1
 
     def update_stats(self, stats: dict[str, Any]) -> None:
         with self._lock:
@@ -133,12 +140,20 @@ class LiveViewer:
         }
 
     def image(self, kind: str) -> tuple[bytes, str]:
+        if kind not in ("depth", "confidence"):
+            with self._lock:
+                return self._rgb, "image/jpeg"
         with self._lock:
-            if kind == "depth":
-                return colorize_depth(self._depth), "image/png"
-            if kind == "confidence":
-                return colorize_confidence(self._confidence), "image/png"
-            return self._rgb, "image/jpeg"
+            generation = self._generation[kind]
+            cached = self._rendered.get(kind)
+            if cached is not None and cached[0] == generation:
+                return cached[1], "image/png"
+            source = self._depth if kind == "depth" else self._confidence
+        rendered = colorize_depth(source) if kind == "depth" else colorize_confidence(source)
+        if rendered:
+            with self._lock:
+                self._rendered[kind] = (generation, rendered)
+        return rendered, "image/png"
 
     # -- http -------------------------------------------------------------
 

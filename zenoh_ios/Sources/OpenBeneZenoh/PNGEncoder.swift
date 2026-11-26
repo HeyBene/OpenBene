@@ -1,4 +1,7 @@
 import Foundation
+#if canImport(Compression)
+import Compression
+#endif
 
 /// Minimal PNG writer (no Apple frameworks) so the phone can emit depth and
 /// confidence planes that any decoder can read.
@@ -58,19 +61,24 @@ public enum PNGEncoder {
 
     private static func chunk(_ type: String, _ payload: Data) -> Data {
         var out = Data()
+        out.reserveCapacity(payload.count + 12)
         out.appendBigEndian(UInt32(payload.count))
         let typeData = Data(type.utf8)
         out.append(typeData)
         out.append(payload)
-        var crcInput = Data()
-        crcInput.append(typeData)
-        crcInput.append(payload)
-        out.appendBigEndian(crc32(crcInput))
+        out.appendBigEndian(crc32(typeData, payload))
         return out
     }
 
-    /// zlib stream with uncompressed (stored) deflate blocks.
+    /// zlib stream. Uses the Compression framework when available (depth goes
+    /// from ~98 KB to ~12 KB per frame) and falls back to stored blocks.
     private static func zlibStored(_ data: [UInt8]) -> Data {
+        if let deflated = deflate(data) {
+            var out = Data([0x78, 0x01])
+            out.append(deflated)
+            out.appendBigEndian(adler32(data))
+            return out
+        }
         var out = Data([0x78, 0x01])
         var index = 0
         if data.isEmpty {
@@ -92,23 +100,70 @@ public enum PNGEncoder {
         return out
     }
 
-    private static func crc32(_ data: Data) -> UInt32 {
-        var crc: UInt32 = 0xFFFFFFFF
-        for byte in data {
-            crc ^= UInt32(byte)
-            for _ in 0..<8 {
-                crc = (crc & 1) == 1 ? (crc >> 1) ^ 0xEDB88320 : crc >> 1
+    private static func deflate(_ data: [UInt8]) -> Data? {
+        #if canImport(Compression)
+        guard !data.isEmpty else { return nil }
+        let capacity = data.count + data.count / 2 + 64
+        var buffer = [UInt8](repeating: 0, count: capacity)
+        let written = data.withUnsafeBufferPointer { source in
+            buffer.withUnsafeMutableBufferPointer { destination in
+                compression_encode_buffer(
+                    destination.baseAddress!, capacity,
+                    source.baseAddress!, data.count,
+                    nil,
+                    COMPRESSION_ZLIB
+                )
             }
         }
-        return crc ^ 0xFFFFFFFF
+        guard written > 0, written < data.count else { return nil }
+        return Data(buffer[0..<written])
+        #else
+        return nil
+        #endif
+    }
+
+    /// Table driven CRC-32. The bit-at-a-time version cost ~8 operations per
+    /// byte, which dominated the frame time on the phone.
+    private static let crcTable: [UInt32] = (0..<256).map { index -> UInt32 in
+        var value = UInt32(index)
+        for _ in 0..<8 {
+            value = (value & 1) == 1 ? (value >> 1) ^ 0xEDB88320 : value >> 1
+        }
+        return value
+    }
+
+    private static func crc32(_ first: Data, _ second: Data) -> UInt32 {
+        var crc: UInt32 = 0xFFFF_FFFF
+        crcTable.withUnsafeBufferPointer { table in
+            for part in [first, second] {
+                part.withUnsafeBytes { raw in
+                    for byte in raw {
+                        crc = (crc >> 8) ^ table[Int((crc ^ UInt32(byte)) & 0xFF)]
+                    }
+                }
+            }
+        }
+        return crc ^ 0xFFFF_FFFF
     }
 
     private static func adler32(_ data: [UInt8]) -> UInt32 {
         var a: UInt32 = 1
         var b: UInt32 = 0
-        for byte in data {
-            a = (a + UInt32(byte)) % 65521
-            b = (b + a) % 65521
+        data.withUnsafeBufferPointer { buffer in
+            guard let base = buffer.baseAddress else { return }
+            var index = 0
+            let count = buffer.count
+            // 5552 is the largest block that cannot overflow before reduction.
+            while index < count {
+                let end = min(index + 5552, count)
+                while index < end {
+                    a &+= UInt32(base[index])
+                    b &+= a
+                    index += 1
+                }
+                a %= 65521
+                b %= 65521
+            }
         }
         return (b << 16) | a
     }

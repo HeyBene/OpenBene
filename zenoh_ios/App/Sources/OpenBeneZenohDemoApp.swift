@@ -8,6 +8,8 @@ struct OpenBeneZenohDemoApp: App {
         WindowGroup {
             ContentView()
                 .environmentObject(link)
+                .onAppear { link.runEncoderSelfCheck() }
+                .task { link.connectIfRequested() }
         }
     }
 }
