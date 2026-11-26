@@ -4,6 +4,40 @@
 它不修改 `openbot-mobile-control/` 或 `apps/robot_app/`，也不会接管现有 OpenBot
 USB/BLE 控制逻辑。
 
+## SDK 简介
+
+手机端的 Zenoh 数据面 SDK：负责把手机到 PC 的链路从 WebSocket 换成 Zenoh，并把底盘控制
+继续交给现有 App。可以单独编译成验证 App，也可以作为库直接接进现有工程。
+
+- `ZenohTransport`：连接、发布、订阅、心跳、断开。默认 `client` 模式连 PC 上的 router。
+- `Protocol`：key 命名与清洗、`drive` / `stop` 命令解析、`ZFRM` 帧、`session` 事件。
+- `FrameCodec`：`ZPKD` 多平面帧编解码（RGB、深度、置信度、位姿、元数据），与 iOS 逐字节一致。
+- 依赖官方 `org.eclipse.zenoh:zenoh-kotlin-android:1.10.2`，自带预编译 JNI，不需要 Rust 或 NDK。
+- 系统要求：Android 11（API 30）及以上，随包提供 `arm64-v8a`、`x86_64` 等 ABI。
+
+接入现有 App 只需三步：`connect(endpoint, robotId)` 建链，把 `Listener.onCommand` 接到已有的
+USB/BLE 命令入口，再用 `publishCaptureFrame()` 或 `publishVideoFrame()` 发数据。
+
+## 界面与操作
+
+验证 App（`io.openbene.zenoh`）的界面：
+
+- `PC endpoint` / `Robot ID`：填电脑地址（如 `10.160.3.246:7447`）和机器人编号，点「连接」。
+- 「状态」「传感器」「二进制帧」：分别发 `status`、`sensors` 和 `ZFRM` 测试帧。
+- 「采集帧」：发一帧 `ZPKD`（合成 JPEG + 单位位姿），验证与 iOS 相同的多平面链路。
+- 「开始录制」「停止录制」：只发 `session` 事件，MCAP 由 PC 端写。
+- 「环回前进」「环回停车」：没有 PC 时验证本机发布 / 订阅是否打通。
+- 底部日志区：打印连接状态、收到的命令和每条发布结果。
+
+PC 端控制台在 iOS 分支的 `zenoh_ios/pc`，两边共用同一套（界面截图见仓库主页）。运行时
+`zenoh_ios\scripts\run-pc.cmd` 一条命令拉起 router、控制台和预览页，控制台地址是
+`http://127.0.0.1:8080/`：
+
+- RGB 按到达帧率实时预览（MJPEG 推流），旁边是深度和置信度平面。
+- 帧率、带宽、已收帧数、`frame_id` 跳号，用来判断链路质量。
+- `W A S D` 前后左右、`Q E` 弧线、`空格` 停车；方向键、速度与转向滑杆等价。
+- 开始 / 停止录制，写出 MCAP 与 `*.mcap.meta.json` 汇总。
+
 ## 当前范围
 
 - 使用官方 `org.eclipse.zenoh:zenoh-kotlin-android:1.10.2`。
