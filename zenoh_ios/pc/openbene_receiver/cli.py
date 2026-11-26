@@ -50,6 +50,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--view", action="store_true", help="Serve the live preview page")
     parser.add_argument("--view-port", type=int, default=8080, help="Preview HTTP port (default: 8080)")
     parser.add_argument("--view-host", default="127.0.0.1", help="Preview bind address (default: 127.0.0.1)")
+    parser.add_argument("--robot", default="rtr520", help="Robot ID used for outgoing commands")
     parser.add_argument(
         "--duration",
         type=float,
@@ -88,8 +89,14 @@ def main(argv: list[str] | None = None) -> int:
         listen=args.listen,
         recording=recording,
         viewer=viewer,
+        command_robot=args.robot,
         echo_json=args.json,
     )
+
+    if viewer:
+        # The viewer publishes through the same session the receiver already
+        # owns, so control and recording share one router connection.
+        viewer.command_publisher = receiver.send_drive
 
     print(f"listening on {args.key} via {args.endpoint} ({args.mode})")
 

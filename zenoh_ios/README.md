@@ -140,9 +140,32 @@ OPEN_BROWSER=0 bash zenoh_ios/scripts/run-pc.sh     # 不自动开浏览器
 DURATION=120 bash zenoh_ios/scripts/run-pc.sh       # 2 分钟后自动停止
 ```
 
-预览页能看到 RGB 实时画面、深度、置信度、帧率、带宽、跳号、当前帧元数据和
-最近收到的命令。页面上的「开始录制 / 停止录制」按钮控制是否写 MCAP，文件落在
-zenoh_ios/runs/，停止后页面仍显示上次文件路径。
+预览页（http://127.0.0.1:8080/）是浅色控制台，包含：
+
+- **RGB / 深度 / 置信度**三路实时画面；
+- **传输状态**：帧率、已收帧、带宽、跳号、帧号、分辨率、跟踪状态、深度来源；
+- **控制小车**：速度与转向滑杆，W/A/S/D 移动、Q/E 弧线、空格停车，按住即动、松开即停；
+- **录制**：开始 / 停止按钮、当前文件路径。
+
+电脑端的按键会经 Zenoh 的 openbene/<robot>/cmd 发到手机，手机再用 BLE 驱动小车；
+手机若 1.5 秒收不到新的远程指令会自动停车。录制默认关闭，文件落在 zenoh_ios/runs/。
+
+### ARKit 模式与合成模式
+
+两种模式走完全相同的协议、主题和帧格式，电脑端收到的结构一致，只是内容来源不同：
+
+| | ARKit 模式 | 合成模式 |
+| --- | --- | --- |
+| 图像 | 真实相机画面，1280 px JPEG | 640×480 测试图（带帧号） |
+| 深度 | LiDAR 深度，uint16 毫米 | 渐变假深度 |
+| 置信度 | ARKit 置信度图 | 伪随机 0/1/2 |
+| 位姿 | ARKit camera-to-world 矩阵 + 内参 | 单位矩阵，内参固定 |
+| 元数据 | trackingState normal / limited，depthSource smoothed_scene_depth 等 | trackingState/depthSource 均为 synthetic |
+| 用途 | 真实采集、录数据 | 权限受限或快速验证链路 |
+
+录制开启后写入 MCAP 的通道：frame/meta（帧号、时间、位姿、尺寸、内参、跟踪状态）、
+frame/rgb（JPEG）、frame/depth（PNG）、frame/confidence（PNG），以及 video（兼容的
+JPEG 帧）、status、telemetry、sensors、cmd、session 等 JSON 通道。
 
 ### 手动分步运行
 
@@ -260,7 +283,7 @@ send-cmd.sh 发来的命令也能直接让小车动起来。
 
 - Swift：`swift test` 27 项通过（key/JSON 兼容、ZFRM 逐字节对齐 Android、ZPKD 往返、
   队列丢帧、命令分发、离线状态）。
-- Python：`pytest` 11 项通过（黄金字节解析、MCAP 通道与消息体、跳号统计、坏包计数、
+- Python：`pytest` 12 项通过（黄金字节解析、MCAP 通道与消息体、跳号统计、坏包计数、
   预览页取图、按需开始/停止录制）。
 - 本机链路：zenohd 1.1.0 + `openbene-zenoh-demo publish` → `openbene-recv`，
   12 帧 / 12 个兼容视频帧 / 65 条 MCAP 消息，`gaps=0`。

@@ -175,7 +175,7 @@ final class ZenohLink: ObservableObject {
         switch command {
         case .drive(let left, let right, let sequence, _, _):
             lastCommand = String(format: "drive %.2f / %.2f  #%lld", left, right, sequence)
-            drive.press(combinedKey(left: left, right: right))
+            drive.applyRemote(left: left, right: right)
 
         case .stop(let sequence, _):
             lastCommand = "stop #\(sequence)"
@@ -186,12 +186,4 @@ final class ZenohLink: ObservableObject {
         }
     }
 
-    /// Speed-only commands from the PC map onto the same presets as the keys.
-    private func combinedKey(left: Double, right: Double) -> DriveKey {
-        if left > 0 && right > 0 { return .forward }
-        if left < 0 && right < 0 { return .reverse }
-        if left < 0 && right > 0 { return .turnLeft }
-        if left > 0 && right < 0 { return .turnRight }
-        return .stop
-    }
 }

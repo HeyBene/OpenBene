@@ -16,6 +16,7 @@ public final class DriveController: ObservableObject {
     private let link: OpenBotLink
     private let queue = DispatchQueue(label: "io.openbene.drive.repeat", qos: .userInteractive)
     private var repeatTimer: DispatchSourceTimer?
+    private var remoteWatchdog: Timer?
     private let repeatInterval: TimeInterval = 0.1
 
     public init(link: OpenBotLink) {
@@ -59,9 +60,34 @@ public final class DriveController: ObservableObject {
 
     public func releaseAll() {
         stopRepeating()
+        remoteWatchdog?.invalidate()
+        remoteWatchdog = nil
         activeKey = nil
         lastCommand = .stop
         link.stop()
+    }
+
+    /// Applies normalized wheel speeds received from the PC (-1...1).
+    /// Unlike the preset keys this keeps the magnitude, so the PC's speed
+    /// slider maps to real PWM values on the robot.
+    public func applyRemote(left: Double, right: Double) {
+        let leftPWM = Int((min(max(left, -1), 1) * Double(OpenBotBLE.maxPWM)).rounded())
+        let rightPWM = Int((min(max(right, -1), 1) * Double(OpenBotBLE.maxPWM)).rounded())
+        if leftPWM == 0 && rightPWM == 0 {
+            releaseAll()
+            return
+        }
+        stopRepeating()
+        activeKey = nil
+        let command = WheelCommand(left: leftPWM, right: rightPWM, label: "远程")
+        lastCommand = command
+        link.send(command)
+        startRepeating(command)
+        // If the PC page disappears mid-drive, stop instead of running on.
+        remoteWatchdog?.invalidate()
+        remoteWatchdog = Timer.scheduledTimer(withTimeInterval: 1.5, repeats: false) { [weak self] _ in
+            Task { @MainActor in self?.releaseAll() }
+        }
     }
 
     private func command(for key: DriveKey) -> WheelCommand {

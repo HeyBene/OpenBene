@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import threading
 import time
 from collections import Counter
 from dataclasses import dataclass, field
@@ -73,6 +74,7 @@ class OpenBeneReceiver:
         listen: str | None = None,
         recording: RecordingController | None = None,
         viewer: Any | None = None,
+        command_robot: str = "rtr520",
         on_record: Callable[[str, int], None] | None = None,
         echo_json: bool = False,
     ) -> None:
@@ -82,6 +84,9 @@ class OpenBeneReceiver:
         self.listen = listen
         self.recording = recording
         self.viewer = viewer
+        self.command_robot = command_robot
+        self._command_lock = threading.Lock()
+        self._command_seq = 0
         self.on_record = on_record
         self.echo_json = echo_json
         self.stats = ReceiverStats()
@@ -196,6 +201,31 @@ class OpenBeneReceiver:
     def _push_stats(self) -> None:
         if self.viewer:
             self.viewer.update_stats(self.stats.as_dict())
+
+    # -- control (PC -> phone) -------------------------------------------
+
+    def send_drive(self, left: float, right: float) -> None:
+        """Publishes a drive command for the phone to apply over BLE."""
+        if self._session is None:
+            raise RuntimeError("zenoh session is not open")
+        robot = self.stats.primary_robot or self.command_robot
+        now = int(time.time() * 1000)
+        with self._command_lock:
+            self._command_seq += 1
+            sequence = self._command_seq
+        payload = {
+            "version": 1,
+            "cmd": "drive",
+            "val": [round(max(-1.0, min(1.0, float(left))), 3),
+                    round(max(-1.0, min(1.0, float(right))), 3)],
+            "seq": sequence,
+            "sent_at": now,
+            "ttl_ms": 250,
+        }
+        self._session.put(
+            f"openbene/{robot}/cmd",
+            json.dumps(payload, sort_keys=True).encode("utf-8"),
+        )
 
     # -- zenoh transport --------------------------------------------------
 
