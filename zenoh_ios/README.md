@@ -4,6 +4,21 @@
 `zenoh_ios/`，不修改 `openbot-mobile-control/` 或 `apps/robot_app/`，
 沿用 `feature/zenoh-android-transport` 定义的 key 与二进制帧格式。
 
+## SDK 简介
+
+手机端的 Zenoh 传输 SDK，附带一套 PC 接收、预览和录制工具。key 与二进制帧沿用 Android
+分支，所以同一个 PC 控制台能同时接 Android 手机和 iPhone。
+
+- `OpenBeneZenoh`：纯 Swift 的协议、`ZFRM` / `ZPKD` 编解码、有界发送队列（网络慢时丢帧，不阻塞采集）。
+- `COpenBeneZenohBridge` + `Vendor/CZenohPico.xcframework`：zenoh-pico 1.1.0 的 C 桥接。
+- `OpenBeneZenohPico`：`PicoZenohSession`，以 client 模式连 PC 上的 router。
+- 系统要求：iOS 16 及以上；Swift Package 同时支持 macOS 13+，方便在电脑上跑单元测试。
+- 纯原生 Swift，不依赖 Flutter；传输只做数据面，USB/BLE 底盘控制仍由现有 App 负责。
+
+最小接入三步：`ZenohTransportConfig` 填 `robotID` 和 `电脑IP:7447`，调用
+`OpenBeneTransport.start()`，之后每对同步好的 RGB / 深度帧调一次 `publish(frame:)`；PC 下发的
+命令通过 `onCommand` 分发。
+
 ## 目录
 
 ```text
@@ -142,7 +157,7 @@ DURATION=120 bash zenoh_ios/scripts/run-pc.sh       # 2 分钟后自动停止
 
 预览页（http://127.0.0.1:8080/）是浅色控制台，包含：
 
-- **RGB / 深度 / 置信度**三路实时画面；
+- **RGB / 深度 / 置信度**三路实时画面，按 MJPEG 推流刷新（RGB 上限 30 fps，深度 / 置信度上限 5 fps），不再靠页面轮询；
 - **传输状态**：帧率、已收帧、带宽、跳号、帧号、分辨率、跟踪状态、深度来源；
 - **控制小车**：速度与转向滑杆，W/A/S/D 移动、Q/E 弧线、空格停车，按住即动、松开即停；
 - **录制**：开始 / 停止按钮、当前文件路径。
