@@ -16,10 +16,15 @@ final class ARCaptureController: NSObject, ARSessionDelegate {
 
     private var frameID: UInt32 = 0
     private var lastPublished: CFTimeInterval = 0
-    private let minimumInterval: CFTimeInterval = 0.2 // 5 fps
+    var settings: CaptureSettings
     private let maxWidth: CGFloat = 1280
 
-    init(onFrame: @escaping (CaptureFrame) -> Void, onStatus: @escaping (String) -> Void) {
+    init(
+        settings: CaptureSettings,
+        onFrame: @escaping (CaptureFrame) -> Void,
+        onStatus: @escaping (String) -> Void
+    ) {
+        self.settings = settings
         self.onFrame = onFrame
         self.onStatus = onStatus
     }
@@ -27,19 +32,25 @@ final class ARCaptureController: NSObject, ARSessionDelegate {
     func start() {
         let configuration = ARWorldTrackingConfiguration()
         var supportsDepth = false
-        if ARWorldTrackingConfiguration.supportsFrameSemantics(.smoothedSceneDepth) {
+        if settings.includeDepth,
+           ARWorldTrackingConfiguration.supportsFrameSemantics(.smoothedSceneDepth) {
             configuration.frameSemantics.insert(.smoothedSceneDepth)
             supportsDepth = true
-        } else if ARWorldTrackingConfiguration.supportsFrameSemantics(.sceneDepth) {
+        } else if settings.includeDepth,
+                  ARWorldTrackingConfiguration.supportsFrameSemantics(.sceneDepth) {
             configuration.frameSemantics.insert(.sceneDepth)
             supportsDepth = true
         }
         session.delegateQueue = queue
         session.delegate = self
         session.run(configuration, options: [])
-        onStatus(supportsDepth
-                 ? "ARKit：RGB + 深度 + 置信度 + 位姿 @5fps"
-                 : "ARKit：RGB + 位姿（此设备无深度）@5fps")
+        let planes = [
+            settings.includeRGB ? "RGB" : nil,
+            supportsDepth ? "深度" : nil,
+            (supportsDepth && settings.includeConfidence) ? "置信度" : nil,
+            settings.includePose ? "位姿" : nil,
+        ].compactMap { $0 }.joined(separator: " + ")
+        onStatus("ARKit：\(planes) @\(Int(settings.fps))fps")
     }
 
     func stop() {
@@ -49,14 +60,14 @@ final class ARCaptureController: NSObject, ARSessionDelegate {
 
     func session(_ session: ARSession, didUpdate frame: ARFrame) {
         let now = CACurrentMediaTime()
-        guard now - lastPublished >= minimumInterval else { return }
+        guard now - lastPublished >= settings.frameInterval else { return }
         lastPublished = now
         guard let capture = makeCaptureFrame(from: frame) else { return }
         onFrame(capture)
     }
 
     private func makeCaptureFrame(from frame: ARFrame) -> CaptureFrame? {
-        guard let camera = encodeCamera(frame.capturedImage) else { return nil }
+        let camera = settings.includeRGB ? encodeCamera(frame.capturedImage) : nil
 
         var depthPNG: Data?
         var confidencePNG: Data?
@@ -66,22 +77,22 @@ final class ARCaptureController: NSObject, ARSessionDelegate {
         var confidenceHeight = 0
         var depthSource = "none"
 
-        if let depth = frame.smoothedSceneDepth {
+        if settings.includeDepth, let depth = frame.smoothedSceneDepth {
             depthSource = "smoothed_scene_depth"
             depthPNG = encodeDepthPNG(depth.depthMap)
             depthWidth = CVPixelBufferGetWidth(depth.depthMap)
             depthHeight = CVPixelBufferGetHeight(depth.depthMap)
-            if let confidence = depth.confidenceMap {
+            if settings.includeConfidence, let confidence = depth.confidenceMap {
                 confidencePNG = encodeConfidencePNG(confidence)
                 confidenceWidth = CVPixelBufferGetWidth(confidence)
                 confidenceHeight = CVPixelBufferGetHeight(confidence)
             }
-        } else if let depth = frame.sceneDepth {
+        } else if settings.includeDepth, let depth = frame.sceneDepth {
             depthSource = "scene_depth"
             depthPNG = encodeDepthPNG(depth.depthMap)
             depthWidth = CVPixelBufferGetWidth(depth.depthMap)
             depthHeight = CVPixelBufferGetHeight(depth.depthMap)
-            if let confidence = depth.confidenceMap {
+            if settings.includeConfidence, let confidence = depth.confidenceMap {
                 confidencePNG = encodeConfidencePNG(confidence)
                 confidenceWidth = CVPixelBufferGetWidth(confidence)
                 confidenceHeight = CVPixelBufferGetHeight(confidence)
@@ -89,9 +100,15 @@ final class ARCaptureController: NSObject, ARSessionDelegate {
         }
 
         let intrinsics = frame.camera.intrinsics
+        var enabled: [String] = []
+        if camera != nil { enabled.append("rgb") }
+        if depthPNG != nil { enabled.append("depth") }
+        if confidencePNG != nil { enabled.append("confidence") }
+        if settings.includePose { enabled.append("pose") }
+
         let metadata = FrameMetadata(
-            width: camera.width,
-            height: camera.height,
+            width: camera?.width ?? 0,
+            height: camera?.height ?? 0,
             depthWidth: depthWidth,
             depthHeight: depthHeight,
             fx: Double(intrinsics.columns.0.x),
@@ -101,17 +118,18 @@ final class ARCaptureController: NSObject, ARSessionDelegate {
             trackingState: Self.trackingStateName(frame.camera.trackingState),
             depthSource: depthSource,
             confidenceWidth: confidenceWidth,
-            confidenceHeight: confidenceHeight
+            confidenceHeight: confidenceHeight,
+            enabledPlanes: enabled
         )
 
         frameID &+= 1
         return CaptureFrame(
             frameID: frameID,
             timestampNs: UInt64(Date().timeIntervalSince1970 * 1_000_000_000),
-            rgbJPEG: camera.jpeg,
+            rgbJPEG: camera?.jpeg,
             depthPNG: depthPNG,
             confidencePNG: confidencePNG,
-            pose: Self.poseArray(frame.camera.transform),
+            pose: settings.includePose ? Self.poseArray(frame.camera.transform) : nil,
             metadata: metadata
         )
     }
@@ -142,18 +160,7 @@ final class ARCaptureController: NSObject, ARSessionDelegate {
                 millimetres[index] = UInt16(min(max(metres * 1000, 0), 65_535))
             }
         }
-        return millimetres.withUnsafeMutableBytes { raw -> Data? in
-            guard let context = CGContext(
-                data: raw.baseAddress,
-                width: width,
-                height: height,
-                bitsPerComponent: 16,
-                bytesPerRow: width * MemoryLayout<UInt16>.size,
-                space: CGColorSpaceCreateDeviceGray(),
-                bitmapInfo: CGImageAlphaInfo.none.rawValue | CGBitmapInfo.byteOrder16Little.rawValue
-            ), let image = context.makeImage() else { return nil }
-            return Self.pngData(from: image)
-        }
+        return PNGEncoder.gray16(width: width, height: height, values: millimetres)
     }
 
     private func encodeConfidencePNG(_ buffer: CVPixelBuffer) -> Data? {
@@ -163,16 +170,14 @@ final class ARCaptureController: NSObject, ARSessionDelegate {
         let width = CVPixelBufferGetWidth(buffer)
         let height = CVPixelBufferGetHeight(buffer)
         let bytesPerRow = CVPixelBufferGetBytesPerRow(buffer)
-        guard let context = CGContext(
-            data: base,
-            width: width,
-            height: height,
-            bitsPerComponent: 8,
-            bytesPerRow: bytesPerRow,
-            space: CGColorSpaceCreateDeviceGray(),
-            bitmapInfo: CGImageAlphaInfo.none.rawValue
-        ), let image = context.makeImage() else { return nil }
-        return Self.pngData(from: image)
+        let pointer = base.assumingMemoryBound(to: UInt8.self)
+        var values = [UInt8](repeating: 0, count: width * height)
+        for row in 0..<height {
+            for column in 0..<width {
+                values[row * width + column] = pointer[row * bytesPerRow + column]
+            }
+        }
+        return PNGEncoder.gray8(width: width, height: height, values: values)
     }
 
     private static func pngData(from image: CGImage) -> Data? {

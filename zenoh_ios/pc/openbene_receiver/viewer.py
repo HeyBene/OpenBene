@@ -10,6 +10,8 @@ from collections import deque
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any, Callable
 
+from .pngviz import colorize_confidence, colorize_depth
+
 
 class LiveViewer:
     def __init__(
@@ -117,6 +119,12 @@ class LiveViewer:
             "mbps": round(mbps, 2),
             "meta": meta,
             "sizes": sizes,
+            "planes": {
+                "enabled": meta.get("metadata", {}).get("enabledPlanes"),
+                "rgb": sizes["rgb"] > 0,
+                "depth": sizes["depth"] > 0,
+                "confidence": sizes["confidence"] > 0,
+            },
             "stats": stats,
             "last_command": command,
             "last_sent": sent,
@@ -127,9 +135,9 @@ class LiveViewer:
     def image(self, kind: str) -> tuple[bytes, str]:
         with self._lock:
             if kind == "depth":
-                return self._depth, "image/png"
+                return colorize_depth(self._depth), "image/png"
             if kind == "confidence":
-                return self._confidence, "image/png"
+                return colorize_confidence(self._confidence), "image/png"
             return self._rgb, "image/jpeg"
 
     # -- http -------------------------------------------------------------
@@ -293,6 +301,12 @@ PAGE = """<!doctype html>
   .card h2 .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); }
   .stage { background: #f8fafc; display: grid; place-items: center; min-height: 330px; }
   .stage img { width: 100%; height: auto; display: block; }
+  .stage .empty { color: var(--muted); font-size: 12px; text-align: center; padding: 16px; }
+  .stack { position: relative; }
+  .stack .empty { position: absolute; inset: 0; display: none; place-items: center;
+                  background: #f8fafc; }
+  .stack.off .empty { display: grid; }
+  .stack.off img { visibility: hidden; }
   .planes { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 16px; }
   .planes .stage { min-height: 150px; }
   .col { display: flex; flex-direction: column; gap: 16px; }
@@ -344,16 +358,25 @@ PAGE = """<!doctype html>
   <section>
     <div class="card">
       <h2><span class="dot"></span>RGB 实时画面</h2>
-      <div class="stage"><img id="rgb" alt="RGB"></div>
+        <div class="stage stack" id="rgbWrap">
+          <img id="rgb" alt="RGB">
+          <div class="empty" id="rgbEmpty">等待手机画面</div>
+        </div>
     </div>
     <div class="planes">
       <div class="card">
         <h2><span class="dot" style="background:#0f766e"></span>深度</h2>
-        <div class="stage"><img id="depth" alt="深度"></div>
+        <div class="stage stack" id="depthWrap">
+          <img id="depth" alt="深度">
+          <div class="empty" id="depthEmpty">等待深度数据</div>
+        </div>
       </div>
       <div class="card">
         <h2><span class="dot" style="background:#7c3aed"></span>置信度</h2>
-        <div class="stage"><img id="confidence" alt="置信度"></div>
+        <div class="stage stack" id="confWrap">
+          <img id="confidence" alt="置信度">
+          <div class="empty" id="confEmpty">等待置信度数据</div>
+        </div>
       </div>
     </div>
   </section>
@@ -551,10 +574,27 @@ async function tick() {
       ? 'L' + Math.round(state.last_sent.left * 255) + ' R' + Math.round(state.last_sent.right * 255)
       : '—';
     $('robot').textContent = 'robot ' + ((state.stats || {}).robot || '—');
-    if (state.live) {
-      $('depth').src = '/depth.png?a=' + Date.now();
-      $('confidence').src = '/confidence.png?a=' + Date.now();
-    }
+    const planes = state.planes || {};
+    const enabled = planes.enabled || null;
+    const marker = (name, hasData) => {
+      if (hasData) return true;
+      if (enabled && !enabled.includes(name)) return false;
+      return 'pending';
+    };
+    const show = (wrapId, emptyId, src, state) => {
+      const wrap = $(wrapId);
+      wrap.classList.toggle('off', !state);
+      if (state === false) {
+        $(emptyId).textContent = '手机端已关闭该传感器';
+      } else if (state === 'pending') {
+        $(emptyId).textContent = '等待数据…';
+      }
+    };
+    show('rgbWrap', 'rgbEmpty', '', marker('rgb', planes.rgb));
+    show('depthWrap', 'depthEmpty', '', marker('depth', planes.depth));
+    show('confWrap', 'confEmpty', '', marker('confidence', planes.confidence));
+    if (planes.depth) $('depth').src = '/depth.png?a=' + Date.now();
+    if (planes.confidence) $('confidence').src = '/confidence.png?a=' + Date.now();
   } catch (err) {
     $('pill').textContent = '连接中断';
   }

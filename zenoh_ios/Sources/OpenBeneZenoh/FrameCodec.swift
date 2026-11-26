@@ -14,6 +14,9 @@ public struct FrameMetadata: Codable, Equatable, Sendable {
     public var depthSource: String
     public var confidenceWidth: Int
     public var confidenceHeight: Int
+    /// Planes the phone was configured to send; lets the PC distinguish
+    /// "switched off" from "missing".
+    public var enabledPlanes: [String]?
 
     public init(
         width: Int,
@@ -27,7 +30,8 @@ public struct FrameMetadata: Codable, Equatable, Sendable {
         trackingState: String = "unknown",
         depthSource: String = "none",
         confidenceWidth: Int = 0,
-        confidenceHeight: Int = 0
+        confidenceHeight: Int = 0,
+        enabledPlanes: [String]? = nil
     ) {
         self.width = width
         self.height = height
@@ -41,6 +45,7 @@ public struct FrameMetadata: Codable, Equatable, Sendable {
         self.depthSource = depthSource
         self.confidenceWidth = confidenceWidth
         self.confidenceHeight = confidenceHeight
+        self.enabledPlanes = enabledPlanes
     }
 }
 

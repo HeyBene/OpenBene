@@ -8,6 +8,7 @@
 
 /* Begin PBXBuildFile section */
 		11F830B2A3A793DF71393733 /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = 72E7B3BC3E6ECE50DDCA847E /* Theme.swift */; };
+		16DD5F3BA03407A9F1543CAC /* CaptureCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = F997354F4B673CB0B45DDA7F /* CaptureCard.swift */; };
 		39EB526831377573AD8886B4 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 04D8269E98289187EDF23A3A /* ContentView.swift */; };
 		454FF8CB5A28AD3AA4A1911B /* ARCaptureController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 78745050218CF647FC276887 /* ARCaptureController.swift */; };
 		4CFB058EDDBE302D7C9C4A3A /* HardwareKeyboardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A8F0975A32659830DE51A2FD /* HardwareKeyboardView.swift */; };
@@ -16,6 +17,7 @@
 		9701252DA594940BF9F23576 /* OpenBeneZenoh in Frameworks */ = {isa = PBXBuildFile; productRef = 7E86506990A9809B25417315 /* OpenBeneZenoh */; };
 		98D1730A90F0BE131F2E6E88 /* NetworkInfo.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC8CE41F66A7EE32EE443965 /* NetworkInfo.swift */; };
 		9DC95D5F7DCEC117976F8FC5 /* OpenBeneZenohDemoApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 406A1EC246E8320374EAAD34 /* OpenBeneZenohDemoApp.swift */; };
+		C1CB2CF8D65CC77DBF5091AF /* CaptureSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = 52EDC0D05D67E169D7B7310D /* CaptureSettings.swift */; };
 		DAAC8A470F695B77265A40F8 /* OpenBotCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = AFFF9CA6C79C9E0404C5E1B9 /* OpenBotCard.swift */; };
 		E860139313233859F69D190A /* ZenohLink.swift in Sources */ = {isa = PBXBuildFile; fileRef = B584F80B34AFDE7F410C0ACF /* ZenohLink.swift */; };
 		EABD04EB640BE33F79C1825D /* SyntheticCapture.swift in Sources */ = {isa = PBXBuildFile; fileRef = C56A4D2883BCEB81E01BEBFF /* SyntheticCapture.swift */; };
@@ -27,6 +29,7 @@
 		33B9B684B9BF7EB30F6C6624 /* DrivePad.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DrivePad.swift; sourceTree = "<group>"; };
 		34A5CD35EE314793008954AF /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		406A1EC246E8320374EAAD34 /* OpenBeneZenohDemoApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenBeneZenohDemoApp.swift; sourceTree = "<group>"; };
+		52EDC0D05D67E169D7B7310D /* CaptureSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CaptureSettings.swift; sourceTree = "<group>"; };
 		72E7B3BC3E6ECE50DDCA847E /* Theme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Theme.swift; sourceTree = "<group>"; };
 		78745050218CF647FC276887 /* ARCaptureController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ARCaptureController.swift; sourceTree = "<group>"; };
 		A3130CC34DF91D4C6C0E7331 /* OpenBeneZenohDemo.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = OpenBeneZenohDemo.app; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -35,6 +38,7 @@
 		AFFF9CA6C79C9E0404C5E1B9 /* OpenBotCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenBotCard.swift; sourceTree = "<group>"; };
 		B584F80B34AFDE7F410C0ACF /* ZenohLink.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ZenohLink.swift; sourceTree = "<group>"; };
 		C56A4D2883BCEB81E01BEBFF /* SyntheticCapture.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SyntheticCapture.swift; sourceTree = "<group>"; };
+		F997354F4B673CB0B45DDA7F /* CaptureCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CaptureCard.swift; sourceTree = "<group>"; };
 		FAF7FA9E66E82B0EACE8B87C /* zenoh_ios */ = {isa = PBXFileReference; lastKnownFileType = folder; name = zenoh_ios; path = ..; sourceTree = SOURCE_ROOT; };
 /* End PBXFileReference section */
 
@@ -73,6 +77,8 @@
 			isa = PBXGroup;
 			children = (
 				78745050218CF647FC276887 /* ARCaptureController.swift */,
+				F997354F4B673CB0B45DDA7F /* CaptureCard.swift */,
+				52EDC0D05D67E169D7B7310D /* CaptureSettings.swift */,
 				04D8269E98289187EDF23A3A /* ContentView.swift */,
 				33B9B684B9BF7EB30F6C6624 /* DrivePad.swift */,
 				A8F0975A32659830DE51A2FD /* HardwareKeyboardView.swift */,
@@ -162,6 +168,8 @@
 			buildActionMask = 2147483647;
 			files = (
 				454FF8CB5A28AD3AA4A1911B /* ARCaptureController.swift in Sources */,
+				16DD5F3BA03407A9F1543CAC /* CaptureCard.swift in Sources */,
+				C1CB2CF8D65CC77DBF5091AF /* CaptureSettings.swift in Sources */,
 				39EB526831377573AD8886B4 /* ContentView.swift in Sources */,
 				EF42F8CF2B0DCED50E317391 /* DrivePad.swift in Sources */,
 				4CFB058EDDBE302D7C9C4A3A /* HardwareKeyboardView.swift in Sources */,

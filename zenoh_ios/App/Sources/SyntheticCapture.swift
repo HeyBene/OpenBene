@@ -5,19 +5,21 @@ import UIKit
 /// Emits synthetic frames so the transport can be tested without ARKit
 /// (simulator, permission denied, or a device without depth).
 final class SyntheticCapture {
+    var settings: CaptureSettings
     private let onFrame: (CaptureFrame) -> Void
     private var timer: Timer?
     private var frameID: UInt32 = 0
     private let depthWidth = 256
     private let depthHeight = 192
 
-    init(onFrame: @escaping (CaptureFrame) -> Void) {
+    init(settings: CaptureSettings, onFrame: @escaping (CaptureFrame) -> Void) {
+        self.settings = settings
         self.onFrame = onFrame
     }
 
     func start() {
         timer?.invalidate()
-        timer = Timer.scheduledTimer(withTimeInterval: 0.2, repeats: true) { [weak self] _ in
+        timer = Timer.scheduledTimer(withTimeInterval: settings.frameInterval, repeats: true) { [weak self] _ in
             self?.emit()
         }
         emit()
@@ -31,7 +33,12 @@ final class SyntheticCapture {
     private func emit() {
         frameID &+= 1
         let size = CGSize(width: 640, height: 480)
-        let renderer = UIGraphicsImageRenderer(size: size)
+        // Scale 1 keeps the encoded image at 640x480 instead of the screen's
+        // 3x scale, which previously mismatched the frame metadata.
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = 1
+        format.opaque = true
+        let renderer = UIGraphicsImageRenderer(size: size, format: format)
         let image = renderer.image { context in
             UIColor(red: 0.08, green: 0.12, blue: 0.18, alpha: 1).setFill()
             context.fill(CGRect(origin: .zero, size: size))
@@ -46,23 +53,34 @@ final class SyntheticCapture {
         }
         guard let jpeg = image.jpegData(compressionQuality: 0.6) else { return }
 
+        var enabled: [String] = []
+        if settings.includeRGB { enabled.append("rgb") }
+        if settings.includeDepth { enabled.append("depth") }
+        if settings.includeConfidence { enabled.append("confidence") }
+        if settings.includePose { enabled.append("pose") }
+
         let frame = CaptureFrame(
             frameID: frameID,
             timestampNs: UInt64(Date().timeIntervalSince1970 * 1_000_000_000),
-            rgbJPEG: jpeg,
-            depthPNG: Self.depthPNG(width: depthWidth, height: depthHeight, frameID: frameID),
-            confidencePNG: Self.confidencePNG(width: depthWidth, height: depthHeight),
-            pose: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1],
+            rgbJPEG: settings.includeRGB ? jpeg : nil,
+            depthPNG: settings.includeDepth
+                ? Self.depthPNG(width: depthWidth, height: depthHeight, frameID: frameID)
+                : nil,
+            confidencePNG: settings.includeConfidence
+                ? Self.confidencePNG(width: depthWidth, height: depthHeight)
+                : nil,
+            pose: settings.includePose ? [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1] : nil,
             metadata: FrameMetadata(
-                width: Int(size.width),
-                height: Int(size.height),
-                depthWidth: depthWidth,
-                depthHeight: depthHeight,
+                width: settings.includeRGB ? Int(size.width) : 0,
+                height: settings.includeRGB ? Int(size.height) : 0,
+                depthWidth: settings.includeDepth ? depthWidth : 0,
+                depthHeight: settings.includeDepth ? depthHeight : 0,
                 fx: 520, fy: 520, cx: 320, cy: 240,
                 trackingState: "synthetic",
                 depthSource: "synthetic",
-                confidenceWidth: depthWidth,
-                confidenceHeight: depthHeight
+                confidenceWidth: settings.includeConfidence ? depthWidth : 0,
+                confidenceHeight: settings.includeConfidence ? depthHeight : 0,
+                enabledPlanes: enabled
             )
         )
         onFrame(frame)
@@ -70,49 +88,23 @@ final class SyntheticCapture {
 
     private static func depthPNG(width: Int, height: Int, frameID: UInt32) -> Data? {
         var values = [UInt16](repeating: 0, count: width * height)
+        let seed = Int(frameID) * 7
         for y in 0..<height {
             for x in 0..<width {
-                values[y * width + x] = UInt16(500 + ((x &* 3 &+ y &* 5 &+ Int(frameID)) % 900))
+                // Wide spread (0.3 m .. 4.0 m) so the PC colour ramp is visible.
+                let pattern: Int = (x &* 31) &+ (y &* 53) &+ seed
+                values[y * width + x] = UInt16(300 + pattern % 3700)
             }
         }
-        return values.withUnsafeMutableBytes { raw -> Data? in
-            guard let context = CGContext(
-                data: raw.baseAddress,
-                width: width,
-                height: height,
-                bitsPerComponent: 16,
-                bytesPerRow: width * MemoryLayout<UInt16>.size,
-                space: CGColorSpaceCreateDeviceGray(),
-                bitmapInfo: CGImageAlphaInfo.none.rawValue
-            ), let image = context.makeImage() else { return nil }
-            let data = NSMutableData()
-            guard let destination = CGImageDestinationCreateWithData(
-                data as CFMutableData, "public.png" as CFString, 1, nil
-            ) else { return nil }
-            CGImageDestinationAddImage(destination, image, nil)
-            return CGImageDestinationFinalize(destination) ? data as Data : nil
-        }
+        return PNGEncoder.gray16(width: width, height: height, values: values)
     }
 
     private static func confidencePNG(width: Int, height: Int) -> Data? {
         var bytes = [UInt8](repeating: 1, count: width * height)
-        for index in bytes.indices { bytes[index] = UInt8(index % 3) }
-        return bytes.withUnsafeMutableBytes { raw -> Data? in
-            guard let context = CGContext(
-                data: raw.baseAddress,
-                width: width,
-                height: height,
-                bitsPerComponent: 8,
-                bytesPerRow: width,
-                space: CGColorSpaceCreateDeviceGray(),
-                bitmapInfo: CGImageAlphaInfo.none.rawValue
-            ), let image = context.makeImage() else { return nil }
-            let data = NSMutableData()
-            guard let destination = CGImageDestinationCreateWithData(
-                data as CFMutableData, "public.png" as CFString, 1, nil
-            ) else { return nil }
-            CGImageDestinationAddImage(destination, image, nil)
-            return CGImageDestinationFinalize(destination) ? data as Data : nil
+        // Distinct bands so all three confidence levels are visible.
+        for index in bytes.indices {
+            bytes[index] = UInt8((index / 7 + index / (width * 3)) % 3)
         }
+        return PNGEncoder.gray8(width: width, height: height, values: bytes)
     }
 }

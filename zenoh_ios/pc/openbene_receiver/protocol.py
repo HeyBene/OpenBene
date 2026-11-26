@@ -67,6 +67,7 @@ class FrameMetadata:
     depth_source: str = "none"
     confidence_width: int = 0
     confidence_height: int = 0
+    enabled_planes: tuple[str, ...] | None = None
 
     @classmethod
     def from_json(cls, raw: bytes | str) -> "FrameMetadata":
@@ -88,6 +89,11 @@ class FrameMetadata:
             depth_source=str(data.get("depthSource", "none")),
             confidence_width=int(data.get("confidenceWidth", 0)),
             confidence_height=int(data.get("confidenceHeight", 0)),
+            enabled_planes=(
+                tuple(str(item) for item in data["enabledPlanes"])
+                if isinstance(data.get("enabledPlanes"), list)
+                else None
+            ),
         )
 
     def as_dict(self) -> dict[str, Any]:
@@ -104,6 +110,11 @@ class FrameMetadata:
             "depthSource": self.depth_source,
             "confidenceWidth": self.confidence_width,
             "confidenceHeight": self.confidence_height,
+            **(
+                {"enabledPlanes": list(self.enabled_planes)}
+                if self.enabled_planes is not None
+                else {}
+            ),
         }
 
 

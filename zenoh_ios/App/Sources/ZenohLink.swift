@@ -18,6 +18,13 @@ final class ZenohLink: ObservableObject {
         didSet { UserDefaults.standard.set(robotID, forKey: Self.robotKey) }
     }
     @Published var useARKit = true
+    @Published var settings: CaptureSettings {
+        didSet {
+            settings.save()
+            guard settings != oldValue else { return }
+            applySettingsChange()
+        }
+    }
 
     @Published private(set) var connected = false
     @Published private(set) var statusText = "未连接"
@@ -36,13 +43,24 @@ final class ZenohLink: ObservableObject {
     private var synthetic: SyntheticCapture?
     private var statsTimer: Timer?
     private var telemetryTimer: Timer?
+    private let motion = MotionSampler()
     private var lastBytes: UInt64 = 0
     private var lastStatsAt = Date()
 
     init() {
         endpoint = UserDefaults.standard.string(forKey: Self.endpointKey) ?? ""
         robotID = UserDefaults.standard.string(forKey: Self.robotKey) ?? "rtr520"
+        settings = CaptureSettings.load()
+        motion.onSample = { [weak self] acceleration, rotation in
+            Task { @MainActor in
+                self?.pendingAcceleration = acceleration
+                self?.pendingRotation = rotation
+            }
+        }
     }
+
+    private var pendingAcceleration: Vector3Sample?
+    private var pendingRotation: Vector3Sample?
 
     func connect() {
         guard !connected else { return }
@@ -73,6 +91,7 @@ final class ZenohLink: ObservableObject {
         startCapture(on: transport)
         startStats()
         startTelemetry()
+        if settings.includeIMU { motion.start() }
     }
 
     func disconnect() {
@@ -81,6 +100,7 @@ final class ZenohLink: ObservableObject {
         statsTimer = nil
         telemetryTimer?.invalidate()
         telemetryTimer = nil
+        motion.stop()
         transport?.stop()
         transport = nil
         connected = false
@@ -92,6 +112,7 @@ final class ZenohLink: ObservableObject {
         stopCapture()
         if useARKit, ARWorldTrackingConfiguration.isSupported {
             let controller = ARCaptureController(
+                settings: settings,
                 onFrame: { frame in transport.publish(frame: frame) },
                 onStatus: { [weak self] detail in
                     Task { @MainActor in self?.captureDetail = detail }
@@ -102,12 +123,24 @@ final class ZenohLink: ObservableObject {
             checkCameraPermission()
         } else {
             let generator = SyntheticCapture(
+                settings: settings,
                 onFrame: { frame in transport.publish(frame: frame) }
             )
             synthetic = generator
             generator.start()
-            captureDetail = "合成测试帧 640×480 @5fps"
+            captureDetail = "合成测试帧 640×480 @\(Int(settings.fps))fps"
         }
+    }
+
+    /// Settings changed: restart capture for the new rate/planes and toggle IMU.
+    private func applySettingsChange() {
+        if settings.includeIMU {
+            if connected { motion.start() }
+        } else {
+            motion.stop()
+        }
+        guard connected, let transport else { return }
+        startCapture(on: transport)
     }
 
     private func checkCameraPermission() {
@@ -146,6 +179,22 @@ final class ZenohLink: ObservableObject {
 
     private func publishTelemetry() {
         guard let transport, connected else { return }
+        if settings.includeIMU {
+            let acceleration = pendingAcceleration
+            let rotation = pendingRotation
+            pendingAcceleration = nil
+            pendingRotation = nil
+            if acceleration != nil || rotation != nil {
+                transport.publish(
+                    sensors: SensorSamples(
+                        accelerometer: acceleration,
+                        gyroscope: rotation,
+                        batteryLevel: nil,
+                        timestampMs: Int64(Date().timeIntervalSince1970 * 1000)
+                    )
+                )
+            }
+        }
         transport.publish(
             telemetry: TelemetryMessage(
                 voltage: robot.voltage ?? 0,

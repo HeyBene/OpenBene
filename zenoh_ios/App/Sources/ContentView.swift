@@ -11,6 +11,7 @@ struct ContentView: View {
                 header
 
                 ZenohCard(link: link)
+                CaptureCard(link: link)
                 OpenBotCard(robot: link.robot)
                 DrivePad(robot: link.robot, drive: link.drive) {
                     keyboardFocusToken += 1
