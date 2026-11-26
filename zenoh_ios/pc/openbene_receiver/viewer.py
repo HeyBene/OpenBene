@@ -3,12 +3,15 @@
 from __future__ import annotations
 
 import json
+import select
+import socket
 import socketserver
 import threading
 import time
 from collections import deque
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any, Callable
+from urllib.parse import parse_qs
 
 from .pngviz import colorize_confidence, colorize_depth
 
@@ -39,7 +42,7 @@ class LiveViewer:
         # the page polls them several times a second, so keep the last render
         # together with the generation of the plane it was made from.
         self._rendered: dict[str, tuple[int, bytes]] = {}
-        self._generation = {"depth": 0, "confidence": 0}
+        self._generation = {"rgb": 0, "depth": 0, "confidence": 0}
         self._started_at = time.time()
         self._server: _FastHTTPServer | None = None
         self._thread: threading.Thread | None = None
@@ -60,6 +63,7 @@ class LiveViewer:
             self._meta = meta
             if rgb:
                 self._rgb = rgb
+                self._generation["rgb"] += 1
             if depth:
                 self._depth = depth
                 self._generation["depth"] += 1
@@ -155,6 +159,19 @@ class LiveViewer:
                 self._rendered[kind] = (generation, rendered)
         return rendered, "image/png"
 
+    def latest(self, plane: str) -> tuple[int, bytes, str]:
+        """Newest payload plus its generation counter for the preview streams.
+
+        The generation rises on every update, so a stream can tell a fresh frame
+        from a repeat without re-sending the same bytes.
+        """
+        if plane not in ("rgb", "depth", "confidence"):
+            plane = "rgb"
+        data, content_type = self.image(plane)
+        with self._lock:
+            generation = self._generation[plane]
+        return generation, data, content_type
+
     # -- http -------------------------------------------------------------
 
     def start(self) -> str:
@@ -188,7 +205,7 @@ class LiveViewer:
                 return
 
             def do_GET(self) -> None:  # noqa: N802
-                path = self.path.split("?", 1)[0]
+                path, _, query = self.path.partition("?")
                 if path in ("/", "/index.html"):
                     self._send(200, "text/html; charset=utf-8", PAGE.encode("utf-8"))
                     return
@@ -207,6 +224,10 @@ class LiveViewer:
                         self._send(204, content_type, b"")
                     else:
                         self._send(200, content_type, data)
+                    return
+                if path == "/stream.mjpg":
+                    plane = parse_qs(query).get("plane", ["rgb"])[0]
+                    self._stream(plane)
                     return
                 self._send(404, "text/plain", b"not found")
 
@@ -259,6 +280,73 @@ class LiveViewer:
                 self.end_headers()
                 if body:
                     self.wfile.write(body)
+
+            def _stream(self, plane: str) -> None:
+                """Push the newest image as multipart MJPEG until the client leaves.
+
+                One connection per plane removes the browser's polling: the page
+                renders each frame as it arrives instead of asking every 250 ms.
+                """
+                max_rate = 30.0 if plane == "rgb" else 5.0
+                min_interval = 1.0 / max_rate
+                # Depth and confidence are colorized in Python, so poll them at
+                # their display rate instead of spinning on every new frame.
+                poll_interval = 0.004 if plane == "rgb" else 0.12
+                boundary = "openbene-frame"
+                self.send_response(200)
+                self.send_header(
+                    "Content-Type", "multipart/x-mixed-replace; boundary=" + boundary
+                )
+                self.send_header("Cache-Control", "no-store, no-transform")
+                self.send_header("Pragma", "no-cache")
+                self.send_header("Connection", "close")
+                self.end_headers()
+                self.close_connection = True
+                last_generation = -1
+                last_sent = 0.0
+                try:
+                    self.connection.settimeout(15.0)
+                    while True:
+                        generation, data, content_type = viewer.latest(plane)
+                        now = time.time()
+                        if (
+                            data
+                            and generation != last_generation
+                            and now - last_sent >= min_interval
+                        ):
+                            header = (
+                                f"--{boundary}\r\n"
+                                f"Content-Type: {content_type}\r\n"
+                                f"Content-Length: {len(data)}\r\n\r\n"
+                            ).encode("ascii")
+                            self.wfile.write(header)
+                            self.wfile.write(data)
+                            self.wfile.write(b"\r\n")
+                            self.wfile.flush()
+                            last_generation = generation
+                            last_sent = now
+                        elif self._client_gone():
+                            return
+                        time.sleep(poll_interval)
+                except (BrokenPipeError, ConnectionResetError, TimeoutError, OSError):
+                    return
+                finally:
+                    self.close_connection = True
+
+            def _client_gone(self) -> bool:
+                """True once the browser closes a streaming connection."""
+                try:
+                    readable, _, _ = select.select([self.connection], [], [], 0)
+                except (OSError, ValueError):
+                    return True
+                if not readable:
+                    return False
+                try:
+                    return self.connection.recv(1, socket.MSG_PEEK) == b""
+                except (BlockingIOError, InterruptedError):
+                    return False
+                except OSError:
+                    return True
 
         return Handler
 
@@ -374,7 +462,7 @@ PAGE = """<!doctype html>
     <div class="card">
       <h2><span class="dot"></span>RGB 实时画面</h2>
         <div class="stage stack" id="rgbWrap">
-          <img id="rgb" alt="RGB">
+          <img id="rgb" alt="RGB" src="/stream.mjpg">
           <div class="empty" id="rgbEmpty">等待手机画面</div>
         </div>
     </div>
@@ -608,15 +696,21 @@ async function tick() {
     show('rgbWrap', 'rgbEmpty', '', marker('rgb', planes.rgb));
     show('depthWrap', 'depthEmpty', '', marker('depth', planes.depth));
     show('confWrap', 'confEmpty', '', marker('confidence', planes.confidence));
-    if (planes.depth) $('depth').src = '/depth.png?a=' + Date.now();
-    if (planes.confidence) $('confidence').src = '/confidence.png?a=' + Date.now();
+    if (planes.depth) attachStream('depth', 'depth');
+    if (planes.confidence) attachStream('confidence', 'confidence');
   } catch (err) {
     $('pill').textContent = '连接中断';
   }
 }
+function attachStream(imgId, plane) {
+  const img = $(imgId);
+  if (img.dataset.stream === plane) return;
+  img.dataset.stream = plane;
+  img.src = '/stream.mjpg?plane=' + plane;
+}
+
 setInterval(tick, 300);
 tick();
-setInterval(() => { $('rgb').src = '/frame.jpg?a=' + Date.now(); }, 250);
 </script>
 </body>
 </html>
