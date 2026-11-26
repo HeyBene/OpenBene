@@ -1,0 +1,116 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 700" width="1200" height="700" role="img" aria-label="OpenBene Zenoh console">
+  <defs>
+    <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#dbeafe"/>
+      <stop offset="55%" stop-color="#eff6ff"/>
+      <stop offset="100%" stop-color="#e2e8f0"/>
+    </linearGradient>
+    <linearGradient id="floor" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#cbd5e1"/>
+      <stop offset="100%" stop-color="#94a3b8"/>
+    </linearGradient>
+    <linearGradient id="depth" x1="0" y1="1" x2="1" y2="0">
+      <stop offset="0%" stop-color="#1d4ed8"/>
+      <stop offset="45%" stop-color="#22d3ee"/>
+      <stop offset="75%" stop-color="#fbbf24"/>
+      <stop offset="100%" stop-color="#ef4444"/>
+    </linearGradient>
+    <linearGradient id="conf" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#312e81"/>
+      <stop offset="60%" stop-color="#0f766e"/>
+      <stop offset="100%" stop-color="#a3e635"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="1200" height="700" fill="#f5f6f8"/>
+
+  <!-- header -->
+  <rect x="0" y="0" width="1200" height="58" fill="#ffffff" stroke="#e5e7eb"/>
+  <text x="32" y="36" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="19" font-weight="700" fill="#1f2937">OpenBene Zenoh Console</text>
+  <rect x="300" y="17" width="62" height="24" rx="12" fill="#ecfdf5" stroke="#a7f3d0"/>
+  <circle cx="315" cy="29" r="4" fill="#0f766e"/>
+  <text x="325" y="33" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="11" font-weight="700" fill="#0f766e">LIVE</text>
+  <rect x="372" y="17" width="54" height="24" rx="12" fill="#fef2f2" stroke="#fecaca"/>
+  <text x="386" y="33" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="11" font-weight="700" fill="#dc2626">REC</text>
+  <text x="1130" y="35" text-anchor="end" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="12" fill="#6b7280">robot rtr520 · 10.160.3.246:7447</text>
+
+  <!-- RGB card -->
+  <rect x="32" y="82" width="742" height="392" rx="16" fill="#ffffff" stroke="#e5e7eb"/>
+  <text x="54" y="112" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="13" font-weight="600" fill="#1f2937">RGB live preview</text>
+  <text x="752" y="112" text-anchor="end" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="11" fill="#6b7280">1920 × 1440 · ZPKD</text>
+  <rect x="54" y="126" width="698" height="326" rx="10" fill="url(#sky)"/>
+  <rect x="54" y="290" width="698" height="162" rx="10" fill="url(#floor)"/>
+  <path d="M300 290 L420 290 L470 452 L250 452 Z" fill="#64748b" opacity="0.55"/>
+  <rect x="392" y="252" width="124" height="66" rx="12" fill="#0f172a"/>
+  <circle cx="424" cy="285" r="9" fill="#38bdf8"/>
+  <circle cx="484" cy="285" r="9" fill="#38bdf8"/>
+  <rect x="438" y="318" width="30" height="16" rx="4" fill="#1e293b"/>
+  <text x="454" y="438" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="11" fill="#f8fafc">ARKit RGB → JPEG → Zenoh frame</text>
+
+  <!-- depth / confidence -->
+  <rect x="32" y="492" width="361" height="176" rx="16" fill="#ffffff" stroke="#e5e7eb"/>
+  <text x="54" y="520" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="12" font-weight="600" fill="#1f2937">Depth</text>
+  <rect x="54" y="532" width="317" height="114" rx="8" fill="url(#depth)" opacity="0.85"/>
+  <path d="M70 630 Q160 560 250 620 T370 604" stroke="#ffffff" stroke-width="2" fill="none" opacity="0.7"/>
+  <text x="361" y="520" text-anchor="end" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="10" fill="#6b7280">uint16 mm · near = warm</text>
+
+  <rect x="413" y="492" width="361" height="176" rx="16" fill="#ffffff" stroke="#e5e7eb"/>
+  <text x="435" y="520" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="12" font-weight="600" fill="#1f2937">Confidence</text>
+  <rect x="435" y="532" width="317" height="114" rx="8" fill="url(#conf)" opacity="0.85"/>
+  <g fill="#ffffff" opacity="0.55">
+    <rect x="452" y="548" width="40" height="24" rx="4"/>
+    <rect x="520" y="556" width="86" height="18" rx="4"/>
+    <rect x="640" y="544" width="58" height="30" rx="4"/>
+    <rect x="470" y="596" width="120" height="16" rx="4"/>
+    <rect x="630" y="606" width="86" height="22" rx="4"/>
+  </g>
+
+  <!-- transfer card -->
+  <rect x="794" y="82" width="374" height="196" rx="16" fill="#ffffff" stroke="#e5e7eb"/>
+  <text x="816" y="110" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="13" font-weight="600" fill="#1f2937">Transfer</text>
+  <g font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif">
+    <rect x="816" y="124" width="164" height="64" rx="11" fill="#f5f6f8"/>
+    <text x="830" y="143" font-size="10" fill="#6b7280">FPS</text>
+    <text x="830" y="172" font-size="22" font-weight="650" fill="#1f2937">20.0</text>
+    <rect x="992" y="124" width="154" height="64" rx="11" fill="#f5f6f8"/>
+    <text x="1006" y="143" font-size="10" fill="#6b7280">MB/s</text>
+    <text x="1006" y="172" font-size="22" font-weight="650" fill="#1f2937">1.9</text>
+    <rect x="816" y="198" width="164" height="64" rx="11" fill="#f5f6f8"/>
+    <text x="830" y="217" font-size="10" fill="#6b7280">FRAMES</text>
+    <text x="830" y="246" font-size="22" font-weight="650" fill="#1f2937">1 240</text>
+    <rect x="992" y="198" width="154" height="64" rx="11" fill="#f5f6f8"/>
+    <text x="1006" y="217" font-size="10" fill="#6b7280">GAPS</text>
+    <text x="1006" y="246" font-size="22" font-weight="650" fill="#1f2937">0</text>
+  </g>
+
+  <!-- drive card -->
+  <rect x="794" y="294" width="374" height="230" rx="16" fill="#ffffff" stroke="#e5e7eb"/>
+  <text x="816" y="322" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="13" font-weight="600" fill="#1f2937">Drive</text>
+  <text x="1146" y="322" text-anchor="end" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="10" fill="#6b7280">PC → phone → BLE</text>
+  <g font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="13" font-weight="600">
+    <rect x="816" y="336" width="108" height="52" rx="10" fill="#ffffff" stroke="#e5e7eb"/><text x="870" y="368" text-anchor="middle" fill="#1f2937">Q</text>
+    <rect x="932" y="336" width="108" height="52" rx="10" fill="#2563eb" stroke="#2563eb"/><text x="986" y="368" text-anchor="middle" fill="#ffffff">W</text>
+    <rect x="1048" y="336" width="98" height="52" rx="10" fill="#ffffff" stroke="#e5e7eb"/><text x="1097" y="368" text-anchor="middle" fill="#1f2937">E</text>
+    <rect x="816" y="396" width="108" height="52" rx="10" fill="#ffffff" stroke="#e5e7eb"/><text x="870" y="428" text-anchor="middle" fill="#1f2937">A</text>
+    <rect x="932" y="396" width="108" height="52" rx="10" fill="#ffffff" stroke="#e5e7eb"/><text x="986" y="428" text-anchor="middle" fill="#1f2937">S</text>
+    <rect x="1048" y="396" width="98" height="52" rx="10" fill="#ffffff" stroke="#e5e7eb"/><text x="1097" y="428" text-anchor="middle" fill="#1f2937">D</text>
+  </g>
+  <text x="816" y="476" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="10" fill="#6b7280">speed 47%</text>
+  <rect x="884" y="468" width="262" height="6" rx="3" fill="#e5e7eb"/>
+  <rect x="884" y="468" width="123" height="6" rx="3" fill="#2563eb"/>
+  <circle cx="1007" cy="471" r="8" fill="#ffffff" stroke="#2563eb" stroke-width="3"/>
+  <text x="816" y="508" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="10" fill="#6b7280">turn 35%</text>
+  <rect x="884" y="500" width="262" height="6" rx="3" fill="#e5e7eb"/>
+  <rect x="884" y="500" width="92" height="6" rx="3" fill="#2563eb"/>
+  <circle cx="976" cy="503" r="8" fill="#ffffff" stroke="#2563eb" stroke-width="3"/>
+
+  <!-- recording card -->
+  <rect x="794" y="536" width="374" height="132" rx="16" fill="#ffffff" stroke="#e5e7eb"/>
+  <text x="816" y="564" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="13" font-weight="600" fill="#1f2937">Recording</text>
+  <text x="1146" y="564" text-anchor="end" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="10" fill="#6b7280">MCAP + meta.json</text>
+  <rect x="816" y="578" width="168" height="42" rx="10" fill="#2563eb"/>
+  <text x="900" y="604" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="12" font-weight="600" fill="#ffffff">Start</text>
+  <rect x="996" y="578" width="150" height="42" rx="10" fill="#fef2f2" stroke="#fecaca"/>
+  <text x="1071" y="604" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="12" font-weight="600" fill="#dc2626">Stop</text>
+  <text x="816" y="646" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="10" fill="#6b7280">frame/meta · frame/rgb · frame/depth · frame/confidence · video</text>
+</svg>

@@ -26,6 +26,7 @@ OpenBene focuses on reusable platform capabilities:
 - WebSocket connectivity and discovery
 - Video, sensor, and recording support
 - BLE manual-control utilities for ESP32/OpenBot workflows
+- Zenoh transport preview: Android and iOS SDKs plus a PC console for high-rate frames
 
 ## App Showcase
 
@@ -39,6 +40,57 @@ This preview shows the imported robot app now living in `apps/robot_app/`:
 - live `Camera Preview`
 - `Sensor Data` with `Frames Sent`, `Sensor Updates`, `Battery Level`, `Accelerometer`, and `Gyroscope`
 - WebSocket, UDP auto-discovery, and BLE / USB control paths
+
+## Zenoh Transport (preview)
+
+A second data plane for high-rate robot traffic. The WebSocket path above stays in
+place; Zenoh carries synchronized RGB, depth, confidence, pose and metadata in one
+message and records the whole session to MCAP.
+
+<p align="center">
+  <img alt="OpenBene Zenoh console" src="docs/showcase/zenoh-console.svg" width="100%">
+</p>
+
+| Piece | Location | Stack |
+| --- | --- | --- |
+| Android SDK and probe app | `zenoh_android/` on `feature/zenoh-android-transport` | Kotlin, official `zenoh-kotlin-android` 1.10.2 JNI, Android 11+ |
+| iOS SDK and demo app | `zenoh_ios/` on `feature/zenoh-ios-transport` | Swift Package and SwiftUI, `zenoh-pico` 1.1.0, iOS 16+ |
+| PC console | `zenoh_ios/pc` | Python 3.10+, `eclipse-zenoh`, MCAP |
+
+Both SDKs use the same keys and the same binary frames, so a single console serves
+an Android phone and an iPhone at the same time:
+
+```text
+openbene/{robot}/cmd        PC -> phone   drive / stop
+openbene/{robot}/status     phone -> PC   presence, 2 s heartbeat
+openbene/{robot}/sensors    phone -> PC   accelerometer, gyroscope, battery
+openbene/{robot}/telemetry  phone -> PC   voltage, wheel RPM, sonar
+openbene/{robot}/video      phone -> PC   ZFRM: 20-byte header + JPEG
+openbene/{robot}/frame      phone -> PC   ZPKD: RGB + depth + confidence + pose + metadata
+openbene/{robot}/session    phone -> PC   recording start / stop
+```
+
+Start the phone side by installing the probe app, then point it at the PC address
+the console prints (for example `10.160.3.246:7447`). Start the PC side with one
+command, which launches the router, the console and the preview page:
+
+```powershell
+zenoh_ios\scripts\run-pc.cmd
+```
+
+```bash
+python zenoh_ios/scripts/run_pc.py
+```
+
+The console serves <http://127.0.0.1:8080/> and shows:
+
+- a live RGB preview streamed at the arrival rate, with depth and confidence planes beside it
+- `FPS`, `MB/s`, received frames and `frame_id` gaps, so link quality is visible at a glance
+- `W A S D` to drive, `Q E` to arc, `Space` to stop; the on-screen pad and the speed / turn sliders do the same
+- `Start` / `Stop` recording, writing MCAP plus a `*.mcap.meta.json` summary into `zenoh_ios/runs`
+
+To ship this inside the Flutter app, wrap the native transports behind a platform
+channel: `MethodChannel` for commands and `EventChannel` for frames.
 
 ## Start Here
 
@@ -147,6 +199,8 @@ OpenBene/
 - openbot-mobile-control/ # Existing Flutter mobile app
 - apps/
   - robot_app/            # Imported robot-side Flutter app
+- zenoh_android/          # Zenoh Android SDK + probe app (feature branch)
+- zenoh_ios/              # Zenoh iOS SDK, demo app and PC console (feature branch)
 - openbene_mobility/      # Auxiliary local mobility workspace
 - openbene_local/         # Auxiliary scratch/private workspace
 - README.md               # English README (default)
@@ -164,6 +218,9 @@ OpenBene/
 - [docs/WINDOWS_BLE_CONTROL_RUNBOOK.md](docs/WINDOWS_BLE_CONTROL_RUNBOOK.md) - Windows BLE control workflow
 - [docs/OPENBENE_SCOPE.md](docs/OPENBENE_SCOPE.md) - Public scope boundary
 - [docs/MOBILITY_SYNC_RULES.md](docs/MOBILITY_SYNC_RULES.md) - Rules for promoting internal mobility work into public OpenBene
+- [zenoh_android/README.md](https://github.com/HeyBene/OpenBene/blob/feature/zenoh-android-transport/zenoh_android/README.md) - Android Zenoh SDK, probe app and Windows console launcher
+- [zenoh_ios/README.md](https://github.com/HeyBene/OpenBene/blob/feature/zenoh-ios-transport/zenoh_ios/README.md) - iOS Zenoh SDK, demo app and PC console
+- [Zenoh assessment and plan](https://github.com/HeyBene/OpenBene/blob/docs/zenoh-transport-plan/docs/ZENOH_TRANSPORT_ASSESSMENT_AND_PLAN.md) - Why Zenoh, the tradeoffs and the migration plan
 - [PROJECT_CONTEXT.md](PROJECT_CONTEXT.md) - Compatibility pointer
 - [CHANGELOG.md](CHANGELOG.md) - Changelog
 
