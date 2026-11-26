@@ -43,6 +43,9 @@ class LiveViewer:
         # together with the generation of the plane it was made from.
         self._rendered: dict[str, tuple[int, bytes]] = {}
         self._generation = {"rgb": 0, "depth": 0, "confidence": 0}
+        self._sensors: dict[str, Any] | None = None
+        self._sensor_at = 0.0
+        self._sensor_history: deque[tuple[float, ...]] = deque(maxlen=240)
         self._started_at = time.time()
         self._server: _FastHTTPServer | None = None
         self._thread: threading.Thread | None = None
@@ -79,6 +82,43 @@ class LiveViewer:
         with self._lock:
             self._last_command = document
 
+    def update_sensors(self, document: Any) -> None:
+        """Keeps the latest IMU sample plus a short history for the charts."""
+        if not isinstance(document, dict):
+            return
+        data = document.get("data")
+        if not isinstance(data, dict):
+            return
+
+        def read_vector(value: Any) -> list[float] | None:
+            if not isinstance(value, dict):
+                return None
+            try:
+                return [float(value["x"]), float(value["y"]), float(value["z"])]
+            except (KeyError, TypeError, ValueError):
+                return None
+
+        accel = read_vector(data.get("accelerometer"))
+        gyro = read_vector(data.get("gyroscope"))
+        battery = data.get("battery_level")
+        try:
+            battery = float(battery) if battery is not None else None
+        except (TypeError, ValueError):
+            battery = None
+
+        now = time.time()
+        with self._lock:
+            self._sensors = {
+                "accelerometer": accel,
+                "gyroscope": gyro,
+                "battery": battery,
+                "source_timestamp": document.get("timestamp"),
+            }
+            self._sensor_at = now
+            if accel or gyro:
+                values = (accel or [0.0, 0.0, 0.0]) + (gyro or [0.0, 0.0, 0.0])
+                self._sensor_history.append((now, *values))
+
     def send_drive(self, left: float, right: float) -> dict[str, Any]:
         if self.command_publisher is None:
             raise RuntimeError("command publishing is not available")
@@ -105,6 +145,9 @@ class LiveViewer:
             stats = dict(self._stats)
             command = self._last_command
             sent = dict(self._last_sent) if self._last_sent else None
+            sensors = dict(self._sensors) if self._sensors else None
+            sensor_at = self._sensor_at
+            history = list(self._sensor_history)
             sizes = {
                 "rgb": len(self._rgb),
                 "depth": len(self._depth),
@@ -116,6 +159,21 @@ class LiveViewer:
             span = max(1e-3, times[-1] - times[0])
             fps = (len(times) - 1) / span
         mbps = (sizes["rgb"] + sizes["depth"] + sizes["confidence"]) * fps / 1_000_000
+        imu_hz = 0.0
+        if len(history) > 1:
+            span = max(1e-3, history[-1][0] - history[0][0])
+            imu_hz = (len(history) - 1) / span
+        trimmed = history[-120:]
+        base = trimmed[0][0] if trimmed else 0.0
+        imu = {
+            "latest": sensors,
+            "age_s": round(time.time() - sensor_at, 2) if sensor_at else None,
+            "hz": round(imu_hz, 1),
+            "history": [
+                [round(row[0] - base, 3)] + [round(value, 3) for value in row[1:]]
+                for row in trimmed
+            ],
+        }
         recording_state = (
             self.recording.status()
             if self.recording is not None
@@ -139,6 +197,7 @@ class LiveViewer:
             "stats": stats,
             "last_command": command,
             "last_sent": sent,
+            "imu": imu,
             "recording": recording_state,
             "command_enabled": self.command_publisher is not None,
         }
@@ -404,6 +463,7 @@ PAGE = """<!doctype html>
   .card h2 .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); }
   .stage { background: #f8fafc; display: grid; place-items: center; min-height: 330px; }
   .stage img { width: 100%; height: auto; display: block; }
+  .stage img:not([src]) { display: none; }
   .stage .empty { color: var(--muted); font-size: 12px; text-align: center; padding: 16px; }
   .stack { position: relative; }
   .stack .empty { position: absolute; inset: 0; display: none; place-items: center;
@@ -447,6 +507,14 @@ PAGE = """<!doctype html>
   button.act.danger { background: var(--danger-soft); border-color: #fecaca; color: var(--danger); }
   button.act:disabled { opacity: .45; cursor: default; }
   code { font-size: 11px; color: var(--muted); }
+  .imu { padding: 10px 16px 14px; display: grid; gap: 5px; }
+  .imu-row { display: flex; justify-content: space-between; align-items: baseline;
+             font-size: 11px; color: var(--muted); }
+  .imu-row b { color: var(--text); font-size: 12px; font-weight: 600;
+               font-variant-numeric: tabular-nums; }
+  .imu canvas { width: 100%; height: 58px; display: block; background: #f8fafc;
+                border-radius: 8px; }
+  .imu-foot { display: flex; justify-content: space-between; font-size: 11px; color: var(--muted); }
 </style>
 </head>
 <body>
@@ -501,6 +569,19 @@ PAGE = """<!doctype html>
         <dt>坏包</dt><dd id="errors">0</dd>
         <dt>手机收到</dt><dd id="command">—</dd>
       </dl>
+    </div>
+
+    <div class="card">
+      <h2><span class="dot" style="background:#0ea5e9"></span>IMU
+        <span class="muted" id="imuRate" style="margin-left:auto;font-weight:400">—</span>
+      </h2>
+      <div class="imu">
+        <div class="imu-row"><span>加速度 x / y / z</span><b id="accel">—</b></div>
+        <canvas id="accelChart"></canvas>
+        <div class="imu-row"><span>陀螺仪 x / y / z</span><b id="gyro">—</b></div>
+        <canvas id="gyroChart"></canvas>
+        <div class="imu-foot"><span id="imuState">等待 IMU 数据</span><span id="imuBattery">—</span></div>
+      </div>
     </div>
 
     <div class="card">
@@ -678,6 +759,26 @@ async function tick() {
       : '—';
     $('robot').textContent = 'robot ' + ((state.stats || {}).robot || '—');
     const planes = state.planes || {};
+    const imu = state.imu || {};
+    const imuLatest = imu.latest;
+    if (imuLatest) {
+      const vec = (value) => Array.isArray(value) ? value.map((n) => n.toFixed(2)).join(', ') : '—';
+      $('accel').textContent = vec(imuLatest.accelerometer);
+      $('gyro').textContent = vec(imuLatest.gyroscope);
+      $('imuRate').textContent = imu.hz ? imu.hz.toFixed(1) + ' Hz' : '—';
+      const age = imu.age_s;
+      $('imuState').textContent = (age != null && age > 2)
+        ? 'IMU 暂停 ' + age.toFixed(0) + ' s'
+        : 'IMU 在线';
+      $('imuBattery').textContent = imuLatest.battery != null
+        ? '电量 ' + Math.round(imuLatest.battery * 100) + '%'
+        : '';
+      drawChart($('accelChart'), imu.history, [1, 2, 3]);
+      drawChart($('gyroChart'), imu.history, [4, 5, 6]);
+    } else {
+      $('accel').textContent = '—';
+      $('gyro').textContent = '—';
+    }
     const enabled = planes.enabled || null;
     const marker = (name, hasData) => {
       if (hasData) return true;
@@ -702,6 +803,44 @@ async function tick() {
     $('pill').textContent = '连接中断';
   }
 }
+function drawChart(canvas, rows, indices) {
+  if (!canvas) return;
+  const ratio = window.devicePixelRatio || 1;
+  const width = Math.max(120, canvas.clientWidth || 260) * ratio;
+  const height = 58 * ratio;
+  if (canvas.width !== width || canvas.height !== height) {
+    canvas.width = width;
+    canvas.height = height;
+  }
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0, 0, width, height);
+  if (!rows || rows.length < 2) return;
+  const colors = ['#2563eb', '#0f766e', '#dc2626'];
+  const pad = 3 * ratio;
+  const stepX = (width - 2 * pad) / (rows.length - 1);
+  indices.forEach((index, series) => {
+    // Each axis is scaled on its own so gravity on z does not flatten x and y.
+    let min = Infinity;
+    let max = -Infinity;
+    for (const row of rows) {
+      const value = row[index];
+      if (value < min) min = value;
+      if (value > max) max = value;
+    }
+    if (!isFinite(min) || !isFinite(max)) return;
+    if (max - min < 1e-6) { max += 1; min -= 1; }
+    ctx.beginPath();
+    rows.forEach((row, i) => {
+      const x = pad + i * stepX;
+      const y = height - pad - ((row[index] - min) / (max - min)) * (height - 2 * pad);
+      if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    });
+    ctx.strokeStyle = colors[series];
+    ctx.lineWidth = 1.5 * ratio;
+    ctx.stroke();
+  });
+}
+
 function attachStream(imgId, plane) {
   const img = $(imgId);
   if (img.dataset.stream === plane) return;

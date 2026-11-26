@@ -69,6 +69,35 @@ def test_live_view_serves_frames_and_controls_recording(tmp_path: Path):
     assert len(topics) == 4  # meta + rgb + depth + confidence for frame 2
 
 
+def test_sensor_samples_reach_the_viewer(tmp_path: Path):
+    recording = RecordingController(tmp_path)
+    viewer = LiveViewer(port=0, recording=recording)
+    url = viewer.start()
+    receiver = OpenBeneReceiver(recording=recording, viewer=viewer)
+    try:
+        sample = json.dumps(
+            {
+                "version": 1,
+                "type": "sensor_data",
+                "data": {
+                    "accelerometer": {"x": 0.1, "y": 0.2, "z": 9.8},
+                    "gyroscope": {"x": 0.01, "y": 0.02, "z": 0.03},
+                    "battery_level": 0.9,
+                },
+                "timestamp": 1,
+            }
+        ).encode()
+        receiver.handle_sample("openbene/rtr520/sensors", sample)
+
+        state = json.loads(urlopen(url + "state.json").read())
+        assert state["imu"]["latest"]["accelerometer"] == [0.1, 0.2, 9.8]
+        assert state["imu"]["latest"]["gyroscope"] == [0.01, 0.02, 0.03]
+        assert state["imu"]["latest"]["battery"] == 0.9
+        assert len(state["imu"]["history"]) == 1
+    finally:
+        viewer.stop()
+
+
 def test_command_endpoint_publishes_drive_and_stop():
     sent: list[tuple[float, float]] = []
     viewer = LiveViewer(port=0, command_publisher=lambda left, right: sent.append((left, right)))

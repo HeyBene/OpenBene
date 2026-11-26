@@ -134,6 +134,8 @@ class OpenBeneReceiver:
                 document = json.loads(payload.decode("utf-8"))
                 if topic == "cmd" and self.viewer:
                     self.viewer.update_command(document)
+                if topic == "sensors" and self.viewer:
+                    self.viewer.update_sensors(document)
                 if self.echo_json:
                     print(f"[{key}] {json.dumps(document, sort_keys=True)}")
                 if self.recording:
