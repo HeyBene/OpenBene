@@ -48,7 +48,7 @@ PC 端控制台在 iOS 分支的 `zenoh_ios/pc`，两边共用同一套（界面
 - 发布 `status`、`sensors`、`telemetry`、二进制 `video`，以及和 iOS 同格式的
   `frame`（ZPKD 多平面采集帧）与 `session`（录制起止事件）。
 - 提供没有 PC 时的环回测试按钮，用来验证订阅和发布链路。
-- 不包含相机采集、USB 串口和 BLE 底盘控制；这些接口预留给现有 App 集成。
+- 内置 C 档采集（Camera2 + IMU）和 BLE 底盘控制；不包含 USB 串口和 ARCore 深度 / 位姿。
 
 ## Key 约定
 
@@ -94,6 +94,19 @@ section: type(4) | length(4) | payload
 
 因为两边 key 和二进制格式一致，`zenoh_ios/pc` 里的 `openbene-recv` 可以同时
 接收 Android 和 iOS 两台手机，录制同一个 MCAP。
+
+## 采集与底盘（C 档，不依赖 ARCore）
+
+App 里新增了两条链路，都不引入新依赖，用的全是系统 API（Camera2 / SensorManager / BluetoothLeScanner）：
+
+- **开始采集**：后置相机 1280×720、15 fps，`YUV_420_888` 转 NV21 再压成 JPEG，走 `openbene/{robot}/frame`。
+  - 内参取 `LENS_INTRINSIC_CALIBRATION`，按分析分辨率缩放；没有再退到"焦距 + 传感器物理尺寸"，最后按 60° 水平视场估算，来源写进 metadata。
+  - `trackingState = "camera_only"`、`depthSource = "none"`，位姿、深度、置信度留空，接收端只会显示 RGB。
+  - 时间戳用 `elapsedRealtimeNanos`，PC 端会平移到墙钟时间，和 iOS 的单调时钟处理一致。
+  - IMU（加速度、陀螺仪）和电量每 200 ms 发一次 `sensors`。
+- **连接底盘**：BLE 扫描 OpenBot 服务 `61653dc3-…`，写 `c<左>,<右>\n`（-255..255，20 字节分包），与 Flutter App 的协议一致；1.5 秒收不到新指令自动停车。
+
+这样没有 ARCore 的手机也能进采集和录制链路，并打通 PC → Zenoh → 手机 → BLE → 电机的完整控制回路。权限（相机、蓝牙扫描/连接，Android 11 另需定位）在首次点按钮时申请。
 
 ## 构建
 
@@ -232,9 +245,9 @@ zenoh_android/
 
 ## 验证结果
 
-- Kotlin：`:app:testDebugUnitTest` 14 项通过（key/endpoint、命令解析、ZFRM 头、ZPKD
+- Kotlin：`:app:testDebugUnitTest` 23 项通过（key/endpoint、命令解析、ZFRM 头、ZPKD
   头布局、多平面往返、未知 section 跳过、截断/坏 magic 拒绝、metadata camelCase、
-  session 事件）。
+  session 事件、NV21 走位与色度交错、内参缩放、BLE 帧分片）。
 - 打包：`:app:assembleDebug` 通过，`app-debug.apk` 约 58 MB，含各 ABI 的 Zenoh JNI 库。
 - 跨端：用 Kotlin 编出的 `ZPKD` / `ZFRM` 字节直接喂给
   `zenoh_ios/pc/openbene_receiver/protocol.py`，字段、位姿、metadata 和兼容视频

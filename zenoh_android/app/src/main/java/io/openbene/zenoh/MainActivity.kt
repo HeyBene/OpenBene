@@ -1,6 +1,9 @@
 package io.openbene.zenoh
 
+import android.Manifest
 import android.app.Activity
+import android.content.pm.PackageManager
+import android.os.Build
 import android.os.Bundle
 import android.text.method.ScrollingMovementMethod
 import android.view.Gravity
@@ -10,6 +13,8 @@ import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
+import io.openbene.zenoh.ble.OpenBotBle
+import io.openbene.zenoh.capture.CaptureController
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -26,17 +31,35 @@ class MainActivity : Activity(), ZenohTransport.Listener {
     private lateinit var sensorButton: Button
     private lateinit var videoButton: Button
     private lateinit var captureButton: Button
+    private lateinit var startCaptureButton: Button
+    private lateinit var captureStopButton: Button
+    private lateinit var captureStatsView: TextView
+    private lateinit var bleConnectButton: Button
+    private lateinit var bleDisconnectButton: Button
+    private lateinit var bleStatusView: TextView
     private lateinit var sessionStartButton: Button
     private lateinit var sessionStopButton: Button
     private lateinit var loopbackDriveButton: Button
     private lateinit var loopbackStopButton: Button
     private lateinit var clearButton: Button
     private val transport = ZenohTransport(this)
+    private val capture by lazy { CaptureController(this, transport) }
+    private val ble by lazy { OpenBotBle(this, BleListener()) }
+    private var pendingAction: String? = null
     private val timeFormat = SimpleDateFormat("HH:mm:ss.SSS", Locale.US)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(buildUi())
+        capture.listener = object : CaptureController.Listener {
+            override fun onCaptureState(message: String) {
+                runOnUiThread { appendLog(message) }
+            }
+
+            override fun onCaptureStats(text: String) {
+                runOnUiThread { captureStatsView.text = text }
+            }
+        }
         val prefs = getSharedPreferences("zenoh_transport", MODE_PRIVATE)
         endpointInput.setText(prefs.getString("endpoint", DEFAULT_ENDPOINT))
         robotIdInput.setText(prefs.getString("robot_id", DEFAULT_ROBOT_ID))
@@ -118,6 +141,35 @@ class MainActivity : Activity(), ZenohTransport.Listener {
         root.addView(captureRow, matchWidth())
         root.addView(hint("采集帧走 .../frame（ZPKD，与 iOS 同格式）；录制按钮只发 session 事件，文件由 PC 端写 MCAP。"))
 
+        val captureControlRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+        startCaptureButton = button("开始采集") { requestCapture() }
+        captureStopButton = button("停止采集") { capture.stop() }
+        captureControlRow.addView(startCaptureButton, weighted())
+        captureControlRow.addView(captureStopButton, weighted())
+        root.addView(captureControlRow, matchWidth())
+        captureStatsView = TextView(this).apply {
+            text = "采集未启动（C 档：相机 + IMU，不需要 ARCore）"
+            textSize = 12f
+            setTextColor(0xFF374151.toInt())
+            setPadding(0, dp(4), 0, dp(8))
+        }
+        root.addView(captureStatsView, matchWidth())
+
+        val bleRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+        bleConnectButton = button("连接底盘") { requestBle() }
+        bleDisconnectButton = button("断开底盘") { ble.disconnect() }
+        bleRow.addView(bleConnectButton, weighted())
+        bleRow.addView(bleDisconnectButton, weighted())
+        root.addView(bleRow, matchWidth())
+        bleStatusView = TextView(this).apply {
+            text = "底盘未连接"
+            textSize = 12f
+            setTextColor(0xFF374151.toInt())
+            setPadding(0, dp(4), 0, dp(8))
+        }
+        root.addView(bleStatusView, matchWidth())
+        root.addView(hint("底盘走 BLE，协议 c<左>,<右>；1.5 秒收不到新指令会自动停车。"))
+
         val loopbackRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
         loopbackDriveButton = button("环回前进") {
             runCatching { transport.publishLoopbackDrive() }.onFailure { appendLog("Loopback failed: ${it.message}") }
@@ -172,6 +224,11 @@ class MainActivity : Activity(), ZenohTransport.Listener {
                 is RobotCommand.Stop -> "STOP seq=${command.sequence}"
                 is RobotCommand.Unknown -> "UNKNOWN ${command.reason}"
             }
+            when (command) {
+                is RobotCommand.Drive -> if (ble.isConnected) ble.drive(command.left, command.right)
+                is RobotCommand.Stop -> if (ble.isConnected) ble.stop()
+                is RobotCommand.Unknown -> Unit
+            }
             appendLog("CMD $summary")
         }
     }
@@ -181,6 +238,8 @@ class MainActivity : Activity(), ZenohTransport.Listener {
     }
 
     override fun onDestroy() {
+        runCatching { capture.stop() }
+        runCatching { ble.disconnect() }
         transport.close()
         super.onDestroy()
     }
@@ -190,10 +249,14 @@ class MainActivity : Activity(), ZenohTransport.Listener {
         sensorButton.isEnabled = connected
         videoButton.isEnabled = connected
         captureButton.isEnabled = connected
+        startCaptureButton.isEnabled = connected
+        captureStopButton.isEnabled = connected
         sessionStartButton.isEnabled = connected
         sessionStopButton.isEnabled = connected
         loopbackDriveButton.isEnabled = connected
         loopbackStopButton.isEnabled = connected
+        bleConnectButton.isEnabled = true
+        bleDisconnectButton.isEnabled = true
         disconnectButton.isEnabled = true
         connectButton.isEnabled = true
     }
@@ -277,8 +340,78 @@ class MainActivity : Activity(), ZenohTransport.Listener {
 
     private fun dp(value: Int): Int = (value * resources.displayMetrics.density).toInt()
 
+    private fun requestCapture() {
+        if (!transport.isConnected) {
+            appendLog("先连接 PC 再开始采集")
+            return
+        }
+        val needed = arrayOf(Manifest.permission.CAMERA)
+        if (needed.all { checkSelfPermission(it) == PackageManager.PERMISSION_GRANTED }) {
+            startCapture()
+            return
+        }
+        pendingAction = ACTION_CAPTURE
+        requestPermissions(needed, REQUEST_CAMERA)
+    }
+
+    private fun startCapture() {
+        if (capture.isRunning) return
+        appendLog("启动 C 档采集：Camera2 1280x720 @15fps + IMU")
+        capture.start()
+    }
+
+    private fun requestBle() {
+        val needed = blePermissions()
+        if (needed.all { checkSelfPermission(it) == PackageManager.PERMISSION_GRANTED }) {
+            ble.connect()
+            return
+        }
+        pendingAction = ACTION_BLE
+        requestPermissions(needed, REQUEST_BLE)
+    }
+
+    private fun blePermissions(): Array<String> =
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            arrayOf(Manifest.permission.BLUETOOTH_SCAN, Manifest.permission.BLUETOOTH_CONNECT)
+        } else {
+            arrayOf(Manifest.permission.ACCESS_FINE_LOCATION)
+        }
+
+    override fun onRequestPermissionsResult(
+        requestCode: Int,
+        permissions: Array<out String>,
+        grantResults: IntArray,
+    ) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        val granted = grantResults.isNotEmpty() &&
+            grantResults.all { it == PackageManager.PERMISSION_GRANTED }
+        val action = pendingAction
+        pendingAction = null
+        if (!granted) {
+            appendLog("权限被拒绝，请到系统设置里允许相机 / 蓝牙权限")
+            return
+        }
+        when (action) {
+            ACTION_CAPTURE -> startCapture()
+            ACTION_BLE -> ble.connect()
+        }
+    }
+
+    private inner class BleListener : OpenBotBle.Listener {
+        override fun onBleState(message: String) {
+            runOnUiThread {
+                bleStatusView.text = message
+                appendLog("BLE $message")
+            }
+        }
+    }
+
     companion object {
         private const val DEFAULT_ENDPOINT = "tcp/192.168.1.100:7447"
         private const val DEFAULT_ROBOT_ID = "rtr520"
+        private const val REQUEST_CAMERA = 11
+        private const val REQUEST_BLE = 12
+        private const val ACTION_CAPTURE = "capture"
+        private const val ACTION_BLE = "ble"
     }
 }
