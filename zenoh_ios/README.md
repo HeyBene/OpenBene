@@ -236,9 +236,29 @@ bash zenoh_ios/scripts/send-cmd.sh stop
 
 App 的「最近命令」会显示收到的 `drive` / `stop`。
 
+### App 内：连接 OpenBot 并用键盘操控
+
+App 现在有三个区块，浅色卡片式界面：
+
+- **电脑连接**：Zenoh 地址、机器人 ID、采集源、发送帧数与速率。
+- **OpenBot 小车**：扫描并连接 BLE 设备，显示电压、声呐、左右轮转速和碰撞信号。
+- **键盘操控**：屏幕上的 W/A/S/D/Q/E 方向键按住即动、松手即停，还有速度与转向滑杆和停车按钮。
+
+接到蓝牙键盘后，点一次「启用蓝牙键盘控制」，之后 W/A/S/D（Q/E 走弧线）直接驱动小车，
+空格或 X 停车。按键按住会以 10 Hz 重发指令，松开会立即发送停车；BLE 侧同时每 300 ms
+发送心跳，断连或 App 退到后台时固件也会自动停车。
+
+BLE 协议沿用 openbene_sdk：服务 61653dc3-4021-4d1e-ba83-8b4eec61d613，写入特征
+06386c14-86ea-4d71-811c-48f97c58f8c9，通知特征 9bf1103b-834c-47cf-b149-c9e4bcf778a7；
+指令为 c<left>,<right>\n，心跳 h300\n，遥测订阅 v/w/s。机器人遥测会同时经 Zenoh 的
+telemetry 主题发给电脑，和视频帧一起落进 MCAP。
+
+手机与电脑连接时还会把收到的远程 drive/stop 指令映射到同一套按键预设，所以电脑端
+send-cmd.sh 发来的命令也能直接让小车动起来。
+
 ## 验证记录
 
-- Swift：`swift test` 19 项通过（key/JSON 兼容、ZFRM 逐字节对齐 Android、ZPKD 往返、
+- Swift：`swift test` 27 项通过（key/JSON 兼容、ZFRM 逐字节对齐 Android、ZPKD 往返、
   队列丢帧、命令分发、离线状态）。
 - Python：`pytest` 11 项通过（黄金字节解析、MCAP 通道与消息体、跳号统计、坏包计数、
   预览页取图、按需开始/停止录制）。
@@ -250,5 +270,5 @@ App 的「最近命令」会显示收到的 `drive` / `stop`。
 - 仅支持 Apple 平台；zenoh-pico 以 xcframework 形式内置，Linux/Android 路径未包含在本工程。
 - 没有 TLS、认证与访问控制，只适用于可信局域网。
 - iOS 后台运行受系统限制，长时间采集需要保持前台或使用合适的后台会话。
-- 当前 SDK 只做传输与录制；USB/BLE 底盘控制仍由现有 App 负责。
+- BLE 直连只实现 ESP32 固件的运动与遥测；USB 串口路径仍由现有 App 负责。
 - `video` 兼容通道只携带 JPEG；深度、置信度和 pose 只在 `frame` 通道。

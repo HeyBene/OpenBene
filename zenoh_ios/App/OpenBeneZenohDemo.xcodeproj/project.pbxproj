@@ -7,23 +7,32 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		11F830B2A3A793DF71393733 /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = 72E7B3BC3E6ECE50DDCA847E /* Theme.swift */; };
 		39EB526831377573AD8886B4 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 04D8269E98289187EDF23A3A /* ContentView.swift */; };
 		454FF8CB5A28AD3AA4A1911B /* ARCaptureController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 78745050218CF647FC276887 /* ARCaptureController.swift */; };
+		4CFB058EDDBE302D7C9C4A3A /* HardwareKeyboardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A8F0975A32659830DE51A2FD /* HardwareKeyboardView.swift */; };
 		5EEE7E62072D1C5A70C5802D /* OpenBeneZenohPico in Frameworks */ = {isa = PBXBuildFile; productRef = 9801094E6EC9BC648C6763BD /* OpenBeneZenohPico */; };
+		673FFE8B9A75BABF4BF63303 /* OpenBeneRobot in Frameworks */ = {isa = PBXBuildFile; productRef = 3A088B15B817C07E146D95F3 /* OpenBeneRobot */; };
 		9701252DA594940BF9F23576 /* OpenBeneZenoh in Frameworks */ = {isa = PBXBuildFile; productRef = 7E86506990A9809B25417315 /* OpenBeneZenoh */; };
 		98D1730A90F0BE131F2E6E88 /* NetworkInfo.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC8CE41F66A7EE32EE443965 /* NetworkInfo.swift */; };
 		9DC95D5F7DCEC117976F8FC5 /* OpenBeneZenohDemoApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 406A1EC246E8320374EAAD34 /* OpenBeneZenohDemoApp.swift */; };
+		DAAC8A470F695B77265A40F8 /* OpenBotCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = AFFF9CA6C79C9E0404C5E1B9 /* OpenBotCard.swift */; };
 		E860139313233859F69D190A /* ZenohLink.swift in Sources */ = {isa = PBXBuildFile; fileRef = B584F80B34AFDE7F410C0ACF /* ZenohLink.swift */; };
 		EABD04EB640BE33F79C1825D /* SyntheticCapture.swift in Sources */ = {isa = PBXBuildFile; fileRef = C56A4D2883BCEB81E01BEBFF /* SyntheticCapture.swift */; };
+		EF42F8CF2B0DCED50E317391 /* DrivePad.swift in Sources */ = {isa = PBXBuildFile; fileRef = 33B9B684B9BF7EB30F6C6624 /* DrivePad.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
 		04D8269E98289187EDF23A3A /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
+		33B9B684B9BF7EB30F6C6624 /* DrivePad.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DrivePad.swift; sourceTree = "<group>"; };
 		34A5CD35EE314793008954AF /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		406A1EC246E8320374EAAD34 /* OpenBeneZenohDemoApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenBeneZenohDemoApp.swift; sourceTree = "<group>"; };
+		72E7B3BC3E6ECE50DDCA847E /* Theme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Theme.swift; sourceTree = "<group>"; };
 		78745050218CF647FC276887 /* ARCaptureController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ARCaptureController.swift; sourceTree = "<group>"; };
 		A3130CC34DF91D4C6C0E7331 /* OpenBeneZenohDemo.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = OpenBeneZenohDemo.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		A8F0975A32659830DE51A2FD /* HardwareKeyboardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HardwareKeyboardView.swift; sourceTree = "<group>"; };
 		AC8CE41F66A7EE32EE443965 /* NetworkInfo.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NetworkInfo.swift; sourceTree = "<group>"; };
+		AFFF9CA6C79C9E0404C5E1B9 /* OpenBotCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenBotCard.swift; sourceTree = "<group>"; };
 		B584F80B34AFDE7F410C0ACF /* ZenohLink.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ZenohLink.swift; sourceTree = "<group>"; };
 		C56A4D2883BCEB81E01BEBFF /* SyntheticCapture.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SyntheticCapture.swift; sourceTree = "<group>"; };
 		FAF7FA9E66E82B0EACE8B87C /* zenoh_ios */ = {isa = PBXFileReference; lastKnownFileType = folder; name = zenoh_ios; path = ..; sourceTree = SOURCE_ROOT; };
@@ -36,6 +45,7 @@
 			files = (
 				9701252DA594940BF9F23576 /* OpenBeneZenoh in Frameworks */,
 				5EEE7E62072D1C5A70C5802D /* OpenBeneZenohPico in Frameworks */,
+				673FFE8B9A75BABF4BF63303 /* OpenBeneRobot in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -64,10 +74,14 @@
 			children = (
 				78745050218CF647FC276887 /* ARCaptureController.swift */,
 				04D8269E98289187EDF23A3A /* ContentView.swift */,
+				33B9B684B9BF7EB30F6C6624 /* DrivePad.swift */,
+				A8F0975A32659830DE51A2FD /* HardwareKeyboardView.swift */,
 				34A5CD35EE314793008954AF /* Info.plist */,
 				AC8CE41F66A7EE32EE443965 /* NetworkInfo.swift */,
 				406A1EC246E8320374EAAD34 /* OpenBeneZenohDemoApp.swift */,
+				AFFF9CA6C79C9E0404C5E1B9 /* OpenBotCard.swift */,
 				C56A4D2883BCEB81E01BEBFF /* SyntheticCapture.swift */,
+				72E7B3BC3E6ECE50DDCA847E /* Theme.swift */,
 				B584F80B34AFDE7F410C0ACF /* ZenohLink.swift */,
 			);
 			path = Sources;
@@ -99,6 +113,7 @@
 			packageProductDependencies = (
 				7E86506990A9809B25417315 /* OpenBeneZenoh */,
 				9801094E6EC9BC648C6763BD /* OpenBeneZenohPico */,
+				3A088B15B817C07E146D95F3 /* OpenBeneRobot */,
 			);
 			productName = OpenBeneZenohDemo;
 			productReference = A3130CC34DF91D4C6C0E7331 /* OpenBeneZenohDemo.app */;
@@ -148,9 +163,13 @@
 			files = (
 				454FF8CB5A28AD3AA4A1911B /* ARCaptureController.swift in Sources */,
 				39EB526831377573AD8886B4 /* ContentView.swift in Sources */,
+				EF42F8CF2B0DCED50E317391 /* DrivePad.swift in Sources */,
+				4CFB058EDDBE302D7C9C4A3A /* HardwareKeyboardView.swift in Sources */,
 				98D1730A90F0BE131F2E6E88 /* NetworkInfo.swift in Sources */,
 				9DC95D5F7DCEC117976F8FC5 /* OpenBeneZenohDemoApp.swift in Sources */,
+				DAAC8A470F695B77265A40F8 /* OpenBotCard.swift in Sources */,
 				EABD04EB640BE33F79C1825D /* SyntheticCapture.swift in Sources */,
+				11F830B2A3A793DF71393733 /* Theme.swift in Sources */,
 				E860139313233859F69D190A /* ZenohLink.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -358,6 +377,10 @@
 /* End XCLocalSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
+		3A088B15B817C07E146D95F3 /* OpenBeneRobot */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = OpenBeneRobot;
+		};
 		7E86506990A9809B25417315 /* OpenBeneZenoh */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = OpenBeneZenoh;

@@ -16,6 +16,7 @@ let package = Package(
     products: [
         .library(name: "OpenBeneZenoh", targets: ["OpenBeneZenoh"]),
         .library(name: "OpenBeneZenohPico", targets: ["OpenBeneZenohPico"]),
+        .library(name: "OpenBeneRobot", targets: ["OpenBeneRobot"]),
         .executable(name: "openbene-zenoh-demo", targets: ["OpenBeneZenohDemo"]),
     ],
     targets: [
@@ -46,6 +47,10 @@ let package = Package(
             dependencies: ["OpenBeneZenoh", "COpenBeneZenohBridge"],
             path: "Sources/OpenBeneZenohPico"
         ),
+        .target(
+            name: "OpenBeneRobot",
+            path: "Sources/OpenBeneRobot"
+        ),
         .executableTarget(
             name: "OpenBeneZenohDemo",
             dependencies: ["OpenBeneZenoh", "OpenBeneZenohPico"],
@@ -55,6 +60,11 @@ let package = Package(
             name: "OpenBeneZenohTests",
             dependencies: ["OpenBeneZenoh"],
             path: "Tests/OpenBeneZenohTests"
+        ),
+        .testTarget(
+            name: "OpenBeneRobotTests",
+            dependencies: ["OpenBeneRobot"],
+            path: "Tests/OpenBeneRobotTests"
         ),
     ]
 )

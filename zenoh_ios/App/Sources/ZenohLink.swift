@@ -1,9 +1,11 @@
 import ARKit
+import AVFoundation
 import Foundation
+import OpenBeneRobot
 import OpenBeneZenoh
 import OpenBeneZenohPico
 
-/// Owns the Zenoh session and the capture source for the demo app.
+/// Owns the Zenoh session, the capture source and the OpenBot BLE link.
 @MainActor
 final class ZenohLink: ObservableObject {
     private static let endpointKey = "openbene.zenoh.endpoint"
@@ -26,10 +28,14 @@ final class ZenohLink: ObservableObject {
     @Published private(set) var captureDetail = "—"
     @Published private(set) var linkError: String?
 
+    let robot = OpenBotLink()
+    lazy var drive = DriveController(link: robot)
+
     private var transport: OpenBeneTransport?
     private var capture: ARCaptureController?
     private var synthetic: SyntheticCapture?
     private var statsTimer: Timer?
+    private var telemetryTimer: Timer?
     private var lastBytes: UInt64 = 0
     private var lastStatsAt = Date()
 
@@ -51,7 +57,7 @@ final class ZenohLink: ObservableObject {
         let session = PicoZenohSession(endpoint: config.endpoint, mode: .client)
         let transport = OpenBeneTransport(config: config, session: session)
         transport.onCommand = { [weak self] command in
-            Task { @MainActor in self?.record(command: command) }
+            Task { @MainActor in self?.handleRemoteCommand(command) }
         }
 
         do {
@@ -66,12 +72,15 @@ final class ZenohLink: ObservableObject {
         statusText = "已连接 \(config.endpoint)（zenoh-pico \(PicoZenohSession.zenohVersion)）"
         startCapture(on: transport)
         startStats()
+        startTelemetry()
     }
 
     func disconnect() {
         stopCapture()
         statsTimer?.invalidate()
         statsTimer = nil
+        telemetryTimer?.invalidate()
+        telemetryTimer = nil
         transport?.stop()
         transport = nil
         connected = false
@@ -90,6 +99,7 @@ final class ZenohLink: ObservableObject {
             )
             capture = controller
             controller.start()
+            checkCameraPermission()
         } else {
             let generator = SyntheticCapture(
                 onFrame: { frame in transport.publish(frame: frame) }
@@ -97,6 +107,15 @@ final class ZenohLink: ObservableObject {
             synthetic = generator
             generator.start()
             captureDetail = "合成测试帧 640×480 @5fps"
+        }
+    }
+
+    private func checkCameraPermission() {
+        switch AVCaptureDevice.authorizationStatus(for: .video) {
+        case .denied, .restricted:
+            captureDetail = "相机权限被拒绝，请到设置里允许，或切换合成测试帧"
+        default:
+            break
         }
     }
 
@@ -116,6 +135,28 @@ final class ZenohLink: ObservableObject {
         }
     }
 
+    /// Periodic chassis telemetry so the PC sees the same drive state the app
+    /// controls, including robot-side voltage and wheel RPM.
+    private func startTelemetry() {
+        telemetryTimer?.invalidate()
+        telemetryTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in
+            Task { @MainActor in self?.publishTelemetry() }
+        }
+    }
+
+    private func publishTelemetry() {
+        guard let transport, connected else { return }
+        transport.publish(
+            telemetry: TelemetryMessage(
+                voltage: robot.voltage ?? 0,
+                leftRPM: robot.leftRPM ?? 0,
+                rightRPM: robot.rightRPM ?? 0,
+                sonarCm: robot.sonarCm,
+                timestampMs: Int64(Date().timeIntervalSince1970 * 1000)
+            )
+        )
+    }
+
     private func refreshStats() {
         guard let transport else { return }
         let stats = transport.statistics()
@@ -129,14 +170,28 @@ final class ZenohLink: ObservableObject {
         lastStatsAt = now
     }
 
-    private func record(command: RobotCommand) {
+    /// Commands arriving from the PC drive the same BLE path as the keyboard.
+    private func handleRemoteCommand(_ command: RobotCommand) {
         switch command {
         case .drive(let left, let right, let sequence, _, _):
             lastCommand = String(format: "drive %.2f / %.2f  #%lld", left, right, sequence)
+            drive.press(combinedKey(left: left, right: right))
+
         case .stop(let sequence, _):
             lastCommand = "stop #\(sequence)"
+            drive.releaseAll()
+
         case .unknown(let reason):
             lastCommand = "无法解析：\(reason)"
         }
+    }
+
+    /// Speed-only commands from the PC map onto the same presets as the keys.
+    private func combinedKey(left: Double, right: Double) -> DriveKey {
+        if left > 0 && right > 0 { return .forward }
+        if left < 0 && right < 0 { return .reverse }
+        if left < 0 && right > 0 { return .turnLeft }
+        if left > 0 && right < 0 { return .turnRight }
+        return .stop
     }
 }

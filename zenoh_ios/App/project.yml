@@ -18,6 +18,8 @@ targets:
         product: OpenBeneZenoh
       - package: OpenBeneZenoh
         product: OpenBeneZenohPico
+      - package: OpenBeneZenoh
+        product: OpenBeneRobot
     settings:
       base:
         PRODUCT_NAME: OpenBeneZenohDemo

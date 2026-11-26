@@ -26,6 +26,10 @@
 	<string>采集相机画面、深度和位姿，通过 Zenoh 发送到电脑用于录制测试。</string>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>连接局域网内的 Zenoh 路由器，把采集数据实时发送到电脑。</string>
+	<key>NSBluetoothAlwaysUsageDescription</key>
+	<string>通过蓝牙连接 OpenBot 小车，发送运动指令并读取电压、轮速和声呐。</string>
+	<key>NSBluetoothPeripheralUsageDescription</key>
+	<string>通过蓝牙连接 OpenBot 小车，发送运动指令并读取电压、轮速和声呐。</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>
